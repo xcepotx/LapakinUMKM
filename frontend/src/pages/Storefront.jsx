@@ -522,9 +522,15 @@ export default function Storefront() {
 
       {/* FOOTER */}
       <footer className="border-t border-brand-line py-8 text-center">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm text-brand-mute hover:text-brand-ink">
-          <Sparkles className="w-4 h-4" /> Powered by <span className="font-heading font-bold text-brand-ink">Lapakin</span>
-        </Link>
+        {!shop?.remove_branding && (
+          <Link to="/" className="inline-flex items-center gap-2 text-sm text-brand-mute hover:text-brand-ink"
+            data-testid="powered-by-lapakin">
+            <Sparkles className="w-4 h-4" /> Powered by <span className="font-heading font-bold text-brand-ink">Lapakin</span>
+          </Link>
+        )}
+        {shop?.remove_branding && (
+          <span className="text-xs text-brand-mute">© {shop?.name}</span>
+        )}
       </footer>
 
       {/* FLOATING CART (right side, above WA) */}

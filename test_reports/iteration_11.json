@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 11 (3-tier subscription system: free/pro/business + tier gating + billing endpoints + Pricing/Billing UI + Powered-by-Lapakin conditional footer) verified end-to-end. Backend: 16 new pytest cases in /app/backend/tests/test_iter11_billing_tiers.py all PASS, full regression 145/145 passing (was 128/129 last iter — flaky test_open_window_now passed this run; also fixed obsolete test_admin.py::test_set_user_premium_then_free which still asserted old 'premium' tier — updated to 'pro'). Verified backend: (a) GET /api/billing/tiers public (no auth) returns all 3 tiers with correct shape — free Rp0/5 prod/5+5+2 AI, pro Rp49.000/100 prod/100+unlimited+20 AI/remove_branding=true/custom_subdomain=true, business Rp149.000/unlimited everything+custom_domain+IG autopost+API. (b) GET /api/billing/me returns tier, tier_label, year_month (YYYY-MM), limits dict, usage dict (ai_photo, ai_copy, ai_cover, toko_card, broadcast each with used/limit/remaining), and products{used,limit,remaining}. Returns 401 unauth. (c) Tier gating product create: fresh free user can create 5 products, 6th returns 402 'Tier free dibatasi 5 produk. Upgrade ke Pro untuk hingga 100 produk.' (d) AI quota gating: free user calling /ai/generate-content (ai_copy bucket) hits 402 by 6th call with detail 'Kuota ai_copy bulanan tier free sudah habis (5/5)'. /ai/generate-cover (ai_cover bucket, limit 2) hits 402 by 3rd call. (e) POST /api/admin/users/{id}/tier supports {free|pro|business}, returns 400 for any other ('premium','foo','FREE',''), PUT verb works as legacy. Non-admin (sari) trying tier change returns 401/403. (f) GET /api/shops/by-slug/warung-sari injects shop.owner_tier + shop.remove_branding from owner's tier — free=>false, pro=>true verified live. (g) monthly_usage unique index on (user_id,year_month,kind) confirmed via /billing/me being read-only & idempotent. Frontend Playwright (chrome 1920×1080): /pricing public renders 3 tier-card-{free,pro,business} with PRO showing 'PALING POPULER' badge; period-month/period-year toggle correctly flips Pro between Rp 49.000/bulan and Rp 490.000/tahun; tier-comparison-table renders all 16 feature rows; select-tier-{free,pro,business} buttons present. Landing /: nav-pricing href=/pricing OK. Login as sari@warung.id: tier-badge='GRATIS' visible top-right, click navigates to /dashboard/billing; nav-billing link visible. /dashboard/billing: current-tier-card shows 'Gratis' + 'Gratis selamanya', usage-produk + usage-ai-photo-enhancer + usage-ai-copywriting + usage-ai-cover-toko bars all visible, upgrade-cta button inside <a href='/pricing'>. Storefront /toko/warung-sari with sari on free tier: powered-by-lapakin footer visible. After admin sets sari→pro: powered-by-lapakin hidden, footer shows '© Warung Sari' instead. Sari restored to free tier post-test. Zero JS pageerrors throughout (one 401 console line from /api/auth/me probe on /pricing public page, expected since no login).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/pricing", "issues": ["Pro card uses scale-105 which slightly overlaps neighbors on narrow viewports (md breakpoint). Acceptable but watch on tablets."]},
+      {"screen": "/dashboard/billing", "issues": ["Yellow info banner ('Pembayaran belum aktif') is fine but consider linking directly to admin WA chat with prefilled tier-upgrade message for friction reduction."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter11_billing_tiers.py",
+    "/app/test_reports/pytest/iter11_results.xml",
+    "/app/test_reports/pytest/iter11_full_results.xml"
+  ],
+  "action_items": [
+    "(Carry-over) server.py is now ~1836 lines — split billing endpoints, OG endpoints, admin endpoints into separate routers.",
+    "(Carry-over) ShopSettings.jsx >700 lines — split into smaller modules.",
+    "(Carry-over) Admin login still redirects to /onboarding instead of /admin.",
+    "(Iter11 minor) Pricing.jsx — when annual is selected for the FREE tier, currently shows 'Gratis' which is fine, but the 'Hemat 2 bulan' badge on the period-year button could be hidden if there are no paid tiers visible (UX nicety, not a bug).",
+    "(Iter11 minor) /api/billing/me skips broadcast quota in the UsageBar grid (only shows ai_photo, ai_copy, ai_cover, products) — Billing.jsx does NOT render broadcast or toko_card usage. Consider adding them for full transparency or document why omitted.",
+    "(Iter11 minor) tier-badge in DashboardLayout is hidden on mobile (`hidden sm:flex`). Consider showing a smaller pill on mobile so users always know their tier.",
+    "(Future iter) Payment provider integration (Midtrans/Stripe) is correctly DEFERRED per spec. The yellow notice in Billing.jsx telling user to WA admin is clear UX for the manual interim."
+  ],
+  "critical_code_review_comments": [
+    "tiers.py — clean module: TIER_LIMITS dict-of-dicts is the single source of truth, UNLIMITED=-1 sentinel is consistent, current_month_bucket() uses Jakarta TZ (correct for IDR billing month), check_quota raises 402 with Indonesian-language detail (matches site language). Good design.",
+    "server.py track_ai_usage maps AI 'kind' → monthly bucket ('enhance'→ai_photo, 'content'/'theme'/'about'→ai_copy, 'cover'→ai_cover) — but note 'theme' and 'about' both share ai_copy bucket. This means a user calling suggest-theme also burns their ai_copy quota. Verify this is intentional — if not, consider letting suggest-theme be free or having its own bucket.",
+    "server.py /api/billing/me: only iterates kinds=[ai_photo, ai_copy, ai_cover, toko_card, broadcast] for usage. This is a hardcoded list — if a new bucket is added in tiers.py later, /billing/me won't reflect it. Consider deriving the kinds list from tier limits keys ending in '_per_month'.",
+    "server.py shops/by-slug — fetches owner.tier on every storefront request (extra DB roundtrip per page view). For a busy shop this is N+1. Acceptable now but consider denormalizing remove_branding onto the shop doc and updating it on tier change (admin_set_user_tier).",
+    "Pricing.jsx: ICONS={free:Sparkles,pro:Zap,business:Rocket} with isPro=key==='pro' for the 'PALING POPULER' highlight is hardcoded. If a 4th tier is added later this won't auto-promote the recommended one. Minor — flag a 'recommended' boolean in TIER_LIMITS for forward-compat.",
+    "Pricing.jsx onClick navigates to /dashboard/billing for paid tiers — but if user is NOT logged in, this lands on a protected route. Consider sending them to /login?next=/dashboard/billing or to /register first.",
+    "Billing.jsx: '/dashboard/billing' rendered Usage bars for products + ai_photo/copy/cover (4 cards). Missing toko_card and broadcast usage despite being returned by API — gap between backend & UI.",
+    "DashboardLayout.jsx tier-badge hidden on mobile (`hidden sm:flex`) — mobile users won't see their tier easily. Either add a small badge on mobile or surface it in the mobile nav drawer.",
+    "Storefront.jsx footer correctly renders `Powered by Lapakin` link only when `!shop?.remove_branding`, with `© {shop.name}` fallback for paid tiers. Clean conditional. data-testid='powered-by-lapakin' helps automated regression."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter11_billing_tiers.py (new — 16 tests)",
+    "/app/backend/tests/test_admin.py (renamed test_set_user_premium_then_free → test_set_user_pro_then_free; updated tier value 'premium'→'pro' to match new iter11 valid-tier set)"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 iter11 + 129/129 prior regression = 145/145 total)",
+    "frontend": "100% (pricing public, period toggle, comparison table, landing nav, login, tier-badge GRATIS, click→billing, billing page tier card + 4 usage bars + upgrade CTA→/pricing, storefront free tier shows powered-by-lapakin, storefront pro tier hides it & shows ©)"
+  },
+  "test_credentials": "admin@lapakin.id / lapakin123 (admin), sari@warung.id / newpass123 (free-tier user with shop warung-sari, 4 products). Test fixtures auto-create TEST_quota_{run}@example.com and TEST_aiquota_{run}@example.com fresh users for product/AI quota tests to avoid polluting sari's data.",
+  "seed_data_creation": "Tests create 2 ephemeral test users per run (TEST_quota_*, TEST_aiquota_*) that exhaust free-tier quotas. Their monthly_usage docs persist for current Jakarta-month bucket (will naturally roll over). Admin tier-change test temporarily sets sari→pro→business→free with auto-restore at module teardown. Verified sari's tier=free post-test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 11 verified. Run `REACT_APP_BACKEND_URL=$(grep REACT_APP_BACKEND_URL /app/frontend/.env | cut -d= -f2) pytest /app/backend/tests/ -v` for full regression (~145 tests, ~127s). All iter9/iter10 tests require REACT_APP_BACKEND_URL env var (no frontend/.env fallback). Iter11 backend test file uses fallback. Tier system contract: 3 tiers (free/pro/business), valid in admin endpoint, monthly buckets reset by Jakarta calendar month. AI bucket mapping: enhance→ai_photo, content/theme/about→ai_copy, cover→ai_cover. /billing/me usage list is hardcoded (not auto-derived from TIER_LIMITS keys) — be aware when adding new buckets. Pricing.jsx 'PALING POPULER' is hardcoded to key==='pro'. Billing.jsx omits toko_card & broadcast usage bars (gap with backend response). Sari currently restored to free tier."
+}

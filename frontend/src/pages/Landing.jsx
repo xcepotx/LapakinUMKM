@@ -33,6 +33,7 @@ export default function Landing() {
             <a href="#fitur" className="hover:text-brand-ink transition-colors">Fitur</a>
             <a href="#cara-kerja" className="hover:text-brand-ink transition-colors">Cara Kerja</a>
             <a href="#harga" className="hover:text-brand-ink transition-colors">Harga</a>
+            <Link to="/pricing" className="hover:text-brand-ink transition-colors" data-testid="nav-pricing">Paket</Link>
           </div>
           <div className="flex items-center gap-2">
             {user ? (

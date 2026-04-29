@@ -236,16 +236,17 @@ class TestAdminResetPassword:
 
 # ---------- 11. Tier manager ----------
 class TestAdminTier:
-    def test_set_user_premium_then_free(self, admin_session):
+    def test_set_user_pro_then_free(self, admin_session):
+        # Iter11: tier names changed from "premium" → "pro"/"business"
         r = admin_session.get(f"{API}/admin/users", params={"q": "sari@warung.id"})
         target = next((u for u in r.json() if u["email"] == USER_EMAIL), None)
         uid = target["user_id"]
-        rp = admin_session.put(f"{API}/admin/users/{uid}/tier", json={"tier": "premium"})
+        rp = admin_session.put(f"{API}/admin/users/{uid}/tier", json={"tier": "pro"})
         assert rp.status_code == 200
         # verify
         r2 = admin_session.get(f"{API}/admin/users", params={"q": "sari@warung.id"})
         u2 = next(u for u in r2.json() if u["email"] == USER_EMAIL)
-        assert u2.get("tier") == "premium"
+        assert u2.get("tier") == "pro"
         # back to free
         rf = admin_session.put(f"{API}/admin/users/{uid}/tier", json={"tier": "free"})
         assert rf.status_code == 200

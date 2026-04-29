@@ -1,7 +1,13 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Sparkles, LayoutDashboard, Wand2, Package, Settings, LogOut, ExternalLink, MessageSquare } from "lucide-react";
+import { Sparkles, LayoutDashboard, Wand2, Package, Settings, LogOut, ExternalLink, MessageSquare, CreditCard } from "lucide-react";
+
+const TIER_BADGE = {
+  free: { label: "Gratis", cls: "bg-brand-off text-brand-mute border-brand-line" },
+  pro: { label: "Pro", cls: "bg-yellow-100 text-yellow-900 border-yellow-300" },
+  business: { label: "Bisnis", cls: "bg-purple-100 text-purple-900 border-purple-300" },
+};
 
 export default function DashboardLayout({ children, shop, title, subtitle, actions }) {
   const { user, logout } = useAuth();
@@ -14,7 +20,11 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     { to: "/dashboard/products", icon: Package, label: "Produk", tid: "nav-products" },
     { to: "/dashboard/whatsapp", icon: MessageSquare, label: "WhatsApp", tid: "nav-whatsapp" },
     { to: "/dashboard/settings", icon: Settings, label: "Pengaturan", tid: "nav-settings" },
+    { to: "/dashboard/billing", icon: CreditCard, label: "Akun", tid: "nav-billing" },
   ];
+
+  const tier = user?.tier || "free";
+  const badge = TIER_BADGE[tier] || TIER_BADGE.free;
 
   const handleLogout = async () => {
     await logout();
@@ -58,6 +68,11 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
               </Button>
             )}
             <div className="hidden sm:flex items-center gap-2 text-sm">
+              <Link to="/dashboard/billing"
+                className={`text-[11px] uppercase tracking-wider font-bold rounded-full px-2.5 py-1 border ${badge.cls} hover:opacity-80`}
+                data-testid="tier-badge">
+                {badge.label}
+              </Link>
               <div className="w-8 h-8 rounded-full bg-brand-off grid place-items-center text-xs font-bold text-brand">
                 {(user?.name || "U")[0].toUpperCase()}
               </div>

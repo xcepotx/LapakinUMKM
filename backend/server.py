@@ -30,6 +30,11 @@ from io import BytesIO
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
+from tiers import (
+    TIER_LIMITS, VALID_TIERS, get_tier, get_limits, current_month_bucket,
+    get_usage, increment_usage, check_quota, require_feature, is_unlimited,
+)
+
 # ----------- Setup -----------
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -139,12 +144,22 @@ async def log_admin_action(admin: dict, action: str, target_type: str = "", targ
     })
 
 async def track_ai_usage(user_id: str, kind: str):
-    """Record an AI call for analytics. Best-effort, never raises."""
+    """Record an AI call for analytics + monthly tier usage. Best-effort, never raises."""
     try:
         await db.ai_usage.insert_one({
             "user_id": user_id, "kind": kind,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
+        # Map AI kind → monthly usage bucket for tier enforcement
+        bucket = {
+            "enhance": "ai_photo",
+            "content": "ai_copy",
+            "theme": "ai_copy",
+            "cover": "ai_cover",
+            "about": "ai_copy",
+        }.get(kind)
+        if bucket:
+            await increment_usage(db.monthly_usage, user_id, bucket)
     except Exception:
         pass
 
@@ -482,6 +497,11 @@ async def get_shop_public(slug: str):
         # Override is_open with auto-computed value when auto-schedule is enabled.
         shop["is_open"] = bool(schedule_status.get("is_open_now"))
     shop["schedule_status"] = schedule_status
+    # Inject owner's tier capabilities for storefront-side branding decisions.
+    owner = await db.users.find_one({"user_id": shop.get("owner_user_id")}, {"_id": 0, "tier": 1})
+    owner_tier = (owner or {}).get("tier") or "free"
+    shop["owner_tier"] = owner_tier
+    shop["remove_branding"] = bool(get_limits(owner_tier).get("remove_branding"))
     return {"shop": shop, "products": products}
 
 # ----------- Open Graph (dynamic share preview per toko) -----------
@@ -958,6 +978,15 @@ async def create_product(data: ProductIn, request: Request):
     user = await require_user(request)
     if not user.get("shop_id"):
         raise HTTPException(status_code=400, detail="Toko belum dibuat")
+    # Tier limit: max products
+    limits = get_limits(get_tier(user))
+    if not is_unlimited(limits["max_products"]):
+        cur_count = await db.products.count_documents({"shop_id": user["shop_id"]})
+        if cur_count >= limits["max_products"]:
+            raise HTTPException(
+                status_code=402,
+                detail=f"Tier {get_tier(user)} dibatasi {limits['max_products']} produk. Upgrade ke Pro untuk hingga 100 produk.",
+            )
     product_id = f"prod_{uuid.uuid4().hex[:12]}"
     payload = data.model_dump()
     # sync images <-> image_data
@@ -1004,6 +1033,7 @@ def _new_chat(session_id: str, system_message: str) -> LlmChat:
 @api.post("/ai/enhance-image")
 async def ai_enhance_image(data: AIEnhanceIn, request: Request):
     user = await require_user(request)
+    await check_quota(db.monthly_usage, user, "ai_photo", "ai_photo_per_month")
     # Strip data URL prefix if present
     img_b64 = data.image_base64
     if img_b64.startswith("data:"):
@@ -1042,6 +1072,7 @@ async def ai_enhance_image(data: AIEnhanceIn, request: Request):
 @api.post("/ai/generate-content")
 async def ai_generate_content(data: AIContentIn, request: Request):
     user = await require_user(request)
+    await check_quota(db.monthly_usage, user, "ai_copy", "ai_copy_per_month")
     system = (
         "Kamu adalah copywriter ahli produk UMKM Indonesia. "
         "Selalu balas dalam Bahasa Indonesia santai, hangat, persuasif, gaya warung modern. "
@@ -1128,6 +1159,7 @@ async def ai_suggest_theme(data: AIThemeIn, request: Request):
 @api.post("/ai/generate-about")
 async def ai_generate_about(data: AIAboutIn, request: Request):
     user = await require_user(request)
+    await check_quota(db.monthly_usage, user, "ai_copy", "ai_copy_per_month")
     system = (
         "Kamu adalah copywriter brand UMKM Indonesia. "
         "Tulis cerita singkat dan hangat tentang toko (3-4 kalimat) dalam Bahasa Indonesia. "
@@ -1164,6 +1196,7 @@ async def ai_generate_about(data: AIAboutIn, request: Request):
 @api.post("/ai/generate-cover")
 async def ai_generate_cover(data: AICoverIn, request: Request):
     user = await require_user(request)
+    await check_quota(db.monthly_usage, user, "ai_cover", "ai_cover_per_month")
     style_hint = {
         "warm": "warm earthy tones, terracotta and cream, hand-crafted feeling, soft natural light, Indonesian aesthetic",
         "minimal": "minimal off-white background, modern sans serif vibe, single product hero composition",
@@ -1193,7 +1226,7 @@ async def ai_generate_cover(data: AICoverIn, request: Request):
         if not images:
             raise HTTPException(status_code=502, detail="AI tidak menghasilkan gambar")
         out = images[0]
-        await track_ai_usage(user["user_id"], "enhance")
+        await track_ai_usage(user["user_id"], "cover")
         return {"image_base64": out["data"], "mime_type": out.get("mime_type", "image/png")}
     except HTTPException:
         raise
@@ -1586,17 +1619,24 @@ async def admin_reset_password(user_id: str, request: Request):
     await log_admin_action(admin, "user_reset_password", "user", user_id, {"email": user.get("email")})
     return {"ok": True, "reset_token": token, "expires_in_minutes": 60}
 
-# 11. Subscription Manager — set tier
+# 11. Subscription Manager — set tier (free | pro | business)
 @api.put("/admin/users/{user_id}/tier")
+@api.post("/admin/users/{user_id}/tier")
 async def admin_set_user_tier(user_id: str, data: TierIn, request: Request):
     admin = await require_admin(request)
-    if data.tier not in ("free", "premium"):
-        raise HTTPException(status_code=400, detail="Tier harus 'free' atau 'premium'")
-    res = await db.users.update_one({"user_id": user_id}, {"$set": {"tier": data.tier}})
-    if not res.matched_count:
+    if data.tier not in VALID_TIERS:
+        raise HTTPException(status_code=400, detail=f"Tier harus salah satu dari {VALID_TIERS}")
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
-    await log_admin_action(admin, "user_tier_change", "user", user_id, {"tier": data.tier})
-    return {"ok": True, "tier": data.tier}
+    old_tier = get_tier(user)
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"tier": data.tier, "tier_updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await log_admin_action(admin, "user_tier_change", "user", user_id,
+                           {"from": old_tier, "to": data.tier})
+    return {"ok": True, "user_id": user_id, "tier": data.tier}
 
 # 7. Audit log
 @api.get("/admin/audit")
@@ -1696,6 +1736,48 @@ async def asyncio_gather_safe(coros):
 async def root():
     return {"app": "Lapakin", "status": "ok"}
 
+# ----------- Billing / Tier (Iteration 11) -----------
+
+@api.get("/billing/tiers")
+async def billing_tiers():
+    """Public — return available tiers and their limits/features."""
+    return {"tiers": TIER_LIMITS, "valid": VALID_TIERS}
+
+@api.get("/billing/me")
+async def billing_me(request: Request):
+    """Current user's tier + month-to-date usage with limits."""
+    user = await require_user(request)
+    tier = get_tier(user)
+    limits = get_limits(tier)
+    ym = current_month_bucket()
+    kinds = ["ai_photo", "ai_copy", "ai_cover", "toko_card", "broadcast"]
+    usage = {}
+    for k in kinds:
+        used = await get_usage(db.monthly_usage, user["user_id"], k, ym)
+        limit_key = f"{k}_per_month"
+        lim = limits.get(limit_key, 0)
+        usage[k] = {
+            "used": used,
+            "limit": "unlimited" if is_unlimited(lim) else lim,
+            "remaining": "unlimited" if is_unlimited(lim) else max(0, lim - used),
+        }
+    product_count = 0
+    if user.get("shop_id"):
+        product_count = await db.products.count_documents({"shop_id": user["shop_id"]})
+    pmax = limits["max_products"]
+    return {
+        "tier": tier,
+        "tier_label": limits.get("label", tier),
+        "year_month": ym,
+        "limits": limits,
+        "usage": usage,
+        "products": {
+            "used": product_count,
+            "limit": "unlimited" if is_unlimited(pmax) else pmax,
+            "remaining": "unlimited" if is_unlimited(pmax) else max(0, pmax - product_count),
+        },
+    }
+
 # ----------- Mount router & middleware -----------
 app.include_router(api)
 app.add_middleware(
@@ -1731,6 +1813,7 @@ async def on_startup():
     await db.ai_usage.create_index("user_id")
     await db.ai_usage.create_index("timestamp")
     await db.ai_usage.create_index("kind")
+    await db.monthly_usage.create_index([("user_id", 1), ("year_month", 1), ("kind", 1)], unique=True)
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@lapakin.id").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "lapakin123")
