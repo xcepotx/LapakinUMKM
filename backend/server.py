@@ -20,9 +20,11 @@ import jwt as pyjwt
 import httpx
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse, Response as FastResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
@@ -437,6 +439,188 @@ async def get_shop_public(slug: str):
         raise HTTPException(status_code=404, detail="Toko tidak tersedia")
     products = await db.products.find({"shop_id": shop["shop_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return {"shop": shop, "products": products}
+
+# ----------- Open Graph (dynamic share preview per toko) -----------
+def _hex_to_rgb(hex_color: str) -> tuple:
+    h = (hex_color or "#C04A3B").lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    try:
+        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    except Exception:
+        return (192, 74, 59)
+
+def _generate_fallback_og_image(shop_name: str, tagline: str, brand_hex: str) -> bytes:
+    """Generate a 1200x630 OG image when shop has no cover_image."""
+    W, H = 1200, 630
+    bg = _hex_to_rgb(brand_hex)
+    img = Image.new("RGB", (W, H), bg)
+    draw = ImageDraw.Draw(img)
+
+    # Soft gradient overlay (radial-ish)
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    for i in range(120):
+        alpha = int(60 * (1 - i / 120))
+        od.ellipse((W - 600 - i, -300 - i, W + 200 + i, 300 + i), fill=(255, 255, 255, alpha))
+    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+    draw = ImageDraw.Draw(img)
+
+    # Try to load a decent font, fall back to default
+    def _try_font(size: int):
+        for path in [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]:
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    title_font = _try_font(96)
+    tag_font = _try_font(40)
+    small_font = _try_font(28)
+
+    # Avatar circle with first letter
+    initial = (shop_name or "L")[0].upper()
+    cx, cy, r = 130, 130, 60
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(255, 255, 255))
+    bbox = draw.textbbox((0, 0), initial, font=_try_font(70))
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text((cx - tw / 2, cy - th / 2 - 10), initial, fill=bg, font=_try_font(70))
+
+    # Shop name (wrap if too long)
+    name = (shop_name or "Toko Lapakin")[:40]
+    draw.text((90, 240), name, fill=(255, 255, 255), font=title_font)
+
+    if tagline:
+        tag = tagline[:80]
+        draw.text((90, 360), tag, fill=(255, 255, 255, 220), font=tag_font)
+
+    # Footer brand line
+    draw.text((90, 540), "Lapakin · Toko online UMKM Indonesia", fill=(255, 255, 255, 200), font=small_font)
+
+    buf = BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+def _decode_data_url_png(data_url: str) -> Optional[bytes]:
+    """Convert base64 data URL (any image type) to PNG bytes resized to 1200x630."""
+    try:
+        if not data_url:
+            return None
+        if "," in data_url:
+            data_url = data_url.split(",", 1)[1]
+        raw = base64.b64decode(data_url)
+        img = Image.open(BytesIO(raw)).convert("RGB")
+        # Resize/crop to 1200x630 (FB recommended)
+        target_ratio = 1200 / 630
+        w, h = img.size
+        ratio = w / h
+        if ratio > target_ratio:
+            new_w = int(h * target_ratio)
+            left = (w - new_w) // 2
+            img = img.crop((left, 0, left + new_w, h))
+        else:
+            new_h = int(w / target_ratio)
+            top = (h - new_h) // 2
+            img = img.crop((0, top, w, top + new_h))
+        img = img.resize((1200, 630), Image.LANCZOS)
+        out = BytesIO()
+        img.save(out, format="PNG", optimize=True)
+        return out.getvalue()
+    except Exception as e:
+        logger.warning(f"Failed to decode cover image: {e}")
+        return None
+
+@api.get("/og/shop/{slug}.png")
+async def og_image(slug: str):
+    """Serve a 1200x630 PNG suitable for OpenGraph preview."""
+    shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
+    if not shop or shop.get("status") == "suspended":
+        # Generic placeholder
+        png = _generate_fallback_og_image("Lapakin", "Toko online UMKM Indonesia", "#C04A3B")
+        return FastResponse(
+            content=png,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+    cover = shop.get("cover_image") or ""
+    png = _decode_data_url_png(cover) if cover else None
+    if not png:
+        png = _generate_fallback_og_image(
+            shop.get("name") or "Toko",
+            shop.get("tagline") or "",
+            shop.get("brand_color") or "#C04A3B",
+        )
+    return FastResponse(
+        content=png,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=600"},
+    )
+
+def _esc(s: str) -> str:
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+def _public_base_url(request: Request) -> str:
+    """Build the externally-visible base URL, honouring X-Forwarded-* headers."""
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "https"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    # Prefer https in production for OG/social crawlers
+    if "preview.emergent" in host or "lapakin" in host or "." in host:
+        proto = "https"
+    return f"{proto}://{host}"
+
+@api.get("/og/shop/{slug}")
+async def og_html(slug: str, request: Request):
+    """Return HTML page with full OpenGraph + Twitter Card meta tags.
+    Crawlers (WhatsApp, Facebook, Twitter, Telegram, LinkedIn, Slack, Discord)
+    fetch this page to render rich previews; humans get redirected to the
+    React storefront via meta-refresh + JS."""
+    shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
+    base = _public_base_url(request)
+    if not shop or shop.get("status") == "suspended":
+        title = "Toko tidak ditemukan · Lapakin"
+        desc = "Toko UMKM ini sudah tidak tersedia di Lapakin."
+        og_img_url = ""
+    else:
+        title = f"{shop.get('name') or 'Toko'} · Lapakin"
+        desc = (shop.get("tagline") or shop.get("description")
+                or shop.get("about") or "Toko online UMKM Indonesia di Lapakin.")[:200]
+        og_img_url = f"{base}/api/og/shop/{slug}.png"
+
+    canonical = f"{base}/toko/{slug}"
+    html = f"""<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="refresh" content="0; url={canonical}" />
+<title>{_esc(title)}</title>
+<meta name="description" content="{_esc(desc)}" />
+<link rel="canonical" href="{canonical}" />
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Lapakin" />
+<meta property="og:title" content="{_esc(title)}" />
+<meta property="og:description" content="{_esc(desc)}" />
+<meta property="og:url" content="{canonical}" />
+{f'<meta property="og:image" content="{og_img_url}" />' if og_img_url else ''}
+{'<meta property="og:image:width" content="1200" />' if og_img_url else ''}
+{'<meta property="og:image:height" content="630" />' if og_img_url else ''}
+<meta property="og:locale" content="id_ID" />
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{_esc(title)}" />
+<meta name="twitter:description" content="{_esc(desc)}" />
+{f'<meta name="twitter:image" content="{og_img_url}" />' if og_img_url else ''}
+</head>
+<body>
+<p>Mengarahkan ke <a href="{canonical}">{_esc(title)}</a>…</p>
+<script>window.location.replace({canonical!r});</script>
+</body>
+</html>"""
+    return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=300"})
 
 # ----------- Products -----------
 @api.get("/products")

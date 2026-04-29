@@ -1,0 +1,47 @@
+{
+  "summary": "Tested NEW Dynamic OpenGraph share endpoints (PNG + HTML) and Dashboard 'Pratinjau Saat Dibagikan' card. ALL tests PASS. Backend: created /app/backend/tests/test_og_share.py with 16 tests covering valid PNG dimensions (1200x630, image/png CT), fallback PNG for non-existent slug (200, never 404), Cache-Control header, full HTML meta tag set (og:title, og:description, og:image absolute https URL, og:url, twitter:card='summary_large_image', og:image:width=1200, og:image:height=630, meta-refresh redirect), https forced even when X-Forwarded-Proto=http, sensible fallback HTML for missing slug, and regression smoke on /api/auth/me (401 unauth, 200 auth), /api/shops/by-slug/toko-test-262897 (200 with shape {shop, products}), /api/shops/by-slug/{nonexistent} (404), /api/products (200 list). All 16 OG tests PASS. Full backend regression: 98/98 pytest passing in 75s (82 prior + 16 new). Frontend: Playwright login as sari@warung.id → /dashboard → share-preview-card visible, share-preview-image src=/api/og/shop/warung-sari.png loads (HTTP 200, naturalWidth=1200, naturalHeight=630, 6922 bytes), copy-share-link click writes 'https://.../toko/warung-sari' to clipboard (verified via navigator.clipboard.readText), download-og-image href ends with /api/og/shop/warung-sari.png and target=_blank. Zero JS pageerrors. Pillow imports (Image, ImageDraw, ImageFont) and BytesIO did NOT break startup — backend supervisor stable, all endpoints respond. DejaVu fonts ARE present in container (TTF path /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf works) so OG images render with proper typography.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_og_share.py",
+    "/app/test_reports/pytest/iter6_og_results.xml",
+    "/app/test_reports/pytest/iter6_full_results.xml"
+  ],
+  "action_items": [
+    "(Carry-over from iter5) server.py is now ~1431 lines (was 1247) — past the 700-line threshold. Strongly consider splitting OG endpoints + image generation into /app/backend/og_routes.py.",
+    "(Minor / nit) HEAD /api/og/shop/{slug}.png returns 405 (FastAPI by default doesn't auto-add HEAD for GET). Some social-media crawlers (Slack unfurl, Discord) probe with HEAD before GET. Optional improvement: register the route with methods=['GET','HEAD'] or add a dedicated HEAD handler. GET works fine for WhatsApp/FB/Twitter/Telegram so this is not blocking.",
+    "(Minor / nit) _public_base_url uses heuristic `if 'preview.emergent' in host or 'lapakin' in host or '.' in host` to force https. The third condition (`'.' in host`) effectively forces https for ANY non-localhost host, making the X-Forwarded-Proto downgrade test indistinguishable. Behavior is correct for production but the test cannot truly validate the proto-honouring path; consider a cleaner predicate (e.g., trust X-Forwarded-Proto strictly when present).",
+    "(Carry-over from iter5) ShopSettings.jsx still >700 lines.",
+    "(Carry-over from iter4) Admin login still redirects to /onboarding instead of /admin."
+  ],
+  "critical_code_review_comments": [
+    "OG endpoints are well-designed: ALWAYS return 200 (never 404) so social crawlers don't cache failures — this is the correct pattern for OG/Twitter cards.",
+    "Suspended shop branch correctly leaks no data — falls through to generic 'Lapakin · Toko online UMKM Indonesia' fallback PNG and 'Toko tidak ditemukan' HTML.",
+    "_decode_data_url_png handles aspect-ratio cropping correctly (center-crop to 1200x630 with LANCZOS resize). Solid implementation.",
+    "_generate_fallback_og_image correctly tries DejaVu fonts then ImageFont.load_default() — verified DejaVu IS present in the container, so output is high-quality.",
+    "Cache-Control: 'public, max-age=600' on PNG and 'max-age=300' on HTML are sensible for crawler-facing endpoints.",
+    "Dashboard share-preview-card: WhatsApp-style green chat bubble (#dcf8c6) with white card, host/title/description preview matches actual OG card layout. Excellent UX.",
+    "img onError={() => display: 'none'} is a defensive guard — works if PNG endpoint ever fails, but the endpoint always returns 200 so this won't trigger in practice.",
+    "Code review: server.py at 1431 lines crossed the 700-line threshold. PIL/OG endpoints (~170 lines) are a natural extraction candidate."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_og_share.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 OG tests + 98/98 full regression)",
+    "frontend": "100% (share-preview-card + image load + copy + download link all pass)"
+  },
+  "test_credentials": "sari@warung.id / newpass123 (test user with shop 'warung-sari'). Slug 'toko-test-262897' exists for endpoint tests. Slug 'this-shop-does-not-exist-zzz-9999' used for missing-shop fallback tests.",
+  "seed_data_creation": "None. Used existing toko-test-262897 + warung-sari shops.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "OG endpoints fully verified: GET /api/og/shop/{slug}.png returns 1200x630 PNG (image/png, ~7KB), GET /api/og/shop/{slug} returns HTML with all required meta tags. The TestRegressionSmoke class in test_og_share.py also covers /api/auth/me, /api/shops/by-slug/{slug}, /api/products — note that /api/shops/by-slug/{slug} returns {shop, products} (not flat shop), already accounted for in test. To run all backend tests: `pytest /app/backend/tests/ -v`. The Pillow imports (Image, ImageDraw, ImageFont, BytesIO) added to server.py do NOT break startup; container has DejaVu fonts so PNG output uses them. NOT TESTED: actual SUSPENDED shop with status='suspended' (no admin tooling exposed to set shop.status; relied on the same code branch via missing-shop test, which is functionally identical per the `if not shop or shop.get('status')=='suspended'` short-circuit).",
+  "rca of the issue": "No bugs found this iteration. Initial Playwright run reported naturalWidth=0 but that was a test-timing race (image not yet finished loading when checked). After adding wait_for_timeout(4000) before assertion, image rendered correctly with naturalWidth=1200, naturalHeight=630, and visual confirmation of the brand-color OG card with avatar + shop name + tagline."
+}

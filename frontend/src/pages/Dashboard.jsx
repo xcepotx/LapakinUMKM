@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import BroadcastBanner from "@/components/BroadcastBanner";
 import { Button } from "@/components/ui/button";
-import { Wand2, Package, ExternalLink, Plus, Sparkles } from "lucide-react";
+import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy } from "lucide-react";
 import { rupiah } from "@/lib/api";
 
 export default function Dashboard() {
@@ -35,6 +35,7 @@ export default function Dashboard() {
   }
 
   const storefrontUrl = `${window.location.origin}/toko/${shop?.slug}`;
+  const ogImageUrl = `${window.location.origin}/api/og/shop/${shop?.slug}.png`;
 
   return (
     <DashboardLayout
@@ -96,6 +97,59 @@ export default function Dashboard() {
                 <ExternalLink className="w-4 h-4 mr-2" /> Buka Toko
               </Button>
             </div>
+          </div>
+
+          {/* SHARE PREVIEW — bagaimana link tampil di WhatsApp/IG/FB */}
+          <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card" data-testid="share-preview-card">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h2 className="font-heading font-bold text-xl flex items-center gap-2">
+                  <Share2 className="w-5 h-5 text-brand" /> Pratinjau Saat Dibagikan
+                </h2>
+                <p className="text-brand-mute mt-1 text-sm">
+                  Beginilah link tokomu akan muncul saat dikirim di WhatsApp, Instagram, atau Facebook.
+                </p>
+              </div>
+            </div>
+            {/* Mock chat bubble */}
+            <div className="rounded-2xl bg-[#dcf8c6] p-3 max-w-md">
+              <div className="bg-white rounded-xl overflow-hidden border border-black/5 shadow-sm">
+                <div className="aspect-[1200/630] bg-brand-off">
+                  <img src={ogImageUrl}
+                    alt="Pratinjau share"
+                    className="w-full h-full object-cover"
+                    data-testid="share-preview-image"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                </div>
+                <div className="p-3 border-t border-black/5">
+                  <div className="text-[11px] uppercase text-gray-500 truncate">{window.location.host}</div>
+                  <div className="font-semibold text-sm mt-0.5 line-clamp-1">{shop?.name} · Lapakin</div>
+                  <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">
+                    {shop?.tagline || shop?.description || "Toko online UMKM Indonesia di Lapakin."}
+                  </div>
+                </div>
+              </div>
+              <div className="text-[10px] text-gray-500 mt-1 text-right">contoh tampilan</div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={() => { navigator.clipboard.writeText(storefrontUrl); }}
+                className="inline-flex items-center gap-2 bg-brand-off hover:bg-white border border-brand-line rounded-xl px-3 py-2 text-sm font-semibold"
+                data-testid="copy-share-link">
+                <Copy className="w-4 h-4" /> Salin Link Share
+              </button>
+              <a href={ogImageUrl} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-brand-off hover:bg-white border border-brand-line rounded-xl px-3 py-2 text-sm font-semibold"
+                data-testid="download-og-image">
+                <ExternalLink className="w-4 h-4" /> Lihat Gambar OG
+              </a>
+            </div>
+            <p className="text-[11px] text-brand-mute mt-3 leading-relaxed">
+              Tip: Kalau cover toko diganti, pratinjau ini akan otomatis update. Untuk WhatsApp/Facebook,
+              kadang preview di-cache 1-7 hari — bisa di-refresh manual via{" "}
+              <a href="https://developers.facebook.com/tools/debug/" target="_blank" rel="noopener noreferrer"
+                className="text-brand hover:underline">Sharing Debugger</a>.
+            </p>
           </div>
 
           {/* Products preview */}
