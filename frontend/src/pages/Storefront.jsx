@@ -54,10 +54,10 @@ export default function Storefront() {
   return (
     <div className="min-h-screen bg-brand-sand">
       {/* COVER BANNER */}
-      <div className="relative">
+      <div className="relative" data-testid="storefront-cover">
         {shop?.cover_image ? (
           <div className="aspect-[16/6] sm:aspect-[16/5] w-full overflow-hidden bg-brand-off">
-            <img src={shop.cover_image} alt="cover" className="w-full h-full object-cover" data-testid="storefront-cover" />
+            <img src={shop.cover_image} alt="cover" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-brand-sand" />
           </div>
         ) : (
