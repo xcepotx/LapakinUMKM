@@ -1,0 +1,45 @@
+{
+  "summary": "Tested Multi-Product Mini Cart on Storefront (/toko/toko-test-262897) end-to-end + ran full backend regression. Found and FIXED 1 critical bug: cart was NOT persisting in localStorage across reload due to a useEffect ordering race (persist effect ran on initial mount before load effect's setCart finished, overwriting saved cart with `{}`; in StrictMode the second mount then re-loaded the now-empty value). Replaced two-effect load+persist pattern with a lazy useState initializer that reads localStorage synchronously on first render, leaving only one persist effect. After fix, all cart flows pass: add-to-cart replaces button with stepper (1), card qty-inc increments to 2, qty-inc correctly disables at max stock (BackCompat stock=1 → disabled after first add), FAB visible bottom-right with count=3 and 'Rp 35.000', drawer opens with both items + qty steppers + per-item subtotals + trash buttons, cart-total = sum(qty*price), cart-qty-inc/dec inside drawer recompute total live, cart-remove drops item, checkout href = `https://wa.me/628123456789?text=...` containing 'Halo Toko Test 262897, saya mau pesan:', both product names, '— 2x Rp 15.000 = Rp 30.000', 'Total: Rp 35.000', and the closing 'Mohon konfirmasi ketersediaan & ongkir ya. Terima kasih!'. localStorage key 'lapakin_cart_toko-test-262897' verified present + correct + survives reload (both manual injection and natural add). Backend regression: 82/82 pytest passing in 79s (no endpoint broke).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_admin.py",
+    "/app/backend/tests/test_storefront_pro.py",
+    "/app/test_reports/pytest/iter5_results.xml"
+  ],
+  "action_items": [
+    "(Already fixed by testing agent) Cart persistence bug in /app/frontend/src/pages/Storefront.jsx — root cause was the two-useEffect load+persist pattern racing on mount. Fix uses lazy useState initializer reading localStorage synchronously. Please review the diff (lines ~19-37) for code-style preference; behavior is now correct.",
+    "(Carry-over) Out-of-stock UI path (`data-testid='out-of-stock-{pid}'` rendering 'Stok habis' instead of add-to-cart) was code-reviewed but NOT runtime-verified because neither seeded shop has a stock=0 product. Suggest seeding one stock=0 product on toko-test-262897 (or a fresh shop) for future regression coverage.",
+    "(Carry-over) Story Reel + IG-style viewer not runtime-retested because neither toko-test-262897 nor warung-sari has any `shop.story[]` items. Code path unchanged in this iteration. Suggest seeding 2-3 story items on test shop if continuing to iterate on story features.",
+    "(Carry-over from iter4) Admin login still redirects to /onboarding instead of /admin — open since iter3."
+  ],
+  "critical_code_review_comments": [
+    "[FIXED IN THIS ITERATION] Storefront.jsx cart had a useEffect ordering race causing cart to be wiped on every reload. The same pattern (two effects: one to load from LS, one to persist on change) is a well-known anti-pattern — it overwrites the loaded value during initial mount because the persist effect fires synchronously after render with the still-initial state. Lazy useState initializer is the canonical fix.",
+    "Storefront.jsx is now ~601 lines with 3 distinct UI surfaces (storefront markup, cart drawer, story viewer, lightbox). At ~600 lines this is borderline OK but trending toward the 700-line cap. Consider extracting CartDrawer, StoryViewer, ProductLightbox as sibling components in /pages/storefront/.",
+    "Cart total is computed via `cartItems.reduce(... it.qty * (it.product.price || 0), 0)`. If a product is removed from the shop after being added to a customer's cart, productMap[pid] will be undefined and the entry is filtered out via `cartItems` filter. This silently drops the line — good, but consider adding a UI toast 'Item dihapus karena tidak tersedia' so the customer notices.",
+    "buildCartMessage uses raw newlines '\\n' joined and encodeURIComponent. WhatsApp on web/mobile renders these correctly, verified in decoded href.",
+    "qty-stepper-{pid} uses `cart[p.product_id]` directly in the span text, but the increment uses `addToCart(p)` which goes through `Math.min(cur + 1, maxQty(p))`. If maxQty returns 99 (when stock is null/undefined), users could potentially add 99 units. Consider clamping to a sane default (e.g., 20) when stock is unknown.",
+    "(Carry-over) server.py is ~1247 lines. ShopSettings.jsx >700 lines. Both should be split."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/Storefront.jsx (changed: cart load/persist logic at lines ~17-30 — replaced two useEffects with lazy useState initializer + one persist effect)"
+  ],
+  "success_rate": {
+    "backend": "100% (82/82 pytest)",
+    "frontend": "100% (all cart flows pass after fix)"
+  },
+  "test_credentials": "admin@lapakin.id / lapakin123 (admin), sari@warung.id / newpass123 (test user). Cart testing did NOT require auth — storefront /toko/{slug} is fully public.",
+  "seed_data_creation": "None. Used existing toko-test-262897 (2 products: BackCompat 262897 stock=1 price 5000, MultiImg 262897 stock=3 price 15000, whatsapp 08123456789 → wa.me/628123456789).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Cart MVP is fully working post-fix. Test flow used: (1) GET /api/shops/by-slug/toko-test-262897 to get product ids, (2) Playwright on /toko/toko-test-262897 to click [data-testid='add-to-cart-{pid}'], [data-testid='qty-inc-{pid}'] (card stepper), [data-testid='storefront-cart-fab'] to open drawer, [data-testid='cart-qty-inc-{pid}'/'cart-qty-dec-{pid}'/'cart-remove-{pid}'/'cart-checkout'/'cart-total'/'cart-count'/'cart-close'/'cart-clear'] inside drawer. All testids exist as documented. localStorage key format: 'lapakin_cart_<slug>'. The persist fix uses lazy useState initializer; do NOT revert to the old two-effect pattern. NOT verified at runtime: out-of-stock UI (no stock=0 product seeded) and story reel rendering (no shop has story[] seeded). Backend test files unchanged this iteration.",
+  "rca of the issue": "BUG: Cart did not persist across page reload. RCA: Storefront.jsx had two useEffects sharing localStorage — Effect A read the saved cart on mount and called setCart(saved); Effect B wrote `JSON.stringify(cart)` to localStorage whenever cart changed. On initial render, cart=={} (useState initial). After commit, both effects fire in declaration order: Effect A reads saved value, queues setCart(saved) — this DOES NOT update the closure's `cart` variable, only schedules a re-render. Effect B then runs with the stale `cart=={}` and writes `{}` to localStorage, OVERWRITING the saved value. In React 18 StrictMode dev (likely active in this preview build), effects double-invoke; the second invocation of Effect A then reads back the now-empty `{}` and sets cart={}, locking in the wipe. REPRO: 1) Visit /toko/toko-test-262897, 2) Add any product to cart (FAB shows count), 3) Reload — FAB disappears, localStorage shows `{}`. FIX: Replaced both effects with a single lazy useState initializer that reads localStorage synchronously DURING the initial useState call (before any render), and a single persist effect that runs whenever cart changes. Now there is no window where `cart=={}` is written to LS over a saved value. Verified: manual `localStorage.setItem(...)` then reload → FAB appears with correct count; natural add+reload → cart preserved."
+}

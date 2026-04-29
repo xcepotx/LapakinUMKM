@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import api, { rupiah } from "@/lib/api";
 import {
   Sparkles, MessageCircle, Package, X, ChevronLeft, ChevronRight,
-  Instagram, Music2, ShoppingBag, MapPin, Clock, Tag, Plus,
+  Instagram, Music2, ShoppingBag, MapPin, Clock, Tag, Plus, Minus,
+  ShoppingCart, Trash2, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -14,6 +15,24 @@ export default function Storefront() {
   const [error, setError] = useState(null);
   const [viewer, setViewer] = useState(null);
   const [storyIdx, setStoryIdx] = useState(null); // index into shop.story when viewing reel
+
+  // ---- CART STATE (client-side, persisted in localStorage per shop slug) ----
+  const cartKey = `lapakin_cart_${slug}`;
+  // Lazy init reads localStorage synchronously BEFORE first render so the persist
+  // effect never overwrites a saved cart with the initial `{}` value.
+  const [cart, setCart] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`lapakin_cart_${slug}`);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+  const [cartOpen, setCartOpen] = useState(false);
+  const [justAdded, setJustAdded] = useState(null); // product_id flash
+
+  // Persist cart on change
+  useEffect(() => {
+    try { localStorage.setItem(cartKey, JSON.stringify(cart)); } catch { /* ignore */ }
+  }, [cart, cartKey]);
 
   useEffect(() => {
     (async () => {
@@ -26,6 +45,20 @@ export default function Storefront() {
     })();
   }, [slug]);
 
+  // ---- Derived data (declared before early returns to satisfy hook rules) ----
+  const products = data?.products || [];
+  const productMap = useMemo(() => {
+    const m = {};
+    products.forEach((p) => { m[p.product_id] = p; });
+    return m;
+  }, [products]);
+
+  const cartItems = useMemo(() => {
+    return Object.entries(cart)
+      .map(([pid, qty]) => ({ product: productMap[pid], qty }))
+      .filter((it) => it.product && it.qty > 0);
+  }, [cart, productMap]);
+
   if (loading) return <div className="min-h-screen grid place-items-center text-brand-mute">Memuat toko…</div>;
   if (error) return (
     <div className="min-h-screen grid place-items-center bg-brand-sand text-center px-4">
@@ -37,11 +70,51 @@ export default function Storefront() {
     </div>
   );
 
-  const { shop, products } = data || { shop: null, products: [] };
+  const { shop } = data;
   const brand = shop?.brand_color || "#C04A3B";
   const waNumber = (shop?.whatsapp || "").replace(/[^0-9]/g, "").replace(/^0/, "62");
   const waLink = (text) =>
     waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}` : null;
+
+  // ---- CART HELPERS ----
+  const cartCount = cartItems.reduce((s, it) => s + it.qty, 0);
+  const cartTotal = cartItems.reduce((s, it) => s + it.qty * (it.product.price || 0), 0);
+
+  const maxQty = (p) => (p.stock && p.stock > 0 ? p.stock : 99);
+
+  const addToCart = (p) => {
+    const cur = cart[p.product_id] || 0;
+    const next = Math.min(cur + 1, maxQty(p));
+    if (next === cur) return; // out of stock
+    setCart({ ...cart, [p.product_id]: next });
+    setJustAdded(p.product_id);
+    setTimeout(() => setJustAdded((v) => (v === p.product_id ? null : v)), 1200);
+  };
+  const setQty = (pid, qty) => {
+    const p = productMap[pid];
+    if (!p) return;
+    const clamped = Math.max(0, Math.min(qty, maxQty(p)));
+    const next = { ...cart };
+    if (clamped <= 0) delete next[pid]; else next[pid] = clamped;
+    setCart(next);
+  };
+  const removeFromCart = (pid) => {
+    const next = { ...cart }; delete next[pid]; setCart(next);
+  };
+  const clearCart = () => setCart({});
+
+  const buildCartMessage = () => {
+    if (!cartItems.length) return "";
+    const lines = [`Halo ${shop.name}, saya mau pesan:`, ""];
+    cartItems.forEach((it, i) => {
+      lines.push(`${i + 1}. ${it.product.name} — ${it.qty}x ${rupiah(it.product.price)} = ${rupiah(it.qty * it.product.price)}`);
+    });
+    lines.push("─────────────");
+    lines.push(`Total: ${rupiah(cartTotal)}`);
+    lines.push("");
+    lines.push("Mohon konfirmasi ketersediaan & ongkir ya. Terima kasih!");
+    return lines.join("\n");
+  };
 
   const productImages = (p) => {
     const imgs = Array.isArray(p.images) && p.images.length ? p.images : (p.image_data ? [p.image_data] : []);
@@ -173,18 +246,44 @@ export default function Storefront() {
                       <div className="p-3">
                         <h3 className="font-semibold leading-snug line-clamp-2 text-sm">{p.name}</h3>
                         <div className="font-heading font-extrabold text-base mt-1" style={{ color: brand }}>{rupiah(p.price)}</div>
-                        {waLink(`Halo ${shop.name}, saya mau pesan ${p.name}.`) ? (
-                          <a href={waLink(`Halo ${shop.name}, saya mau pesan ${p.name}.`)} target="_blank" rel="noopener noreferrer">
-                            <Button size="sm" className="mt-2 w-full rounded-xl text-white font-semibold btn-press text-xs"
-                              style={{ background: brand }}
-                              data-testid={`buy-${p.product_id}`}>
-                              <MessageCircle className="w-3.5 h-3.5 mr-1" /> Pesan
-                            </Button>
-                          </a>
-                        ) : (
-                          <div className="mt-2 text-[10px] text-brand-mute text-center py-1.5 border border-dashed border-brand-line rounded-lg">
-                            Hubungi penjual
+                        {p.stock !== undefined && p.stock !== null && p.stock <= 0 ? (
+                          <div className="mt-2 text-[10px] text-brand-mute text-center py-1.5 border border-dashed border-brand-line rounded-lg"
+                            data-testid={`out-of-stock-${p.product_id}`}>
+                            Stok habis
                           </div>
+                        ) : (cart[p.product_id] || 0) > 0 ? (
+                          <div className="mt-2 flex items-center justify-between rounded-xl border-2 px-1 py-1"
+                            style={{ borderColor: brand }}
+                            data-testid={`qty-stepper-${p.product_id}`}>
+                            <button onClick={() => setQty(p.product_id, (cart[p.product_id] || 0) - 1)}
+                              className="w-7 h-7 grid place-items-center rounded-lg hover:bg-brand-off"
+                              style={{ color: brand }}
+                              data-testid={`qty-dec-${p.product_id}`}
+                              aria-label="kurangi">
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+                            <span className="font-bold text-sm" style={{ color: brand }}>{cart[p.product_id]}</span>
+                            <button onClick={() => addToCart(p)}
+                              disabled={(cart[p.product_id] || 0) >= maxQty(p)}
+                              className="w-7 h-7 grid place-items-center rounded-lg hover:bg-brand-off disabled:opacity-30"
+                              style={{ color: brand }}
+                              data-testid={`qty-inc-${p.product_id}`}
+                              aria-label="tambah">
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <Button size="sm"
+                            onClick={() => addToCart(p)}
+                            className="mt-2 w-full rounded-xl text-white font-semibold btn-press text-xs"
+                            style={{ background: brand }}
+                            data-testid={`add-to-cart-${p.product_id}`}>
+                            {justAdded === p.product_id ? (
+                              <><Check className="w-3.5 h-3.5 mr-1" /> Ditambah</>
+                            ) : (
+                              <><Plus className="w-3.5 h-3.5 mr-1" /> Keranjang</>
+                            )}
+                          </Button>
                         )}
                       </div>
                     </article>
@@ -288,6 +387,20 @@ export default function Storefront() {
         </Link>
       </footer>
 
+      {/* FLOATING CART (right side, above WA) */}
+      {cartCount > 0 && (
+        <button
+          onClick={() => setCartOpen(true)}
+          className="fixed bottom-24 right-5 z-40 h-14 px-5 rounded-full text-white shadow-cardHover hover:scale-105 transition-transform flex items-center gap-2 font-semibold"
+          style={{ background: brand }}
+          data-testid="storefront-cart-fab"
+          aria-label="Buka keranjang">
+          <ShoppingCart className="w-5 h-5" />
+          <span data-testid="cart-count">{cartCount}</span>
+          <span className="hidden sm:inline text-sm font-bold">· {rupiah(cartTotal)}</span>
+        </button>
+      )}
+
       {/* FLOATING WHATSAPP */}
       {waLink(`Halo ${shop.name}, saya mau tanya tentang produk.`) && (
         <a href={waLink(`Halo ${shop.name}, saya mau tanya tentang produk.`)} target="_blank" rel="noopener noreferrer"
@@ -299,6 +412,121 @@ export default function Storefront() {
             <span className="block w-full h-full bg-green-500 rounded-full animate-ping" />
           </span>
         </a>
+      )}
+
+      {/* CART DRAWER */}
+      {cartOpen && (
+        <div className="fixed inset-0 z-50 flex" data-testid="cart-drawer">
+          <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={() => setCartOpen(false)} />
+          <aside className="w-full sm:w-[420px] bg-white h-full flex flex-col shadow-2xl animate-in slide-in-from-right">
+            <header className="flex items-center justify-between p-5 border-b border-brand-line">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5" style={{ color: brand }} />
+                <h2 className="font-heading font-bold text-lg">Keranjang</h2>
+                <span className="text-sm text-brand-mute">({cartCount} item)</span>
+              </div>
+              <button onClick={() => setCartOpen(false)}
+                className="w-9 h-9 rounded-full hover:bg-brand-off grid place-items-center"
+                data-testid="cart-close" aria-label="tutup">
+                <X className="w-5 h-5" />
+              </button>
+            </header>
+
+            {cartItems.length === 0 ? (
+              <div className="flex-1 grid place-items-center text-center px-6">
+                <div>
+                  <ShoppingCart className="w-12 h-12 mx-auto text-brand-mute opacity-50" />
+                  <p className="mt-3 font-semibold">Keranjang kosong</p>
+                  <p className="text-sm text-brand-mute mt-1">Tambahkan produk yang kamu suka.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+                {cartItems.map(({ product: p, qty }) => {
+                  const imgs = productImages(p);
+                  return (
+                    <div key={p.product_id}
+                      className="flex gap-3 p-3 rounded-2xl border border-brand-line bg-brand-off/40"
+                      data-testid={`cart-item-${p.product_id}`}>
+                      <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden bg-white border border-brand-line">
+                        {imgs[0] ? (
+                          <img src={imgs[0]} alt={p.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full grid place-items-center text-brand-mute"><Package className="w-5 h-5" /></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-semibold text-sm leading-snug line-clamp-2">{p.name}</h4>
+                          <button onClick={() => removeFromCart(p.product_id)}
+                            className="shrink-0 text-brand-mute hover:text-red-500 p-1"
+                            data-testid={`cart-remove-${p.product_id}`}
+                            aria-label="hapus">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="text-sm font-bold mt-0.5" style={{ color: brand }}>{rupiah(p.price)}</div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="flex items-center gap-1 rounded-lg border border-brand-line bg-white px-1 py-0.5">
+                            <button onClick={() => setQty(p.product_id, qty - 1)}
+                              className="w-6 h-6 grid place-items-center rounded hover:bg-brand-off"
+                              data-testid={`cart-qty-dec-${p.product_id}`}
+                              aria-label="kurangi">
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="font-bold text-sm w-6 text-center">{qty}</span>
+                            <button onClick={() => setQty(p.product_id, qty + 1)}
+                              disabled={qty >= maxQty(p)}
+                              className="w-6 h-6 grid place-items-center rounded hover:bg-brand-off disabled:opacity-30"
+                              data-testid={`cart-qty-inc-${p.product_id}`}
+                              aria-label="tambah">
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <span className="text-sm font-semibold">{rupiah(qty * p.price)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <button onClick={clearCart}
+                  className="w-full text-xs text-brand-mute hover:text-red-500 py-2 mt-2"
+                  data-testid="cart-clear">
+                  Kosongkan keranjang
+                </button>
+              </div>
+            )}
+
+            {cartItems.length > 0 && (
+              <footer className="p-5 border-t border-brand-line bg-white space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-brand-mute">Total</span>
+                  <span className="font-heading font-extrabold text-2xl" style={{ color: brand }} data-testid="cart-total">
+                    {rupiah(cartTotal)}
+                  </span>
+                </div>
+                {waLink(buildCartMessage()) ? (
+                  <a href={waLink(buildCartMessage())} target="_blank" rel="noopener noreferrer"
+                    onClick={() => setCartOpen(false)}
+                    className="block">
+                    <Button className="w-full h-12 rounded-2xl text-white font-bold text-base shadow-card"
+                      style={{ background: brand }}
+                      data-testid="cart-checkout">
+                      <MessageCircle className="w-5 h-5 mr-2" /> Pesan Semua via WhatsApp
+                    </Button>
+                  </a>
+                ) : (
+                  <div className="text-xs text-center text-brand-mute py-2 border border-dashed border-brand-line rounded-xl">
+                    Toko belum mengaktifkan WhatsApp. Hubungi penjual via kontak lain.
+                  </div>
+                )}
+                <p className="text-[11px] text-brand-mute text-center">
+                  Pesanan akan dikirim ke WhatsApp toko untuk konfirmasi & ongkir.
+                </p>
+              </footer>
+            )}
+          </aside>
+        </div>
       )}
 
       {/* PRODUCT IMAGE LIGHTBOX */}
