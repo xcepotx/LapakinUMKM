@@ -28,6 +28,24 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 12 (✅ 2026-04-29 — Trial Pro + Custom Domain + Analytics + Bulk Card Pack)
+- **Trial Pro 14 hari**: new users registered via `/api/auth/register` auto-receive `tier=pro, trial=true, trial_expires_at=now+14d`. `require_user` auto-downgrades expired trials to `free`. Dashboard shows yellow countdown banner; Billing page shows "TRIAL" badge + expiry date.
+- **Custom Domain** (Bisnis tier only, `require_feature(user, 'custom_domain')`):
+  - `POST /api/shops/me/custom-domain` — save `tokokamu.com`, returns DNS CNAME instructions
+  - `POST /api/shops/me/custom-domain/verify` — best-effort DNS lookup, marks verified=true if resolves to same IP as `lapakin.my.id`
+  - `DELETE /api/shops/me/custom-domain` — unset
+  - UI: `CustomDomainSection` in ShopSettings — LOCKED state for non-Bisnis with upgrade CTA; input + save + verify + DNS instructions panel for Bisnis
+- **Analytics** (Pro+ tier, `require_feature(user, 'analytics')`):
+  - `POST /api/analytics/track` public (view_shop, view_product, click_order, share_wa) — called from Storefront client-side
+  - `GET /api/shops/by-slug` auto-inserts to `storefront_visits`
+  - `GET /api/analytics/shop?days=7` returns {total_visits, events, conversion_rate_percent, top_products, daily[]}
+  - New page `/dashboard/analytics` with 4 stat cards + CSS bar chart (daily visits) + top-5 products list. Locked state for free tier.
+  - Nav: "Analitik" link added
+- **Bulk Card Pack** (Pro+ tier):
+  - `GET /api/og/bulk-pack.zip` — streams ZIP with `<slug>-post-1080x1080.png` + `<slug>-story-1080x1920.png` for every product + README.txt
+  - Products page: "Bulk Card Pack" button for paid users (direct download with auth cookie); "Bulk Pack 🔒" for free users → /pricing
+- Tested: **56/56 backend tests passing** (all iter8-12 green after fixture fix). Full E2E verified — trial banner, tier gating, analytics locked/unlocked states, bulk pack download for pro tier.
+
 ### Iteration 11 (✅ 2026-04-29 — 3-Tier Subscription System)
 - **3 tiers**: `free` (Rp 0, 5 produk, 5 AI/bulan), `pro` (Rp 49.000/bulan, 100 produk, AI generous, custom subdomain, no Lapakin branding), `business` (Rp 149.000/bulan, unlimited semua + custom domain + IG autopost + API access + multi-toko).
 - **Module `tiers.py`** — `TIER_LIMITS` dict, helpers `get_tier`, `get_limits`, `current_month_bucket` (YYYY-MM in Asia/Jakarta), `get_usage`/`increment_usage`/`check_quota`/`require_feature`. Mini-refactor — full `server.py` split deferred.
