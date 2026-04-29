@@ -72,8 +72,19 @@ export default function Billing() {
             </div>
             <div className="flex-1">
               <div className="text-xs uppercase tracking-wider font-bold opacity-70">Tier Kamu Sekarang</div>
-              <div className="font-heading font-extrabold text-3xl">{data.tier_label}</div>
-              {data.limits.price_idr_month > 0 ? (
+              <div className="font-heading font-extrabold text-3xl flex items-center gap-2">
+                {data.tier_label}
+                {data.trial && (
+                  <span className="text-xs bg-yellow-400 text-yellow-900 rounded-full px-2 py-0.5 font-bold" data-testid="trial-badge">
+                    TRIAL
+                  </span>
+                )}
+              </div>
+              {data.trial && data.trial_expires_at ? (
+                <div className="text-sm mt-0.5" data-testid="trial-expires">
+                  Trial gratis berakhir {new Date(data.trial_expires_at).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
+                </div>
+              ) : data.limits.price_idr_month > 0 ? (
                 <div className="text-sm mt-0.5">Rp {data.limits.price_idr_month.toLocaleString("id-ID")}/bulan</div>
               ) : (
                 <div className="text-sm mt-0.5">Gratis selamanya</div>

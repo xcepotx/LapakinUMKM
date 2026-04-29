@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Sparkles, LayoutDashboard, Wand2, Package, Settings, LogOut, ExternalLink, MessageSquare, CreditCard } from "lucide-react";
+import { Sparkles, LayoutDashboard, Wand2, Package, Settings, LogOut, ExternalLink, MessageSquare, CreditCard, BarChart3 } from "lucide-react";
 
 const TIER_BADGE = {
   free: { label: "Gratis", cls: "bg-brand-off text-brand-mute border-brand-line" },
@@ -19,6 +19,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     { to: "/dashboard/ai-studio", icon: Wand2, label: "AI Studio", tid: "nav-ai-studio" },
     { to: "/dashboard/products", icon: Package, label: "Produk", tid: "nav-products" },
     { to: "/dashboard/whatsapp", icon: MessageSquare, label: "WhatsApp", tid: "nav-whatsapp" },
+    { to: "/dashboard/analytics", icon: BarChart3, label: "Analitik", tid: "nav-analytics" },
     { to: "/dashboard/settings", icon: Settings, label: "Pengaturan", tid: "nav-settings" },
     { to: "/dashboard/billing", icon: CreditCard, label: "Akun", tid: "nav-billing" },
   ];

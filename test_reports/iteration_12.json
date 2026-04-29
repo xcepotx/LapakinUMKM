@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 12: 4 new features tested (Trial Pro 14d, Custom Domain, Analytics, Bulk Pack). 17/17 new-feature backend tests PASS. 114/117 full-suite regression tests PASS. 3 regressions in iter11 billing tests caused by the trial-pro-on-register change (iter11 tests assume fresh register = free tier, but registering now yields tier='pro' with trial=true). Frontend UI for all 4 features verified with Sari (free) and a newly registered trial user.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/register", "issue": "Trial Pro default breaks iter11 test suite (TestProductLimitGating.test_free_tier_product_limit, TestAIQuotaGating.test_ai_copy_quota_5_per_month, TestAIQuotaGating.test_ai_cover_quota_2_per_month) — these tests register a new user and expect free-tier limits (5 products, 5 AI copy, 2 AI cover) but new users are now trial=pro so quotas don't trigger. iter11 tests need to be updated to promote-then-demote the fresh user to 'free' via admin endpoint before exercising free-tier quotas."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Products page", "issues": ["'Bulk Card Pack' button is visible even for free-tier users. Clicking it would download a 402 response as a .zip file (bad UX). Consider hiding/disabling for free tier or showing an upgrade tooltip. Not a blocker because backend returns 402 correctly."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter12_features.py",
+    "/app/test_reports/pytest/iter12_results.xml",
+    "/app/test_reports/pytest/iter12_full_results.xml"
+  ],
+  "action_items": [
+    "Update /app/backend/tests/test_iter11_billing_tiers.py to explicitly downgrade fresh registered users to 'free' via /api/admin/users/{id}/tier before exercising free-tier product/AI quotas (3 tests affected).",
+    "[Optional UX] Hide or disable 'Bulk Card Pack' button on Products page for free-tier users to avoid downloading a 402 JSON-as-zip."
+  ],
+  "critical_code_review_comments": [
+    "Trial auto-downgrade is performed inside require_user on every authenticated request — potentially many writes if request volume spikes. Acceptable given user-scale but consider caching/rate-limit.",
+    "server.py has grown to >2000 lines; consider splitting into modules (auth, shops, products, analytics, ai, admin, og).",
+    "Custom-domain endpoints are well-structured with tier gating + DNS instruction response shape as specified.",
+    "/api/analytics/track is unauthenticated (by design for public storefront). Good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter12_features.py (new, 17 tests)"
+  ],
+  "success_rate": {"backend": "97.4% (114/117 full suite, 17/17 iter12)", "frontend": "100% (all data-testids present & correct for free-user locked states and trial banner absence)"},
+  "test_credentials": "Used admin@lapakin.id / lapakin123 and sari@warung.id / newpass123. Created several TEST_-prefixed users during testing; they remain in DB but can be safely ignored or cleaned.",
+  "seed_data_creation": "Test users created via /api/auth/register with emails prefixed TEST_ui_, TEST_trial_, TEST_biz_, TEST_proana_, TEST_bulk_, TEST_bulk2_. Some test shops created.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter12 introduced trial=pro-for-new-users; this broke 3 iter11 tests whose logic assumes freshly-registered = free. If iter11 tests are updated (promote-then-demote to free via admin), full regression should pass. All iter12 backend + UI features work as specified.",
+  "rca_of_the_issue": "iter11 test regression: tests create a fresh user via /api/auth/register and assume free-tier limits apply. After iter12, register now sets tier='pro' + trial=true + trial_expires_at=now+14d, so require_user does NOT auto-downgrade, and tier gating correctly allows unlimited products/higher AI quotas for trial pro. Reproduction: run `pytest /app/backend/tests/test_iter11_billing_tiers.py`. Mitigation (trivial): in iter11 fixtures, after registering the fresh user, call admin endpoint `POST /api/admin/users/{user_id}/tier` with {'tier': 'free'} before the test body. This also clears trial=true."
+}

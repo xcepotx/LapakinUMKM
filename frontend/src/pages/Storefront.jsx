@@ -40,6 +40,8 @@ export default function Storefront() {
       try {
         const r = await api.get(`/shops/by-slug/${slug}`);
         setData(r.data);
+        // Fire-and-forget analytics: track shop view
+        try { api.post("/analytics/track", { event: "view_shop", slug }); } catch (_) { /* ignore */ }
       } catch (e) {
         setError(e.response?.status === 404 ? "Toko tidak ditemukan" : "Gagal memuat toko");
       } finally { setLoading(false); }
@@ -660,7 +662,10 @@ export default function Storefront() {
                 )}
                 {waLink(buildCartMessage()) ? (
                   <a href={waLink(buildCartMessage())} target="_blank" rel="noopener noreferrer"
-                    onClick={() => setCartOpen(false)}
+                    onClick={() => {
+                      setCartOpen(false);
+                      try { api.post("/analytics/track", { event: "click_order", slug }); } catch (_) { /* ignore */ }
+                    }}
                     className="block">
                     <Button className="w-full h-12 rounded-2xl text-white font-bold text-base shadow-card"
                       style={{ background: brand }}

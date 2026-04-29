@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy, Power, PowerOff } from "lucide-react";
 import { rupiah } from "@/lib/api";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [shop, setShop] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +73,40 @@ export default function Dashboard() {
       }
     >
       <BroadcastBanner />
+
+      {/* TRIAL PRO BANNER */}
+      {user && user.trial && user.trial_expires_at && (() => {
+        const expires = new Date(user.trial_expires_at);
+        if (isNaN(expires.getTime())) return null;
+        const daysLeft = Math.max(0, Math.ceil((expires - new Date()) / (1000 * 60 * 60 * 24)));
+        if (daysLeft <= 0) return null;
+        return (
+          <div className="mb-6 rounded-2xl p-5 border-2 border-yellow-300 bg-gradient-to-r from-yellow-50 to-amber-50 flex items-center justify-between gap-4 flex-wrap shadow-card"
+            data-testid="dashboard-trial-banner">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-yellow-400 text-yellow-900 grid place-items-center shrink-0 shadow-md">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-xs font-bold tracking-[0.2em] uppercase text-yellow-700">Trial Pro Aktif</div>
+                <div className="font-heading font-extrabold text-xl text-yellow-900">
+                  Tinggal {daysLeft} hari lagi
+                </div>
+                <div className="text-xs text-yellow-900/70 mt-0.5">
+                  Semua fitur Pro aktif gratis sampai {expires.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}.
+                </div>
+              </div>
+            </div>
+            <Link to="/pricing">
+              <Button className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-xl h-11 px-5"
+                data-testid="trial-upgrade-cta">
+                Upgrade Sekarang →
+              </Button>
+            </Link>
+          </div>
+        );
+      })()}
+
 
       {/* SHOP OPEN/CLOSED TOGGLE — only when sells_by='hours' */}
       {sellsByHours && (

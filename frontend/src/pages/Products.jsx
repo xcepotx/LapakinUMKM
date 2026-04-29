@@ -102,13 +102,21 @@ export default function Products() {
       title="Produk"
       subtitle="Kelola katalog produk tokomu."
       actions={
-        <Button
-          onClick={() => navigate("/dashboard/ai-studio")}
-          className="bg-brand hover:bg-brand-hover text-white rounded-xl px-6 h-12 font-semibold btn-press"
-          data-testid="add-product-btn"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Tambah dengan AI
-        </Button>
+        <div className="flex gap-2">
+          <a href="/api/og/bulk-pack.zip" download
+            className="hidden sm:inline-flex items-center gap-2 bg-brand-off border border-brand-line hover:bg-white rounded-xl px-4 h-12 font-semibold text-brand-ink"
+            data-testid="bulk-pack-btn"
+            title="Download ZIP semua kartu produk (tier Pro/Bisnis)">
+            <Package className="w-4 h-4" /> Bulk Card Pack
+          </a>
+          <Button
+            onClick={() => navigate("/dashboard/ai-studio")}
+            className="bg-brand hover:bg-brand-hover text-white rounded-xl px-6 h-12 font-semibold btn-press"
+            data-testid="add-product-btn"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Tambah dengan AI
+          </Button>
+        </div>
       }
     >
       {loading ? (

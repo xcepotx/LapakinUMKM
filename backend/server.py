@@ -27,6 +27,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
+import zipfile
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
@@ -123,6 +124,19 @@ async def require_user(request: Request) -> dict:
     user = await get_user_from_token(request)
     if not user:
         raise HTTPException(status_code=401, detail="Tidak terautentikasi")
+    # Auto-downgrade expired trial: pro + trial=true + trial_expires_at < now → free
+    if user.get("trial") and user.get("trial_expires_at"):
+        try:
+            exp = datetime.fromisoformat(user["trial_expires_at"].replace("Z", "+00:00"))
+            if exp < datetime.now(timezone.utc):
+                await db.users.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {"tier": "free", "trial": False, "trial_ended_at": datetime.now(timezone.utc).isoformat()}}
+                )
+                user["tier"] = "free"
+                user["trial"] = False
+        except Exception:
+            pass
     return user
 
 async def require_admin(request: Request) -> dict:
@@ -271,6 +285,9 @@ async def register(data: RegisterIn, response: Response):
     if existing:
         raise HTTPException(status_code=400, detail="Email sudah terdaftar")
     user_id = f"user_{uuid.uuid4().hex[:12]}"
+    # Trial Pro 14 hari otomatis untuk user baru
+    now = datetime.now(timezone.utc)
+    trial_end = (now + timedelta(days=14)).isoformat()
     user_doc = {
         "user_id": user_id,
         "email": email,
@@ -279,14 +296,18 @@ async def register(data: RegisterIn, response: Response):
         "picture": "",
         "auth_provider": "email",
         "shop_id": None,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "tier": "pro",
+        "trial": True,
+        "trial_expires_at": trial_end,
+        "created_at": now.isoformat(),
     }
     await db.users.insert_one(user_doc)
     token = create_access_token(user_id, email)
     response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
                         max_age=7 * 24 * 3600, path="/")
     return {"user_id": user_id, "email": email, "name": data.name, "picture": "",
-            "auth_provider": "email", "shop_id": None, "access_token": token}
+            "auth_provider": "email", "shop_id": None, "tier": "pro",
+            "trial": True, "trial_expires_at": trial_end, "access_token": token}
 
 @api.post("/auth/login")
 async def login(data: LoginIn, response: Response):
@@ -319,7 +340,9 @@ async def get_me(request: Request):
     return {"user_id": user["user_id"], "email": user["email"], "name": user.get("name"),
             "picture": user.get("picture", ""), "auth_provider": user.get("auth_provider", "email"),
             "shop_id": user.get("shop_id"), "role": user.get("role", "user"),
-            "tier": user.get("tier", "free")}
+            "tier": user.get("tier", "free"),
+            "trial": bool(user.get("trial")),
+            "trial_expires_at": user.get("trial_expires_at")}
 
 @api.post("/auth/google/session")
 async def google_session(data: GoogleSessionIn, response: Response):
@@ -502,6 +525,15 @@ async def get_shop_public(slug: str):
     owner_tier = (owner or {}).get("tier") or "free"
     shop["owner_tier"] = owner_tier
     shop["remove_branding"] = bool(get_limits(owner_tier).get("remove_branding"))
+    # Track a pageview (best-effort, fire-and-forget)
+    try:
+        await db.storefront_visits.insert_one({
+            "shop_id": shop.get("shop_id"),
+            "slug": slug,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
     return {"shop": shop, "products": products}
 
 # ----------- Open Graph (dynamic share preview per toko) -----------
@@ -1768,6 +1800,8 @@ async def billing_me(request: Request):
     return {
         "tier": tier,
         "tier_label": limits.get("label", tier),
+        "trial": bool(user.get("trial")),
+        "trial_expires_at": user.get("trial_expires_at"),
         "year_month": ym,
         "limits": limits,
         "usage": usage,
@@ -1777,6 +1811,237 @@ async def billing_me(request: Request):
             "remaining": "unlimited" if is_unlimited(pmax) else max(0, pmax - product_count),
         },
     }
+
+# ----------- Custom Domain (Iteration 12, BISNIS tier) -----------
+
+class CustomDomainIn(BaseModel):
+    domain: str
+
+@api.post("/shops/me/custom-domain")
+async def set_custom_domain(data: CustomDomainIn, request: Request):
+    """BISNIS tier only — request a custom domain for your shop."""
+    user = await require_user(request)
+    require_feature(user, "custom_domain")
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+    domain = (data.domain or "").strip().lower()
+    # Basic validation — domain must look like x.y (no protocol, no path)
+    import re as _re
+    if not _re.match(r"^([a-z0-9-]+\.)+[a-z]{2,}$", domain):
+        raise HTTPException(status_code=400, detail="Format domain tidak valid. Contoh: tokokamu.com")
+    # Ensure not taken
+    existing = await db.shops.find_one({"custom_domain": domain, "shop_id": {"$ne": user["shop_id"]}})
+    if existing:
+        raise HTTPException(status_code=409, detail="Domain ini sudah dipakai toko lain")
+    await db.shops.update_one(
+        {"shop_id": user["shop_id"]},
+        {"$set": {
+            "custom_domain": domain,
+            "custom_domain_verified": False,
+            "custom_domain_requested_at": datetime.now(timezone.utc).isoformat(),
+        }}
+    )
+    host = os.environ.get("CUSTOM_DOMAIN_TARGET", "lapakin.my.id")
+    return {
+        "ok": True,
+        "domain": domain,
+        "verified": False,
+        "dns_instructions": {
+            "type": "CNAME",
+            "name": domain,
+            "value": host,
+            "ttl": 3600,
+            "note": f"Tambahkan record CNAME di registrar domain kamu: {domain} → {host}. Setelah itu klik 'Verifikasi DNS'.",
+        },
+    }
+
+@api.post("/shops/me/custom-domain/verify")
+async def verify_custom_domain(request: Request):
+    """Best-effort DNS verification. Actually verifying requires nginx/certbot setup
+    on the VPS. For now we just mark as verified after a basic DNS lookup."""
+    user = await require_user(request)
+    require_feature(user, "custom_domain")
+    shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    if not shop or not shop.get("custom_domain"):
+        raise HTTPException(status_code=400, detail="Belum request custom domain")
+    domain = shop["custom_domain"]
+    target = os.environ.get("CUSTOM_DOMAIN_TARGET", "lapakin.my.id")
+    try:
+        import socket as _sock
+        # getaddrinfo resolves through the final CNAME chain
+        _sock.gethostbyname(domain)
+        # Also resolve target to compare IPs
+        target_ips = set(i[4][0] for i in _sock.getaddrinfo(target, None))
+        domain_ips = set(i[4][0] for i in _sock.getaddrinfo(domain, None))
+        verified = bool(target_ips & domain_ips)
+    except Exception:
+        verified = False
+    await db.shops.update_one(
+        {"shop_id": user["shop_id"]},
+        {"$set": {
+            "custom_domain_verified": verified,
+            "custom_domain_verified_at": datetime.now(timezone.utc).isoformat() if verified else None,
+        }}
+    )
+    return {"verified": verified, "domain": domain,
+            "message": "DNS verified ✅" if verified else "DNS belum pointing ke Lapakin. Tunggu propagasi (max 24 jam) lalu coba lagi."}
+
+@api.delete("/shops/me/custom-domain")
+async def remove_custom_domain(request: Request):
+    user = await require_user(request)
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+    await db.shops.update_one(
+        {"shop_id": user["shop_id"]},
+        {"$unset": {"custom_domain": "", "custom_domain_verified": "", "custom_domain_requested_at": "", "custom_domain_verified_at": ""}}
+    )
+    return {"ok": True}
+
+# ----------- Analytics (Iteration 12, PRO+ tier) -----------
+
+class AnalyticsTrackIn(BaseModel):
+    event: str  # "view_product" | "click_order" | "share_wa"
+    product_id: Optional[str] = None
+    slug: Optional[str] = None
+
+@api.post("/analytics/track")
+async def analytics_track(data: AnalyticsTrackIn):
+    """Public endpoint — called from Storefront client-side to track events.
+    No auth needed (these are anonymous visitor events)."""
+    if data.event not in ("view_product", "click_order", "share_wa", "view_shop"):
+        return {"ok": False}
+    shop = None
+    if data.slug:
+        shop = await db.shops.find_one({"slug": data.slug}, {"_id": 0, "shop_id": 1})
+    if not shop and data.product_id:
+        product = await db.products.find_one({"product_id": data.product_id}, {"_id": 0, "shop_id": 1})
+        if product:
+            shop = {"shop_id": product["shop_id"]}
+    if not shop:
+        return {"ok": False}
+    try:
+        await db.analytics_events.insert_one({
+            "shop_id": shop["shop_id"],
+            "event": data.event,
+            "product_id": data.product_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+    return {"ok": True}
+
+@api.get("/analytics/shop")
+async def analytics_shop(request: Request, days: int = 7):
+    """Get analytics for current user's shop. PRO+ tier only."""
+    user = await require_user(request)
+    require_feature(user, "analytics")
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+    shop_id = user["shop_id"]
+    days = max(1, min(90, int(days)))
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    # Total visits
+    total_visits = await db.storefront_visits.count_documents({
+        "shop_id": shop_id, "timestamp": {"$gte": since}
+    })
+    # Events breakdown
+    pipeline = [
+        {"$match": {"shop_id": shop_id, "timestamp": {"$gte": since}}},
+        {"$group": {"_id": "$event", "count": {"$sum": 1}}},
+    ]
+    events = {}
+    async for row in db.analytics_events.aggregate(pipeline):
+        events[row["_id"]] = row["count"]
+
+    # Top clicked products
+    top_products_pipe = [
+        {"$match": {
+            "shop_id": shop_id,
+            "timestamp": {"$gte": since},
+            "event": {"$in": ["click_order", "view_product"]},
+            "product_id": {"$ne": None},
+        }},
+        {"$group": {"_id": "$product_id", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 5},
+    ]
+    top_products = []
+    async for row in db.analytics_events.aggregate(top_products_pipe):
+        prod = await db.products.find_one({"product_id": row["_id"]}, {"_id": 0, "name": 1, "price": 1})
+        if prod:
+            top_products.append({"product_id": row["_id"], "name": prod.get("name"), "price": prod.get("price"), "interactions": row["count"]})
+
+    # Daily breakdown of visits
+    day_pipe = [
+        {"$match": {"shop_id": shop_id, "timestamp": {"$gte": since}}},
+        {"$group": {"_id": {"$substr": ["$timestamp", 0, 10]}, "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ]
+    daily = []
+    async for row in db.storefront_visits.aggregate(day_pipe):
+        daily.append({"date": row["_id"], "visits": row["count"]})
+
+    # Conversion rate estimate
+    clicks = events.get("click_order", 0)
+    conv_rate = round((clicks / total_visits * 100), 2) if total_visits > 0 else 0
+
+    return {
+        "range_days": days,
+        "total_visits": total_visits,
+        "events": events,
+        "conversion_rate_percent": conv_rate,
+        "top_products": top_products,
+        "daily": daily,
+    }
+
+# ----------- Bulk Card Pack (Iteration 12, PRO+ tier) -----------
+
+@api.get("/og/bulk-pack.zip")
+async def bulk_card_pack(request: Request):
+    """Download a ZIP with IG Post + Story PNG for every product in user's shop.
+    PRO+ tier only."""
+    user = await require_user(request)
+    require_feature(user, "remove_branding")  # proxy for "paid tier"
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+    shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0}) or {}
+    products = await db.products.find({"shop_id": user["shop_id"]}, {"_id": 0}).to_list(500)
+    if not products:
+        raise HTTPException(status_code=400, detail="Belum ada produk untuk di-pack")
+
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in products:
+            safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", p.get("name", "produk"))[:40]
+            try:
+                post_png = _render_product_card(p, shop, "post")
+                zf.writestr(f"{safe}-post-1080x1080.png", post_png)
+            except Exception as e:
+                logger.warning(f"bulk pack post render failed: {e}")
+            try:
+                story_png = _render_product_card(p, shop, "story")
+                zf.writestr(f"{safe}-story-1080x1920.png", story_png)
+            except Exception as e:
+                logger.warning(f"bulk pack story render failed: {e}")
+        # Small README
+        readme = (
+            f"Toko Cards Pack · {shop.get('name', '')}\n"
+            f"Generated: {datetime.now(timezone.utc).isoformat()}\n"
+            f"Total produk: {len(products)}\n\n"
+            f"Cara pakai:\n"
+            f"- File -post-1080x1080.png → upload sebagai IG/TikTok post\n"
+            f"- File -story-1080x1920.png → upload sebagai IG/WA Status\n"
+        )
+        zf.writestr("README.txt", readme)
+
+    buf.seek(0)
+    slug = shop.get("slug", "toko")
+    return FastResponse(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{slug}-cards-pack.zip"'},
+    )
 
 # ----------- Mount router & middleware -----------
 app.include_router(api)
@@ -1814,6 +2079,10 @@ async def on_startup():
     await db.ai_usage.create_index("timestamp")
     await db.ai_usage.create_index("kind")
     await db.monthly_usage.create_index([("user_id", 1), ("year_month", 1), ("kind", 1)], unique=True)
+    await db.storefront_visits.create_index([("shop_id", 1), ("timestamp", -1)])
+    await db.analytics_events.create_index([("shop_id", 1), ("timestamp", -1)])
+    await db.analytics_events.create_index([("shop_id", 1), ("event", 1)])
+    await db.shops.create_index("custom_domain", sparse=True, unique=True)
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@lapakin.id").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "lapakin123")

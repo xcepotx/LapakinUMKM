@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Save, Wand2, Upload, X, ImagePlus, Trash2, QrCode, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 const BUSINESS_TYPES = [
   { id: "kuliner", label: "Kuliner / Makanan" },
@@ -436,6 +437,9 @@ export default function ShopSettings() {
         </div>
       </div>
 
+      {/* CUSTOM DOMAIN — BISNIS tier */}
+      <CustomDomainSection shop={shop} />
+
       {/* Save bar */}
       <div className="sticky bottom-4 mt-8 bg-white border border-brand-line rounded-2xl shadow-cardHover p-4 flex justify-end">
         <Button onClick={save} disabled={saving}
@@ -456,6 +460,109 @@ function Section({ title, desc, children }) {
         {desc && <p className="text-xs text-brand-mute mt-0.5">{desc}</p>}
       </div>
       {children}
+    </div>
+  );
+}
+
+function CustomDomainSection({ shop }) {
+  const { user } = useAuth();
+  const [domain, setDomain] = useState(shop?.custom_domain || "");
+  const [verified, setVerified] = useState(!!shop?.custom_domain_verified);
+  const [dns, setDns] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const isBusiness = (user?.tier || "free") === "business";
+
+  if (!shop) return null;
+
+  const request = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.post("/shops/me/custom-domain", { domain });
+      setDns(data.dns_instructions);
+      setVerified(false);
+      toast.success("Domain disimpan. Ikuti instruksi DNS di bawah.");
+    } catch (e) {
+      if (e.response?.status === 402) toast.error("Custom domain hanya di tier Bisnis. Upgrade dulu ya!");
+      else toast.error(e.response?.data?.detail || "Gagal simpan domain");
+    } finally { setSaving(false); }
+  };
+
+  const verify = async () => {
+    setSaving(true);
+    try {
+      const { data } = await api.post("/shops/me/custom-domain/verify");
+      setVerified(data.verified);
+      if (data.verified) toast.success("DNS terverifikasi ✅");
+      else toast.warning(data.message);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal verifikasi");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="mt-6 bg-white border border-brand-line rounded-2xl p-5 shadow-card" data-testid="custom-domain-section">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="font-heading font-bold flex items-center gap-2">
+            🌐 Custom Domain
+            {!isBusiness && <span className="text-[10px] bg-purple-100 text-purple-900 rounded-full px-2 py-0.5 font-bold">BISNIS</span>}
+          </h3>
+          <p className="text-xs text-brand-mute mt-0.5">
+            Pakai domain sendiri (mis. <b>tokokamu.com</b>) alih-alih <code className="bg-brand-off px-1 rounded">lapakin.my.id/toko/...</code>
+          </p>
+        </div>
+      </div>
+      {!isBusiness ? (
+        <div className="rounded-xl border border-dashed border-brand-line p-4 text-center" data-testid="custom-domain-locked">
+          <p className="text-sm text-brand-mute">
+            Fitur custom domain tersedia di tier <b>Bisnis</b>.
+          </p>
+          <a href="/pricing" className="inline-block mt-2 text-brand font-bold hover:underline">Upgrade ke Bisnis →</a>
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2">
+            <input
+              placeholder="tokokamu.com"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              className="flex-1 rounded-xl border border-brand-line h-12 px-3 font-mono text-sm"
+              data-testid="custom-domain-input"
+            />
+            <button onClick={request} disabled={saving || !domain}
+              className="bg-brand text-white rounded-xl px-5 h-12 font-bold disabled:opacity-50"
+              data-testid="custom-domain-save">
+              Simpan
+            </button>
+          </div>
+          {shop.custom_domain && (
+            <div className="mt-3 flex items-center justify-between text-sm bg-brand-off border border-brand-line rounded-xl p-3">
+              <span className="font-mono">{shop.custom_domain}</span>
+              <span className={verified ? "text-green-700 font-bold" : "text-yellow-700 font-bold"}>
+                {verified ? "✅ Verified" : "⏳ Pending DNS"}
+              </span>
+              <button onClick={verify} disabled={saving}
+                className="text-brand font-bold text-xs hover:underline"
+                data-testid="custom-domain-verify">
+                Verifikasi DNS
+              </button>
+            </div>
+          )}
+          {dns && (
+            <div className="mt-3 bg-brand-ink text-brand-off rounded-xl p-4 font-mono text-xs">
+              <div className="text-[10px] uppercase tracking-wider text-brand-off/70 mb-2">Tambahkan DNS record ini di registrar domain kamu:</div>
+              <div>Type: <b>{dns.type}</b></div>
+              <div>Name: <b>{dns.name}</b> (atau <b>@</b> / <b>www</b>)</div>
+              <div>Value: <b>{dns.value}</b></div>
+              <div>TTL: {dns.ttl}</div>
+              <p className="mt-2 text-brand-off/70 leading-relaxed">
+                Propagasi DNS biasanya 5 menit – 24 jam. Setelah itu klik "Verifikasi DNS".
+                Hubungi admin Lapakin via WhatsApp untuk setup SSL.
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

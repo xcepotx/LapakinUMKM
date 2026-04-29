@@ -19,6 +19,7 @@ import WhatsAppConnect from "@/pages/WhatsAppConnect";
 import Storefront from "@/pages/Storefront";
 import Pricing from "@/pages/Pricing";
 import Billing from "@/pages/Billing";
+import Analytics from "@/pages/Analytics";
 
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminShops from "@/pages/admin/AdminShops";
@@ -72,6 +73,7 @@ function AppRouter() {
       <Route path="/dashboard/settings" element={<ProtectedRoute><ShopSettings /></ProtectedRoute>} />
       <Route path="/dashboard/qr" element={<ProtectedRoute><ShopQR /></ProtectedRoute>} />
       <Route path="/dashboard/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
+      <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/toko/:slug" element={<Storefront />} />
       <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
