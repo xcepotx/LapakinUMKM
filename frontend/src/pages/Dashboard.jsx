@@ -37,6 +37,9 @@ export default function Dashboard() {
 
   const storefrontUrl = `${window.location.origin}/toko/${shop?.slug}`;
   const ogImageUrl = `${window.location.origin}/api/og/shop/${shop?.slug}.png`;
+  // OG-aware share URL — works for WhatsApp/FB/Twitter crawlers immediately,
+  // even before nginx is configured. Humans get auto-redirected to /toko/<slug>.
+  const shareUrl = `${window.location.origin}/api/og/shop/${shop?.slug}`;
 
   const sellsByHours = (shop?.sells_by || "stock") === "hours";
   const isOpen = shop?.is_open !== false;
@@ -205,24 +208,41 @@ export default function Dashboard() {
               </div>
               <div className="text-[10px] text-gray-500 mt-1 text-right">contoh tampilan</div>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                onClick={() => { navigator.clipboard.writeText(storefrontUrl); }}
-                className="inline-flex items-center gap-2 bg-brand-off hover:bg-white border border-brand-line rounded-xl px-3 py-2 text-sm font-semibold"
-                data-testid="copy-share-link">
-                <Copy className="w-4 h-4" /> Salin Link Share
-              </button>
+
+            {/* Share-aware URL field */}
+            <div className="mt-4 rounded-xl bg-brand-off border border-brand-line p-3">
+              <div className="text-[11px] uppercase font-bold tracking-wider text-brand-mute">Link Share (preview otomatis)</div>
+              <div className="flex items-center gap-2 mt-1">
+                <code className="flex-1 text-xs sm:text-sm font-mono bg-white border border-brand-line rounded-lg px-2 py-2 truncate" data-testid="share-url-text">
+                  {shareUrl}
+                </code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(shareUrl); toast.success("Link disalin"); }}
+                  className="inline-flex items-center gap-1.5 bg-brand text-white rounded-lg px-3 py-2 text-xs font-bold hover:bg-brand-dark"
+                  data-testid="copy-share-link">
+                  <Copy className="w-3.5 h-3.5" /> Salin
+                </button>
+              </div>
+              <p className="text-[11px] text-brand-mute mt-2 leading-relaxed">
+                ✨ Pakai link ini saat share ke WhatsApp/IG/FB — preview banner toko langsung muncul. Pelanggan yang klik akan otomatis diarahkan ke toko.
+              </p>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
               <a href={ogImageUrl} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 bg-brand-off hover:bg-white border border-brand-line rounded-xl px-3 py-2 text-sm font-semibold"
                 data-testid="download-og-image">
                 <ExternalLink className="w-4 h-4" /> Lihat Gambar OG
               </a>
+              <button
+                onClick={() => { navigator.clipboard.writeText(storefrontUrl); toast.success("Link toko disalin"); }}
+                className="inline-flex items-center gap-2 bg-brand-off hover:bg-white border border-brand-line rounded-xl px-3 py-2 text-sm font-semibold"
+                data-testid="copy-storefront-direct">
+                <Copy className="w-4 h-4" /> Salin Link Toko (langsung)
+              </button>
             </div>
             <p className="text-[11px] text-brand-mute mt-3 leading-relaxed">
-              Tip: Kalau cover toko diganti, pratinjau ini akan otomatis update. Untuk WhatsApp/Facebook,
-              kadang preview di-cache 1-7 hari — bisa di-refresh manual via{" "}
-              <a href="https://developers.facebook.com/tools/debug/" target="_blank" rel="noopener noreferrer"
-                className="text-brand hover:underline">Sharing Debugger</a>.
+              Tip: Setelah setup nginx config (lihat <code className="bg-brand-off px-1 rounded">docs/NGINX_OG_SETUP.md</code>), link <b>{window.location.host}/toko/{shop?.slug}</b> langsung punya preview tanpa perlu /api/og/shop. Sebelum itu, pakai "Link Share" di atas.
             </p>
           </div>
 

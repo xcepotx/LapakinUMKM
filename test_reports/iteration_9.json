@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 9 (OG-aware share URL on Dashboard + WA Web-Share-API on Products) verified end-to-end. Backend: 7 new pytest cases in /app/backend/tests/test_iter9_share_url.py all PASS, plus full regression 122/122 (115 prior + 7 new) PASS in 91s. Verified: (a) GET /api/og/shop/warung-sari returns HTML 200 with og:image, og:title, og:description, og:url, twitter:card meta tags; (b) og:url canonical = `${base}/toko/warung-sari` — NOT the /api/og/shop/<slug> path — so WhatsApp recipients click through to the proper storefront; (c) HTML contains BOTH `<meta http-equiv=\"refresh\" content=\"0; url=.../toko/warung-sari\">` AND `<script>window.location.replace(...)</script>` for human users; (d) og:image content URL points to the /api/og/shop/<slug>.png endpoint; (e) /api/og/shop/<slug>.png still serves a valid image; (f) /api/og/product/<id>/story.png serves PNG (used by WA share). Frontend Playwright (sari@warung.id, desktop chrome 1920×1080): /dashboard share-preview-card shows the new 'Link Share (preview otomatis)' field with data-testid='share-url-text' content = `https://learn-indonesian-22.preview.emergentagent.com/api/og/shop/warung-sari` (asserted does NOT contain /toko/warung-sari). Clicking [data-testid=copy-share-link] writes that exact OG URL to clipboard AND shows toast 'Link disalin'. Clicking [data-testid=copy-storefront-direct] writes `https://.../toko/warung-sari` (no /api/og/) AND shows toast 'Link toko disalin'. /dashboard/products shows 4 download-post-{pid} + 4 download-story-{pid} + 4 share-wa-{pid} buttons, all in the same row per card; share-wa button class includes 'bg-green-500'. With navigator.canShare/share forced undefined to simulate desktop, clicking share-wa-{pid} on first product (Rendang) opens a popup to https://api.whatsapp.com/send?text=Rendang%20%E2%80%94%20Rp%2025.000%0APesan%20via%20https%3A%2F%2F.../api/og/shop/warung-sari — confirming the fallback path executes the wa.me redirect (image download via blob URL also dispatched silently). Zero JS pageerrors throughout. Storefront /toko/warung-sari still renders with shop card + 'Maaf, lagi tutup' closed-banner ('Buka lagi: Kam 08:00 WIB') confirming schedule_status integration unbroken.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter9_share_url.py",
+    "/app/test_reports/pytest/iter9_full_results.xml"
+  ],
+  "action_items": [
+    "(Carry-over iter6) server.py is now ~1719 lines — consider splitting OG endpoints + image generation into /app/backend/og_routes.py.",
+    "(Carry-over iter5) ShopSettings.jsx >700 lines — split into smaller modules.",
+    "(Carry-over iter4) Admin login still redirects to /onboarding instead of /admin.",
+    "(Nit) Products.jsx sharePhotoOrFallback: the catch block silently swallows fetch errors; on a true network failure the user only sees a wa.me redirect with no toast — consider toast.error('Gagal siapkan kartu, buka WA langsung') in the catch path."
+  ],
+  "critical_code_review_comments": [
+    "Dashboard.jsx: shareUrl computation (`${window.location.origin}/api/og/shop/${shop?.slug}`) correctly omits the .png suffix — this URL serves the HTML page with full OG meta tags, exactly what crawlers need. og:url meta inside that HTML still points to /toko/<slug> so the recipient click destination is right (verified backend test_og_html_canonical_url_is_storefront_not_api).",
+    "Products.jsx sharePhotoOrFallback: correctly gates navigator.canShare with feature detection AND files capability check — desktop chrome (where canShare exists but doesn't accept files) falls through to download+wa.me path, matching spec.",
+    "Products.jsx: WA button caption uses `Pesan via ${shareUrl}` where shareUrl is the /api/og/shop URL — same trick as Dashboard, gets WA preview AND auto-redirects clicker to the storefront. Consistent design.",
+    "Backend og_html: meta-refresh runs INSTANTLY (content='0; url=...') on browsers that follow it; <script>window.location.replace</script> is a JS belt-and-suspenders fallback. Combined with the `<link rel=\"canonical\">` and OG/Twitter cards, this is a textbook server-rendered share-card endpoint. Cache-Control: max-age=300 (5min) is reasonable.",
+    "Note: the existing copy-storefront-link button at the top of dashboard ('Tokomu sudah online' card) uses navigator.clipboard.writeText without a toast feedback (only the new copy-share-link / copy-storefront-direct buttons show toasts) — minor UX inconsistency."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter9_share_url.py (new — 7 tests covering OG HTML structure, canonical URL pointing to /toko/<slug>, meta-refresh + JS redirect dual-path, og:image URL, PNG endpoint, product story.png for WA share)"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 new tests PASS + 122/122 full regression PASS in 91s)",
+    "frontend": "100% (login, share-url-text correct value, copy-share-link → OG URL + toast, copy-storefront-direct → /toko/<slug> + toast, Products 4×{post,story,wa} buttons, WA fallback opens api.whatsapp.com/send with correct caption, storefront regression OK, zero JS errors)"
+  },
+  "test_credentials": "sari@warung.id / newpass123 (per /app/memory/test_credentials.md). Login testids on /login are login-email-input, login-password-input, login-submit-btn (NOT login-email/login-password/login-submit).",
+  "seed_data_creation": "None — only read-only tests against existing warung-sari shop and its products (Rendang, etc.). No DB mutations.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 9 fully verified. Run `pytest /app/backend/tests/ -v` for full regression (122 tests, ~91s, all PASS). The Web Share API navigator.share path is NOT testable in headless desktop chrome — only the fallback (image download + wa.me redirect) is verifiable; on real mobile the OS share sheet would appear instead. To test the share path on a real device, deploy and open on Android Chrome with HTTPS. Login testids: login-email-input / login-password-input / login-submit-btn. The OG share URL pattern: `${origin}/api/og/shop/${slug}` (no .png) returns HTML, while `${origin}/api/og/shop/${slug}.png` returns the PNG image. Both are intact and tested.",
+  "rca of the issue": "No bugs. Both new features implemented correctly. The OG-aware share URL pattern (HTML endpoint at /api/og/shop/<slug> with og:url canonical pointing back to /toko/<slug>) is a clean solution for the pre-nginx-config period — crawlers get rich previews from the API endpoint, humans get redirected to the proper React storefront URL via meta-refresh + JS, and recipients clicking the WhatsApp preview land on /toko/<slug> directly because that's what og:url advertises."
+}

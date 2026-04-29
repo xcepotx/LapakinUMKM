@@ -4,8 +4,37 @@ import api, { formatApiError, rupiah } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import EditProductDialog from "@/components/EditProductDialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Package, Pencil, Image as ImageIcon, Smartphone } from "lucide-react";
+import { Plus, Trash2, Package, Pencil, Image as ImageIcon, Smartphone, Share2 } from "lucide-react";
 import { toast } from "sonner";
+
+const rupiahShort = (n) => `Rp ${(n || 0).toLocaleString("id-ID")}`;
+
+// Web-Share-API-aware share. Tries to attach the IG Story PNG.
+// On mobile Chrome/Safari/WhatsApp browser, opens the OS share sheet which
+// includes "WhatsApp → Status" as a target. Falls back to wa.me text-only on desktop.
+async function sharePhotoOrFallback({ url, filename, caption, fallbackUrl }) {
+  try {
+    const res = await fetch(url, { credentials: "omit" });
+    if (!res.ok) throw new Error("fetch fail");
+    const blob = await res.blob();
+    const file = new File([blob], filename, { type: blob.type || "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], text: caption, title: filename });
+      return "shared";
+    }
+    // No file share support → trigger download then open WA Web
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = dlUrl; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(dlUrl), 2000);
+    if (fallbackUrl) window.open(fallbackUrl, "_blank");
+    return "downloaded";
+  } catch (e) {
+    if (fallbackUrl) window.open(fallbackUrl, "_blank");
+    return "error";
+  }
+}
 
 export default function Products() {
   const navigate = useNavigate();
@@ -38,6 +67,24 @@ export default function Products() {
 
   const onSaved = (updated) => {
     setProducts((arr) => arr.map((p) => p.product_id === updated.product_id ? updated : p));
+  };
+
+  const handleShareWA = async (p) => {
+    const slug = shop?.slug || "";
+    const shareUrl = `${window.location.origin}/api/og/shop/${slug}`;
+    const caption = `${p.name} — ${rupiahShort(p.price)}\nPesan via ${shareUrl}`;
+    const imgUrl = `${window.location.origin}/api/og/product/${p.product_id}/story.png`;
+    const waText = encodeURIComponent(caption);
+    const fallback = `https://api.whatsapp.com/send?text=${waText}`;
+    toast.info("Menyiapkan kartu...");
+    const res = await sharePhotoOrFallback({
+      url: imgUrl,
+      filename: `${p.name.replace(/[^a-zA-Z0-9]+/g, "_")}-lapakin.png`,
+      caption,
+      fallbackUrl: fallback,
+    });
+    if (res === "shared") toast.success("Dibagikan!");
+    else if (res === "downloaded") toast.success("Gambar diunduh — buka WhatsApp & pilih dari galeri");
   };
 
   const primaryImg = (p) => {
@@ -119,7 +166,7 @@ export default function Products() {
                   )}
                   {p.description && <p className="text-sm text-brand-mute mt-2 line-clamp-2">{p.description}</p>}
 
-                  {/* TOKO CARDS (IG Post + Story) */}
+                  {/* TOKO CARDS (IG Post + Story + WA Status) */}
                   <div className="mt-3 flex gap-1.5">
                     <a href={`/api/og/product/${p.product_id}/post.png`} target="_blank" rel="noopener noreferrer"
                       className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-2 py-2 bg-brand-off border border-brand-line hover:bg-white text-brand-ink"
@@ -133,6 +180,12 @@ export default function Products() {
                       title="Unduh kartu IG Story 1080×1920">
                       <Smartphone className="w-3.5 h-3.5" /> Story
                     </a>
+                    <button onClick={() => handleShareWA(p)}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg px-2 py-2 bg-green-500 text-white hover:bg-green-600"
+                      data-testid={`share-wa-${p.product_id}`}
+                      title="Bagikan ke WhatsApp Status / kontak">
+                      <Share2 className="w-3.5 h-3.5" /> WA
+                    </button>
                   </div>
 
                   <div className="mt-2 flex justify-end gap-1">
