@@ -124,6 +124,51 @@ export default function ShopSettings() {
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Main */}
         <div className="lg:col-span-2 space-y-6">
+          {/* MODE TOKO — Iteration 7 */}
+          <Section title="Mode Jualan" desc="Pilih cara tokomu jualan. Sistem akan menyesuaikan tampilan stok & status buka.">
+            <div className="grid sm:grid-cols-3 gap-3">
+              {[
+                { id: "stock",  emoji: "📦", title: "Stok",        desc: "Pakai jumlah stok per produk. Cocok fashion, kerajinan, aksesoris." },
+                { id: "hours",  emoji: "🍜", title: "Jam Buka",    desc: "Tidak pakai stok. Toko bisa BUKA/TUTUP. Cocok kuliner, kopi, warteg." },
+                { id: "always", emoji: "♾️", title: "Selalu Ada",  desc: "Tidak pakai stok & jam buka. Cocok jasa, digital, pre-order." },
+              ].map((m) => (
+                <button key={m.id} type="button"
+                  onClick={() => update("sells_by", m.id)}
+                  className={`text-left p-4 rounded-xl border-2 transition ${
+                    (shop.sells_by || "stock") === m.id
+                      ? "bg-brand text-white border-brand"
+                      : "bg-white border-brand-line hover:border-brand"
+                  }`}
+                  data-testid={`mode-${m.id}`}>
+                  <div className="text-2xl">{m.emoji}</div>
+                  <div className="font-bold mt-1">{m.title}</div>
+                  <div className={`text-xs mt-1 leading-snug ${(shop.sells_by || "stock") === m.id ? "text-white/85" : "text-brand-mute"}`}>{m.desc}</div>
+                </button>
+              ))}
+            </div>
+            {(shop.sells_by || "stock") === "hours" && (
+              <div className="mt-4 p-4 rounded-xl bg-brand-off border border-brand-line">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-semibold flex items-center gap-2">
+                      Status Toko Sekarang:{" "}
+                      <span className={shop.is_open !== false ? "text-green-700" : "text-red-700"}>
+                        {shop.is_open !== false ? "BUKA" : "TUTUP"}
+                      </span>
+                    </div>
+                    <div className="text-xs text-brand-mute mt-0.5">Toggle ini juga ada di Beranda untuk akses cepat.</div>
+                  </div>
+                  <button type="button"
+                    onClick={() => update("is_open", !(shop.is_open !== false))}
+                    className={`px-4 py-2 rounded-xl font-bold text-sm ${shop.is_open !== false ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}`}
+                    data-testid="settings-toggle-open">
+                    {shop.is_open !== false ? "Tutup Toko" : "Buka Toko"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </Section>
+
           {/* COVER BANNER */}
           <Section title="Cover Banner" desc="Foto besar di puncak toko (16:6). Upload sendiri atau biarkan AI bikin.">
             <div className="aspect-[16/6] rounded-xl bg-brand-off border border-brand-line overflow-hidden relative">

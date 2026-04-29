@@ -106,7 +106,17 @@ export default function Products() {
                 <div className="p-4">
                   <h3 className="font-heading font-bold truncate">{p.name}</h3>
                   <div className="text-brand text-lg font-extrabold mt-1">{rupiah(p.price)}</div>
-                  <div className="text-xs text-brand-mute mt-1">Stok: {p.stock || 0}</div>
+                  {(shop?.sells_by || "stock") === "stock" && (
+                    <div className="text-xs text-brand-mute mt-1">Stok: {p.stock || 0}</div>
+                  )}
+                  {(shop?.sells_by || "stock") === "hours" && (
+                    <div className="text-xs text-brand-mute mt-1" data-testid={`days-label-${p.product_id}`}>
+                      {p.available_days?.length ? `Tersedia: ${formatDays(p.available_days)}` : "Setiap hari"}
+                    </div>
+                  )}
+                  {(shop?.sells_by || "stock") === "always" && (
+                    <div className="text-xs text-brand-mute mt-1">Selalu tersedia</div>
+                  )}
                   {p.description && <p className="text-sm text-brand-mute mt-2 line-clamp-2">{p.description}</p>}
                   <div className="mt-3 flex justify-end gap-1">
                     <Button variant="ghost" size="sm" onClick={() => setEditing(p)}
@@ -129,10 +139,17 @@ export default function Products() {
 
       <EditProductDialog
         product={editing}
+        shop={shop}
         open={!!editing}
         onOpenChange={(o) => { if (!o) setEditing(null); }}
         onSaved={onSaved}
       />
     </DashboardLayout>
   );
+}
+
+const DAY_LABELS_SHORT = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+function formatDays(arr) {
+  if (!Array.isArray(arr) || !arr.length) return "Setiap hari";
+  return [...arr].sort((a, b) => a - b).map((d) => DAY_LABELS_SHORT[d] || "").filter(Boolean).join(", ");
 }

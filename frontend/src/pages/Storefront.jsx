@@ -15,6 +15,7 @@ export default function Storefront() {
   const [error, setError] = useState(null);
   const [viewer, setViewer] = useState(null);
   const [storyIdx, setStoryIdx] = useState(null); // index into shop.story when viewing reel
+  const [todayOnly, setTodayOnly] = useState(true); // F&B "Menu Hari Ini" filter
 
   // ---- CART STATE (client-side, persisted in localStorage per shop slug) ----
   const cartKey = `lapakin_cart_${slug}`;
@@ -76,11 +77,36 @@ export default function Storefront() {
   const waLink = (text) =>
     waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}` : null;
 
+  // ---- SALES MODE (Iteration 7) ----
+  const sellsBy = shop?.sells_by || "stock";
+  const isOpen = shop?.is_open !== false;
+  const shopClosed = sellsBy === "hours" && !isOpen;
+  // Today index (0=Mon..6=Sun) — JS Date.getDay() returns 0=Sun..6=Sat
+  const todayIdx = (new Date().getDay() + 6) % 7;
+  const DAY_LABELS_SHORT = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+  const isAvailableToday = (p) => {
+    if (sellsBy !== "hours") return true;
+    if (!Array.isArray(p.available_days) || p.available_days.length === 0) return true;
+    return p.available_days.includes(todayIdx);
+  };
+  const formatDays = (arr) =>
+    [...arr].sort((a, b) => a - b).map((d) => DAY_LABELS_SHORT[d] || "").filter(Boolean).join(", ");
+
   // ---- CART HELPERS ----
   const cartCount = cartItems.reduce((s, it) => s + it.qty, 0);
   const cartTotal = cartItems.reduce((s, it) => s + it.qty * (it.product.price || 0), 0);
 
-  const maxQty = (p) => (p.stock && p.stock > 0 ? p.stock : 99);
+  const maxQty = (p) => {
+    if (sellsBy === "stock") return p.stock && p.stock > 0 ? p.stock : 99;
+    return 99; // hours/always: no per-product cap
+  };
+
+  const canAdd = (p) => {
+    if (shopClosed) return false;
+    if (sellsBy === "hours" && !isAvailableToday(p)) return false;
+    if (sellsBy === "stock" && (p.stock !== undefined && p.stock !== null && p.stock <= 0)) return false;
+    return true;
+  };
 
   const addToCart = (p) => {
     const cur = cart[p.product_id] || 0;
@@ -112,6 +138,9 @@ export default function Storefront() {
     lines.push("─────────────");
     lines.push(`Total: ${rupiah(cartTotal)}`);
     lines.push("");
+    if (shopClosed) {
+      lines.push("(Toko sedang tutup — saya menanyakan ketersediaan.)");
+    }
     lines.push("Mohon konfirmasi ketersediaan & ongkir ya. Terima kasih!");
     return lines.join("\n");
   };
@@ -156,7 +185,18 @@ export default function Storefront() {
                 </h1>
                 {shop?.tagline && <p className="text-brand-mute mt-1">{shop.tagline}</p>}
                 <div className="mt-3 flex flex-wrap gap-3 text-xs">
-                  <Chip icon={<Sparkles className="w-3 h-3" />} label="Verified UMKM" color={brand} />
+                  {sellsBy === "hours" ? (
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-bold ${
+                      isOpen ? "bg-green-100 text-green-700 border border-green-300" : "bg-red-100 text-red-700 border border-red-300"
+                    }`} data-testid="storefront-status-badge">
+                      <span className={`w-2 h-2 rounded-full ${isOpen ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
+                      {isOpen ? "Buka Sekarang" : "Lagi Tutup"}
+                    </span>
+                  ) : sellsBy === "always" ? (
+                    <Chip icon={<Sparkles className="w-3 h-3" />} label="Selalu Tersedia" color={brand} />
+                  ) : (
+                    <Chip icon={<Sparkles className="w-3 h-3" />} label="Verified UMKM" color={brand} />
+                  )}
                   {shop?.address && <Chip icon={<MapPin className="w-3 h-3" />} label={shop.address.split(",")[0]} />}
                   {shop?.hours && <Chip icon={<Clock className="w-3 h-3" />} label={shop.hours} />}
                 </div>
@@ -167,6 +207,22 @@ export default function Storefront() {
       </div>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+        {/* CLOSED BANNER (mode=hours & is_open=false) */}
+        {shopClosed && (
+          <div className="rounded-2xl p-5 mb-6 flex items-center gap-4 bg-red-50 border-2 border-red-300 shadow-card"
+            data-testid="storefront-closed-banner">
+            <div className="w-12 h-12 rounded-xl bg-red-600 text-white grid place-items-center shrink-0 shadow-md">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-heading font-extrabold text-lg text-red-800">Maaf, lagi tutup 🙏</div>
+              <p className="text-sm text-red-900/80 mt-0.5">
+                Pesanan tidak bisa diproses sekarang. {shop?.hours ? `Jam buka: ${shop.hours}.` : "Cek lagi nanti ya!"} Boleh kontak via WhatsApp untuk pre-order.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* PROMO BANNER */}
         {shop?.promo_active && shop?.promo_title && (
           <div className="rounded-2xl p-5 mb-8 flex items-center gap-4 shadow-card border"
@@ -214,94 +270,162 @@ export default function Storefront() {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* PRODUCTS */}
           <div className="lg:col-span-2">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-heading font-bold text-xl">Produk</h2>
-              <span className="text-sm text-brand-mute">{products.length} produk</span>
+            <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <h2 className="font-heading font-bold text-xl">
+                  {sellsBy === "hours" && todayOnly ? "Menu Hari Ini" : "Produk"}
+                </h2>
+                {sellsBy === "hours" && (
+                  <span className="text-[10px] uppercase tracking-wider font-bold rounded-full px-2 py-0.5 bg-brand-off border border-brand-line text-brand-mute">
+                    {DAY_LABELS_SHORT[todayIdx]}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {sellsBy === "hours" && products.some((p) => Array.isArray(p.available_days) && p.available_days.length > 0) && (
+                  <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer select-none"
+                    data-testid="storefront-today-filter">
+                    <input type="checkbox" checked={todayOnly}
+                      onChange={(e) => setTodayOnly(e.target.checked)}
+                      className="w-4 h-4 accent-brand" />
+                    Tampilkan menu hari ini saja
+                  </label>
+                )}
+                <span className="text-sm text-brand-mute">{products.length} produk</span>
+              </div>
             </div>
 
-            {products.length === 0 && fillerCount === 0 ? (
-              <div className="bg-white border border-brand-line rounded-2xl p-12 text-center shadow-card">
-                <Package className="w-10 h-10 mx-auto text-brand-mute" />
-                <p className="text-brand-mute mt-3">Belum ada produk di toko ini.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {products.map((p) => {
-                  const imgs = productImages(p);
-                  return (
-                    <article key={p.product_id}
-                      className="bg-white rounded-2xl overflow-hidden border border-brand-line shadow-card card-hover hover:shadow-cardHover"
-                      data-testid={`storefront-product-${p.product_id}`}>
-                      <button onClick={() => imgs.length && setViewer({ product: p, idx: 0, imgs })}
-                        className="block w-full aspect-square bg-brand-off relative">
-                        {imgs.length ? (
-                          <img src={imgs[0]} alt={p.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full grid place-items-center text-brand-mute"><Package className="w-7 h-7" /></div>
-                        )}
-                        {imgs.length > 1 && (
-                          <span className="absolute top-2 right-2 bg-black/65 text-white text-[11px] font-bold rounded-full px-2 py-0.5">+{imgs.length - 1}</span>
-                        )}
-                      </button>
-                      <div className="p-3">
-                        <h3 className="font-semibold leading-snug line-clamp-2 text-sm">{p.name}</h3>
-                        <div className="font-heading font-extrabold text-base mt-1" style={{ color: brand }}>{rupiah(p.price)}</div>
-                        {p.stock !== undefined && p.stock !== null && p.stock <= 0 ? (
-                          <div className="mt-2 text-[10px] text-brand-mute text-center py-1.5 border border-dashed border-brand-line rounded-lg"
-                            data-testid={`out-of-stock-${p.product_id}`}>
-                            Stok habis
-                          </div>
-                        ) : (cart[p.product_id] || 0) > 0 ? (
-                          <div className="mt-2 flex items-center justify-between rounded-xl border-2 px-1 py-1"
-                            style={{ borderColor: brand }}
-                            data-testid={`qty-stepper-${p.product_id}`}>
-                            <button onClick={() => setQty(p.product_id, (cart[p.product_id] || 0) - 1)}
-                              className="w-7 h-7 grid place-items-center rounded-lg hover:bg-brand-off"
-                              style={{ color: brand }}
-                              data-testid={`qty-dec-${p.product_id}`}
-                              aria-label="kurangi">
-                              <Minus className="w-3.5 h-3.5" />
-                            </button>
-                            <span className="font-bold text-sm" style={{ color: brand }}>{cart[p.product_id]}</span>
-                            <button onClick={() => addToCart(p)}
-                              disabled={(cart[p.product_id] || 0) >= maxQty(p)}
-                              className="w-7 h-7 grid place-items-center rounded-lg hover:bg-brand-off disabled:opacity-30"
-                              style={{ color: brand }}
-                              data-testid={`qty-inc-${p.product_id}`}
-                              aria-label="tambah">
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <Button size="sm"
-                            onClick={() => addToCart(p)}
-                            className="mt-2 w-full rounded-xl text-white font-semibold btn-press text-xs"
-                            style={{ background: brand }}
-                            data-testid={`add-to-cart-${p.product_id}`}>
-                            {justAdded === p.product_id ? (
-                              <><Check className="w-3.5 h-3.5 mr-1" /> Ditambah</>
-                            ) : (
-                              <><Plus className="w-3.5 h-3.5 mr-1" /> Keranjang</>
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-                {/* Filler "coming soon" */}
-                {Array.from({ length: fillerCount }).map((_, i) => (
-                  <div key={`f${i}`}
-                    className="rounded-2xl border-2 border-dashed border-brand-line bg-white/50 aspect-[1/1.4] grid place-items-center text-brand-mute text-center px-3"
-                    data-testid={`storefront-filler-${i}`}>
-                    <div>
-                      <Plus className="w-7 h-7 mx-auto opacity-50" />
-                      <p className="text-xs mt-2">Produk baru<br />segera hadir</p>
-                    </div>
+            {(() => {
+              const visibleProducts = (sellsBy === "hours" && todayOnly)
+                ? products.filter(isAvailableToday)
+                : products;
+              const visibleFiller = Math.max(0, 4 - visibleProducts.length);
+
+              if (visibleProducts.length === 0 && visibleFiller === 0) {
+                return (
+                  <div className="bg-white border border-brand-line rounded-2xl p-12 text-center shadow-card">
+                    <Package className="w-10 h-10 mx-auto text-brand-mute" />
+                    <p className="text-brand-mute mt-3">Belum ada produk di toko ini.</p>
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              }
+              if (visibleProducts.length === 0 && sellsBy === "hours" && todayOnly) {
+                return (
+                  <div className="bg-white border border-brand-line rounded-2xl p-12 text-center shadow-card"
+                    data-testid="storefront-no-menu-today">
+                    <Clock className="w-10 h-10 mx-auto text-brand-mute" />
+                    <p className="text-brand-mute mt-3">Tidak ada menu di hari {DAY_LABELS_SHORT[todayIdx]}.</p>
+                    <button onClick={() => setTodayOnly(false)}
+                      className="mt-3 text-sm text-brand font-semibold hover:underline"
+                      data-testid="storefront-show-all-days">
+                      Lihat semua menu →
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {visibleProducts.map((p) => {
+                    const imgs = productImages(p);
+                    const inCart = cart[p.product_id] || 0;
+                    const available = canAdd(p);
+                    const hasDayLimit = sellsBy === "hours" && Array.isArray(p.available_days) && p.available_days.length > 0;
+                    const notToday = sellsBy === "hours" && hasDayLimit && !p.available_days.includes(todayIdx);
+
+                    return (
+                      <article key={p.product_id}
+                        className={`bg-white rounded-2xl overflow-hidden border border-brand-line shadow-card card-hover hover:shadow-cardHover ${notToday ? "opacity-70" : ""}`}
+                        data-testid={`storefront-product-${p.product_id}`}>
+                        <button onClick={() => imgs.length && setViewer({ product: p, idx: 0, imgs })}
+                          className="block w-full aspect-square bg-brand-off relative">
+                          {imgs.length ? (
+                            <img src={imgs[0]} alt={p.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full grid place-items-center text-brand-mute"><Package className="w-7 h-7" /></div>
+                          )}
+                          {imgs.length > 1 && (
+                            <span className="absolute top-2 right-2 bg-black/65 text-white text-[11px] font-bold rounded-full px-2 py-0.5">+{imgs.length - 1}</span>
+                          )}
+                          {hasDayLimit && (
+                            <span className="absolute bottom-2 left-2 bg-white/95 text-[10px] font-bold rounded-full px-2 py-0.5 border border-brand-line"
+                              data-testid={`day-badge-${p.product_id}`}>
+                              📅 {formatDays(p.available_days)}
+                            </span>
+                          )}
+                        </button>
+                        <div className="p-3">
+                          <h3 className="font-semibold leading-snug line-clamp-2 text-sm">{p.name}</h3>
+                          <div className="font-heading font-extrabold text-base mt-1" style={{ color: brand }}>{rupiah(p.price)}</div>
+
+                          {/* Cart action — adaptive per mode */}
+                          {shopClosed ? (
+                            <div className="mt-2 text-[10px] text-red-700 bg-red-50 border border-red-200 text-center py-1.5 rounded-lg font-semibold"
+                              data-testid={`closed-${p.product_id}`}>
+                              Toko sedang tutup
+                            </div>
+                          ) : notToday ? (
+                            <div className="mt-2 text-[10px] text-brand-mute bg-brand-off border border-brand-line text-center py-1.5 rounded-lg"
+                              data-testid={`not-today-${p.product_id}`}>
+                              Tidak tersedia hari ini
+                            </div>
+                          ) : sellsBy === "stock" && p.stock !== undefined && p.stock !== null && p.stock <= 0 ? (
+                            <div className="mt-2 text-[10px] text-brand-mute text-center py-1.5 border border-dashed border-brand-line rounded-lg"
+                              data-testid={`out-of-stock-${p.product_id}`}>
+                              Stok habis
+                            </div>
+                          ) : inCart > 0 ? (
+                            <div className="mt-2 flex items-center justify-between rounded-xl border-2 px-1 py-1"
+                              style={{ borderColor: brand }}
+                              data-testid={`qty-stepper-${p.product_id}`}>
+                              <button onClick={() => setQty(p.product_id, inCart - 1)}
+                                className="w-7 h-7 grid place-items-center rounded-lg hover:bg-brand-off"
+                                style={{ color: brand }}
+                                data-testid={`qty-dec-${p.product_id}`}
+                                aria-label="kurangi">
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              <span className="font-bold text-sm" style={{ color: brand }}>{inCart}</span>
+                              <button onClick={() => addToCart(p)}
+                                disabled={inCart >= maxQty(p)}
+                                className="w-7 h-7 grid place-items-center rounded-lg hover:bg-brand-off disabled:opacity-30"
+                                style={{ color: brand }}
+                                data-testid={`qty-inc-${p.product_id}`}
+                                aria-label="tambah">
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <Button size="sm"
+                              onClick={() => addToCart(p)}
+                              disabled={!available}
+                              className="mt-2 w-full rounded-xl text-white font-semibold btn-press text-xs disabled:opacity-50"
+                              style={{ background: brand }}
+                              data-testid={`add-to-cart-${p.product_id}`}>
+                              {justAdded === p.product_id ? (
+                                <><Check className="w-3.5 h-3.5 mr-1" /> Ditambah</>
+                              ) : (
+                                <><Plus className="w-3.5 h-3.5 mr-1" /> Keranjang</>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {/* Filler "coming soon" */}
+                  {Array.from({ length: visibleFiller }).map((_, i) => (
+                    <div key={`f${i}`}
+                      className="rounded-2xl border-2 border-dashed border-brand-line bg-white/50 aspect-[1/1.4] grid place-items-center text-brand-mute text-center px-3"
+                      data-testid={`storefront-filler-${i}`}>
+                      <div>
+                        <Plus className="w-7 h-7 mx-auto opacity-50" />
+                        <p className="text-xs mt-2">Produk baru<br />segera hadir</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* SIDEBAR */}
@@ -505,6 +629,13 @@ export default function Storefront() {
                     {rupiah(cartTotal)}
                   </span>
                 </div>
+                {shopClosed && (
+                  <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-[12px] text-red-800 flex items-start gap-2"
+                    data-testid="cart-closed-warning">
+                    <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>Toko sedang <b>tutup</b>. Pesan tetap bisa dikirim ke WhatsApp untuk pre-order, tapi mohon tunggu konfirmasi.</span>
+                  </div>
+                )}
                 {waLink(buildCartMessage()) ? (
                   <a href={waLink(buildCartMessage())} target="_blank" rel="noopener noreferrer"
                     onClick={() => setCartOpen(false)}
@@ -512,7 +643,8 @@ export default function Storefront() {
                     <Button className="w-full h-12 rounded-2xl text-white font-bold text-base shadow-card"
                       style={{ background: brand }}
                       data-testid="cart-checkout">
-                      <MessageCircle className="w-5 h-5 mr-2" /> Pesan Semua via WhatsApp
+                      <MessageCircle className="w-5 h-5 mr-2" />
+                      {shopClosed ? "Kirim Pre-Order via WhatsApp" : "Pesan Semua via WhatsApp"}
                     </Button>
                   </a>
                 ) : (

@@ -185,6 +185,9 @@ class ShopIn(BaseModel):
     promo_description: Optional[str] = ""
     promo_code: Optional[str] = ""
     story: List[dict] = []                    # [{image, caption}] max 5
+    # Sales mode (Iteration 7)
+    sells_by: Optional[str] = "stock"         # "stock" | "hours" | "always"
+    is_open: Optional[bool] = True            # only relevant when sells_by == "hours"
 
 class ShopOut(ShopIn):
     shop_id: str
@@ -202,6 +205,9 @@ class ProductIn(BaseModel):
     ig_caption: Optional[str] = ""
     tiktok_caption: Optional[str] = ""
     hashtags: List[str] = []
+    # Per-product day availability (Iteration 7) — empty list = setiap hari.
+    # 0=Senin … 6=Minggu (Python's weekday() convention).
+    available_days: List[int] = []
 
 class ProductOut(ProductIn):
     product_id: str
@@ -406,14 +412,22 @@ async def get_my_shop(request: Request):
 async def create_or_update_shop(data: ShopIn, request: Request):
     user = await require_user(request)
     now = datetime.now(timezone.utc).isoformat()
+    payload = data.model_dump()
     if user.get("shop_id"):
         # update
         await db.shops.update_one(
             {"shop_id": user["shop_id"]},
-            {"$set": {**data.model_dump(), "updated_at": now}}
+            {"$set": {**payload, "updated_at": now}}
         )
         shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
         return shop
+    # On first creation, smart-default sells_by based on business_type
+    # if user didn't pick anything (defaults to "stock" otherwise).
+    if payload.get("sells_by") in (None, "", "stock"):
+        bt = (payload.get("business_type") or "").lower()
+        if bt in ("kuliner", "kopi"):
+            payload["sells_by"] = "hours"
+            payload["is_open"] = True
     # create with unique slug
     base_slug = slugify(data.name)
     slug = base_slug
@@ -424,11 +438,27 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     shop_id = f"shop_{uuid.uuid4().hex[:12]}"
     doc = {
         "shop_id": shop_id, "slug": slug, "owner_user_id": user["user_id"],
-        **data.model_dump(), "created_at": now,
+        **payload, "created_at": now,
     }
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})
     return {k: v for k, v in doc.items() if k != "_id"}
+
+@api.post("/shops/me/toggle-open")
+async def toggle_shop_open(request: Request):
+    """Quick toggle for shop is_open flag (used by F&B mode='hours' toko)."""
+    user = await require_user(request)
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+    shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+    new_state = not bool(shop.get("is_open", True))
+    await db.shops.update_one(
+        {"shop_id": user["shop_id"]},
+        {"$set": {"is_open": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"is_open": new_state}
 
 @api.get("/shops/by-slug/{slug}")
 async def get_shop_public(slug: str):

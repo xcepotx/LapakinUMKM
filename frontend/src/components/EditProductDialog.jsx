@@ -9,8 +9,17 @@ import { Save, Plus, X, ImagePlus } from "lucide-react";
 import { toast } from "sonner";
 
 const MAX_IMAGES = 5;
+const DAY_LABELS = [
+  { idx: 0, short: "Sen", long: "Senin" },
+  { idx: 1, short: "Sel", long: "Selasa" },
+  { idx: 2, short: "Rab", long: "Rabu" },
+  { idx: 3, short: "Kam", long: "Kamis" },
+  { idx: 4, short: "Jum", long: "Jumat" },
+  { idx: 5, short: "Sab", long: "Sabtu" },
+  { idx: 6, short: "Min", long: "Minggu" },
+];
 
-export default function EditProductDialog({ product, open, onOpenChange, onSaved }) {
+export default function EditProductDialog({ product, shop, open, onOpenChange, onSaved }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
@@ -20,7 +29,10 @@ export default function EditProductDialog({ product, open, onOpenChange, onSaved
   const [hashtags, setHashtags] = useState([]);
   const [hashtagsInput, setHashtagsInput] = useState("");
   const [images, setImages] = useState([]); // data URLs
+  const [availableDays, setAvailableDays] = useState([]); // 0..6, empty = setiap hari
   const [saving, setSaving] = useState(false);
+
+  const sellsBy = shop?.sells_by || "stock";
 
   useEffect(() => {
     if (!product) return;
@@ -32,11 +44,16 @@ export default function EditProductDialog({ product, open, onOpenChange, onSaved
     setTiktokCaption(product.tiktok_caption || "");
     setHashtags(Array.isArray(product.hashtags) ? product.hashtags : []);
     setHashtagsInput((Array.isArray(product.hashtags) ? product.hashtags : []).join(" "));
+    setAvailableDays(Array.isArray(product.available_days) ? product.available_days : []);
     const imgs = Array.isArray(product.images) && product.images.length > 0
       ? product.images
       : (product.image_data ? [product.image_data] : []);
     setImages(imgs.map((i) => (i?.startsWith("data:") ? i : `data:image/png;base64,${i}`)));
   }, [product]);
+
+  const toggleDay = (d) => {
+    setAvailableDays((arr) => arr.includes(d) ? arr.filter((x) => x !== d) : [...arr, d].sort((a, b) => a - b));
+  };
 
   const onPickFile = (e) => {
     const files = Array.from(e.target.files || []);
@@ -73,6 +90,7 @@ export default function EditProductDialog({ product, open, onOpenChange, onSaved
         name, price: parseInt(price, 10) || 0, stock: parseInt(stock, 10) || 0,
         description, image_data: images[0] || "", images,
         ig_caption: igCaption, tiktok_caption: tiktokCaption, hashtags: tags,
+        available_days: availableDays,
       };
       const { data } = await api.put(`/products/${product.product_id}`, payload);
       toast.success("Produk diperbarui");
@@ -136,12 +154,60 @@ export default function EditProductDialog({ product, open, onOpenChange, onSaved
               <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)}
                 className="mt-1 rounded-xl border-brand-line h-12" data-testid="edit-price-input" />
             </div>
-            <div>
-              <Label>Stok</Label>
-              <Input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)}
-                className="mt-1 rounded-xl border-brand-line h-12" data-testid="edit-stock-input" />
-            </div>
+            {sellsBy === "stock" && (
+              <div>
+                <Label>Stok</Label>
+                <Input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)}
+                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="edit-stock-input" />
+              </div>
+            )}
+            {sellsBy === "hours" && (
+              <div>
+                <Label>Mode</Label>
+                <div className="mt-1 h-12 rounded-xl border border-brand-line bg-brand-off px-3 flex items-center text-sm text-brand-mute">
+                  🍜 Tergantung jam buka
+                </div>
+              </div>
+            )}
+            {sellsBy === "always" && (
+              <div>
+                <Label>Mode</Label>
+                <div className="mt-1 h-12 rounded-xl border border-brand-line bg-brand-off px-3 flex items-center text-sm text-brand-mute">
+                  ♾️ Selalu tersedia
+                </div>
+              </div>
+            )}
           </div>
+
+          {sellsBy === "hours" && (
+            <div data-testid="available-days-picker">
+              <Label>Hari Tersedia</Label>
+              <p className="text-xs text-brand-mute mt-0.5 mb-2">
+                Kosongkan = tersedia setiap hari. Pilih hari kalau menu rotasi (mis. catering harian).
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DAY_LABELS.map((d) => (
+                  <button key={d.idx} type="button"
+                    onClick={() => toggleDay(d.idx)}
+                    className={`text-sm font-semibold rounded-full px-4 py-2 border-2 transition ${
+                      availableDays.includes(d.idx)
+                        ? "bg-brand text-white border-brand"
+                        : "bg-white text-brand-ink border-brand-line hover:border-brand"
+                    }`}
+                    data-testid={`day-toggle-${d.idx}`}>
+                    {d.short}
+                  </button>
+                ))}
+                {availableDays.length > 0 && (
+                  <button type="button" onClick={() => setAvailableDays([])}
+                    className="text-xs text-brand-mute hover:text-red-500 underline self-center"
+                    data-testid="day-clear">
+                    Setiap hari
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           <div>
             <Label>Deskripsi</Label>
             <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)}

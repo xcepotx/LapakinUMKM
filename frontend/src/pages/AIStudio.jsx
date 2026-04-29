@@ -32,6 +32,7 @@ export default function AIStudio() {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [availableDays, setAvailableDays] = useState([]);
   const [description, setDescription] = useState("");
   const [igCaption, setIgCaption] = useState("");
   const [tiktokCaption, setTiktokCaption] = useState("");
@@ -131,6 +132,7 @@ export default function AIStudio() {
         name, price: parseInt(price, 10) || 0, stock: parseInt(stock, 10) || 0,
         description, image_data: finalImages[0], images: finalImages,
         ig_caption: igCaption, tiktok_caption: tiktokCaption, hashtags,
+        available_days: availableDays,
       });
       toast.success("Produk berhasil disimpan!");
       navigate("/dashboard/products");
@@ -282,12 +284,54 @@ export default function AIStudio() {
                 <Input id="price" type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)}
                   placeholder="25000" className="mt-1 rounded-xl border-brand-line h-12" data-testid="product-price-input" />
               </div>
-              <div>
-                <Label htmlFor="stock">Stok</Label>
-                <Input id="stock" type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)}
-                  placeholder="20" className="mt-1 rounded-xl border-brand-line h-12" data-testid="product-stock-input" />
-              </div>
+              {(shop?.sells_by || "stock") === "stock" ? (
+                <div>
+                  <Label htmlFor="stock">Stok</Label>
+                  <Input id="stock" type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)}
+                    placeholder="20" className="mt-1 rounded-xl border-brand-line h-12" data-testid="product-stock-input" />
+                </div>
+              ) : (shop?.sells_by === "hours") ? (
+                <div>
+                  <Label>Mode</Label>
+                  <div className="mt-1 h-12 rounded-xl border border-brand-line bg-brand-off px-3 flex items-center text-sm text-brand-mute">🍜 Jam buka</div>
+                </div>
+              ) : (
+                <div>
+                  <Label>Mode</Label>
+                  <div className="mt-1 h-12 rounded-xl border border-brand-line bg-brand-off px-3 flex items-center text-sm text-brand-mute">♾️ Selalu ada</div>
+                </div>
+              )}
             </div>
+
+            {(shop?.sells_by === "hours") && (
+              <div data-testid="ai-available-days-picker">
+                <Label>Hari Tersedia (opsional)</Label>
+                <p className="text-xs text-brand-mute mt-0.5 mb-2">
+                  Kosongkan = tersedia setiap hari. Pilih hari kalau menu rotasi (mis. catering Senin–Jumat).
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {["Sen","Sel","Rab","Kam","Jum","Sab","Min"].map((lbl, idx) => (
+                    <button key={idx} type="button"
+                      onClick={() => setAvailableDays((arr) => arr.includes(idx) ? arr.filter((x) => x !== idx) : [...arr, idx].sort((a,b)=>a-b))}
+                      className={`text-sm font-semibold rounded-full px-4 py-2 border-2 transition ${
+                        availableDays.includes(idx)
+                          ? "bg-brand text-white border-brand"
+                          : "bg-white text-brand-ink border-brand-line hover:border-brand"
+                      }`}
+                      data-testid={`ai-day-${idx}`}>
+                      {lbl}
+                    </button>
+                  ))}
+                  {availableDays.length > 0 && (
+                    <button type="button" onClick={() => setAvailableDays([])}
+                      className="text-xs text-brand-mute hover:text-red-500 underline self-center"
+                      data-testid="ai-day-clear">
+                      Setiap hari
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             <div>
               <Label htmlFor="hints">Catatan untuk AI (opsional)</Label>
               <Input id="hints" value={extraHints} onChange={(e) => setExtraHints(e.target.value)}

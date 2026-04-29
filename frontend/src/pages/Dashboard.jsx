@@ -4,8 +4,9 @@ import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import BroadcastBanner from "@/components/BroadcastBanner";
 import { Button } from "@/components/ui/button";
-import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy } from "lucide-react";
+import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy, Power, PowerOff } from "lucide-react";
 import { rupiah } from "@/lib/api";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -37,6 +38,20 @@ export default function Dashboard() {
   const storefrontUrl = `${window.location.origin}/toko/${shop?.slug}`;
   const ogImageUrl = `${window.location.origin}/api/og/shop/${shop?.slug}.png`;
 
+  const sellsByHours = (shop?.sells_by || "stock") === "hours";
+  const isOpen = shop?.is_open !== false;
+  const sellsByStock = (shop?.sells_by || "stock") === "stock";
+
+  const toggleOpen = async () => {
+    try {
+      const { data } = await api.post("/shops/me/toggle-open");
+      setShop((s) => ({ ...s, is_open: data.is_open }));
+      toast.success(data.is_open ? "Toko dibuka 🟢" : "Toko ditutup 🔴");
+    } catch (e) {
+      toast.error("Gagal ubah status. Coba lagi.");
+    }
+  };
+
   return (
     <DashboardLayout
       shop={shop}
@@ -53,21 +68,80 @@ export default function Dashboard() {
       }
     >
       <BroadcastBanner />
+
+      {/* SHOP OPEN/CLOSED TOGGLE — only when sells_by='hours' */}
+      {sellsByHours && (
+        <div
+          className={`mb-6 rounded-2xl p-5 border-2 flex items-center justify-between gap-4 flex-wrap shadow-card ${
+            isOpen
+              ? "bg-green-50 border-green-300"
+              : "bg-red-50 border-red-300"
+          }`}
+          data-testid="dashboard-open-banner">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-12 h-12 rounded-xl grid place-items-center ${isOpen ? "bg-green-600" : "bg-red-600"} text-white shrink-0 shadow-md`}>
+              {isOpen ? <Power className="w-6 h-6" /> : <PowerOff className="w-6 h-6" />}
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold tracking-[0.2em] uppercase opacity-70">Status Toko</div>
+              <div className={`font-heading font-extrabold text-2xl ${isOpen ? "text-green-800" : "text-red-800"}`}>
+                {isOpen ? "BUKA SEKARANG" : "TUTUP"}
+              </div>
+              <div className="text-xs text-brand-mute mt-0.5">
+                {isOpen ? "Pelanggan bisa pesan langsung. Klik Tutup kalau habis bahan / jam tutup." : "Pelanggan lihat banner 'lagi tutup'. Cart disabled."}
+              </div>
+            </div>
+          </div>
+          <Button
+            onClick={toggleOpen}
+            className={`${isOpen ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"} text-white rounded-xl px-6 h-12 font-bold btn-press`}
+            data-testid="dashboard-toggle-open">
+            {isOpen ? <><PowerOff className="w-4 h-4 mr-2" /> Tutup Toko</> : <><Power className="w-4 h-4 mr-2" /> Buka Toko</>}
+          </Button>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid sm:grid-cols-3 gap-4 mb-8">
         <StatCard label="Total Produk" value={products.length} icon={<Package className="w-5 h-5" />} tid="stat-products" />
-        <StatCard
-          label="Stok Total"
-          value={products.reduce((s, p) => s + (p.stock || 0), 0)}
-          icon={<Sparkles className="w-5 h-5" />}
-          tid="stat-stock"
-        />
-        <StatCard
-          label="Estimasi Nilai Stok"
-          value={rupiah(products.reduce((s, p) => s + (p.price || 0) * (p.stock || 0), 0))}
-          icon={<Sparkles className="w-5 h-5" />}
-          tid="stat-value"
-        />
+        {sellsByStock ? (
+          <>
+            <StatCard
+              label="Stok Total"
+              value={products.reduce((s, p) => s + (p.stock || 0), 0)}
+              icon={<Sparkles className="w-5 h-5" />}
+              tid="stat-stock"
+            />
+            <StatCard
+              label="Estimasi Nilai Stok"
+              value={rupiah(products.reduce((s, p) => s + (p.price || 0) * (p.stock || 0), 0))}
+              icon={<Sparkles className="w-5 h-5" />}
+              tid="stat-value"
+            />
+          </>
+        ) : sellsByHours ? (
+          <>
+            <StatCard
+              label="Menu Hari Ini"
+              value={products.filter((p) => !p.available_days?.length || p.available_days.includes((new Date().getDay() + 6) % 7)).length}
+              icon={<Sparkles className="w-5 h-5" />}
+              tid="stat-today"
+            />
+            <StatCard
+              label="Status"
+              value={isOpen ? "🟢 Buka" : "🔴 Tutup"}
+              icon={<Power className="w-5 h-5" />}
+              tid="stat-open"
+            />
+          </>
+        ) : (
+          <StatCard
+            label="Mode"
+            value="♾️ Selalu Ada"
+            icon={<Sparkles className="w-5 h-5" />}
+            tid="stat-mode"
+          />
+        )}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
