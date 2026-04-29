@@ -94,7 +94,10 @@ async def get_me(request: Request):
             "shop_id": user.get("shop_id"), "role": user.get("role", "user"),
             "tier": user.get("tier", "free"),
             "trial": bool(user.get("trial")),
-            "trial_expires_at": user.get("trial_expires_at")}
+            "trial_expires_at": user.get("trial_expires_at"),
+            "subscription_expires_at": user.get("subscription_expires_at"),
+            "subscription_plan_id": user.get("subscription_plan_id"),
+            "subscription_cycle": user.get("subscription_cycle")}
 
 
 @router.post("/auth/google/session")

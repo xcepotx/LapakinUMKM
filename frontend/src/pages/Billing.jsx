@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Zap, Rocket, Check, ExternalLink } from "lucide-react";
+import { Sparkles, Zap, Rocket, Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { openSnapCheckout, pollPaymentStatus } from "@/lib/midtransSnap";
 
 const TIER_ICON = { free: Sparkles, pro: Zap, business: Rocket };
 const TIER_COLOR = {
@@ -42,10 +44,41 @@ function UsageBar({ label, used, limit }) {
 export default function Billing() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState([]);
+  const [paying, setPaying] = useState(null);
+
+  const refresh = async () => {
+    const r = await api.get("/billing/me");
+    setData(r.data);
+    try {
+      const h = await api.get("/payment/history");
+      setHistory(h.data || []);
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
-    api.get("/billing/me").then((r) => setData(r.data)).finally(() => setLoading(false));
+    refresh().finally(() => setLoading(false));
   }, []);
+
+  const handleUpgrade = async (plan_id) => {
+    setPaying(plan_id);
+    try {
+      await openSnapCheckout(plan_id, {
+        onSuccess: async (_r, order_id) => {
+          toast.success("Pembayaran sukses! Mengaktifkan tier...");
+          await pollPaymentStatus(order_id, { maxAttempts: 15, interval: 2000 });
+          await refresh();
+        },
+        onPending: () => toast("Menunggu konfirmasi pembayaran..."),
+        onError:   () => toast.error("Pembayaran gagal."),
+        onClose:   () => refresh(),
+      });
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || err.message || "Gagal mulai pembayaran");
+    } finally {
+      setPaying(null);
+    }
+  };
 
   if (loading) return (
     <DashboardLayout>
@@ -138,16 +171,70 @@ export default function Billing() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-xl border border-yellow-300 bg-yellow-50 p-4 text-sm">
-          <div className="font-bold text-yellow-900">ℹ️ Pembayaran belum aktif</div>
-          <p className="text-yellow-900/80 mt-1">
-            Untuk upgrade tier saat ini, hubungi admin Lapakin via{" "}
-            <a href="https://wa.me/628123456789" className="font-semibold underline" target="_blank" rel="noopener noreferrer">
-              WhatsApp <ExternalLink className="w-3 h-3 inline" />
-            </a>.
-            Pembayaran otomatis (Midtrans/Stripe) akan tersedia di update berikutnya.
+        <div className="mt-8 bg-white rounded-2xl border border-brand-line p-6 shadow-card">
+          <h2 className="font-heading font-bold text-xl">Upgrade Tier</h2>
+          <p className="text-brand-mute text-sm mt-1">
+            Pilih paket yang pas buat tokomu. Bayar pakai QRIS, GoPay, OVO, DANA, ShopeePay, transfer bank, atau kartu kredit.
           </p>
+          <div className="grid sm:grid-cols-2 gap-3 mt-4">
+            {[
+              { plan_id: "pro_monthly",      label: "Pro — Bulanan",     price: 49000,   suffix: "/bulan", show: data.tier === "free" },
+              { plan_id: "pro_yearly",       label: "Pro — Tahunan 🎁",  price: 490000,  suffix: "/tahun (hemat 2 bln)", show: data.tier === "free" },
+              { plan_id: "business_monthly", label: "Bisnis — Bulanan",  price: 149000,  suffix: "/bulan", show: data.tier !== "business" },
+              { plan_id: "business_yearly",  label: "Bisnis — Tahunan 🎁", price: 1490000, suffix: "/tahun (hemat 2 bln)", show: data.tier !== "business" },
+            ].filter((p) => p.show).map((p) => (
+              <div key={p.plan_id} className="rounded-xl border border-brand-line bg-brand-off/40 p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-bold">{p.label}</div>
+                  <div className="text-sm text-brand-mute">Rp {p.price.toLocaleString("id-ID")}<span className="text-xs">{p.suffix}</span></div>
+                </div>
+                <Button
+                  onClick={() => handleUpgrade(p.plan_id)}
+                  disabled={paying === p.plan_id}
+                  className="bg-brand text-white font-bold rounded-xl h-11 px-5 shrink-0"
+                  data-testid={`upgrade-btn-${p.plan_id}`}>
+                  {paying === p.plan_id ? (
+                    <span className="inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Proses…</span>
+                  ) : "Upgrade"}
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="text-xs text-brand-mute mt-3">
+            Pembayaran diproses aman via <b>Midtrans</b>. Tier aktif otomatis segera setelah pembayaran terkonfirmasi.
+          </div>
         </div>
+
+        {history.length > 0 && (
+          <div className="mt-8 bg-white rounded-2xl border border-brand-line p-6 shadow-card" data-testid="payment-history">
+            <h2 className="font-heading font-bold text-xl mb-3">Riwayat Pembayaran</h2>
+            <div className="divide-y divide-brand-line text-sm">
+              {history.map((h) => {
+                const statusColor = h.status === "success" ? "text-green-700 bg-green-100"
+                  : h.status === "failed" ? "text-red-700 bg-red-100"
+                  : h.status === "refunded" ? "text-orange-700 bg-orange-100"
+                  : "text-yellow-800 bg-yellow-100";
+                return (
+                  <div key={h.order_id} className="py-3 flex items-center justify-between gap-3" data-testid={`payment-${h.order_id}`}>
+                    <div className="min-w-0">
+                      <div className="font-mono text-xs text-brand-mute truncate">{h.order_id}</div>
+                      <div className="font-semibold">
+                        {h.plan_id} · Rp {(h.amount || 0).toLocaleString("id-ID")}
+                      </div>
+                      <div className="text-xs text-brand-mute">
+                        {new Date(h.created_at).toLocaleString("id-ID")}
+                        {h.payment_type ? ` · ${h.payment_type}` : ""}
+                      </div>
+                    </div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase ${statusColor}`}>
+                      {h.status}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

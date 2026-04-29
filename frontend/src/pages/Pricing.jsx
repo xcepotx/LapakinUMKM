@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Check, X, Sparkles, Zap, Rocket, ArrowLeft } from "lucide-react";
+import { Check, X, Sparkles, Zap, Rocket, ArrowLeft, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { openSnapCheckout, pollPaymentStatus } from "@/lib/midtransSnap";
 
 const ICONS = { free: Sparkles, pro: Zap, business: Rocket };
 
@@ -30,11 +32,43 @@ export default function Pricing() {
   const [tiers, setTiers] = useState(null);
   const [loading, setLoading] = useState(true);
   const [annual, setAnnual] = useState(false);
+  const [me, setMe] = useState(null);
+  const [payingPlan, setPayingPlan] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     api.get("/billing/tiers").then((r) => setTiers(r.data.tiers)).finally(() => setLoading(false));
+    api.get("/auth/me").then((r) => setMe(r.data)).catch(() => setMe(null));
   }, []);
+
+  const handleUpgrade = async (tierKey) => {
+    if (tierKey === "free") {
+      navigate(me ? "/dashboard" : "/register");
+      return;
+    }
+    if (!me) {
+      navigate(`/login?next=/pricing`);
+      return;
+    }
+    const plan_id = `${tierKey}_${annual ? "yearly" : "monthly"}`;
+    setPayingPlan(plan_id);
+    try {
+      await openSnapCheckout(plan_id, {
+        onSuccess: async (_r, order_id) => {
+          toast.success("Pembayaran sukses, mengaktifkan tier...");
+          await pollPaymentStatus(order_id, { maxAttempts: 15, interval: 2000 });
+          setTimeout(() => navigate("/dashboard/billing"), 500);
+        },
+        onPending: () => toast("Menunggu pembayaran. Cek email/app pembayaranmu."),
+        onError:   () => toast.error("Pembayaran gagal. Coba lagi."),
+        onClose:   () => toast("Popup ditutup. Transaksi pending, cek di Akun & Tier."),
+      });
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || err.message || "Gagal mulai pembayaran");
+    } finally {
+      setPayingPlan(null);
+    }
+  };
 
   if (loading) return <div className="min-h-screen grid place-items-center text-brand-mute">Memuat tier…</div>;
 
@@ -124,9 +158,12 @@ export default function Pricing() {
                 </div>
                 <Button
                   className={`w-full rounded-xl mt-5 h-12 font-bold ${isPro ? "bg-brand text-white" : key === "free" ? "bg-brand-off border border-brand-line text-brand-ink" : "bg-brand-ink text-white"}`}
-                  onClick={() => navigate(key === "free" ? "/register" : "/dashboard/billing")}
+                  onClick={() => handleUpgrade(key)}
+                  disabled={payingPlan === `${key}_${annual ? "yearly" : "monthly"}`}
                   data-testid={`select-tier-${key}`}>
-                  {key === "free" ? "Mulai Gratis" : "Upgrade ke " + t.label}
+                  {payingPlan === `${key}_${annual ? "yearly" : "monthly"}` ? (
+                    <span className="inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Mempersiapkan…</span>
+                  ) : key === "free" ? "Mulai Gratis" : "Upgrade ke " + t.label}
                 </Button>
 
                 {/* Quick feature bullets */}

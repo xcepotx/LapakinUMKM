@@ -107,11 +107,25 @@ async def require_user(request: Request) -> dict:
     user = await get_user_from_token(request)
     if not user:
         raise HTTPException(status_code=401, detail="Tidak terautentikasi")
+    now = datetime.now(timezone.utc)
+    # Auto-downgrade expired paid subscription: tier != free + subscription_expires_at < now → free
+    exp_sub = user.get("subscription_expires_at")
+    if exp_sub and user.get("tier") in ("pro", "business"):
+        try:
+            exp_dt = datetime.fromisoformat(exp_sub.replace("Z", "+00:00"))
+            if exp_dt < now:
+                await db.users.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {"tier": "free",
+                              "subscription_expired_at": now.isoformat()}}
+                )
+                user["tier"] = "free"
+        except Exception:
+            pass
     # Auto-downgrade expired trial: pro + trial=true + trial_expires_at < now → free
     if user.get("trial") and user.get("trial_expires_at"):
         try:
             exp = datetime.fromisoformat(user["trial_expires_at"].replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
             if exp < now:
                 await db.users.update_one(
                     {"user_id": user["user_id"]},

@@ -7,6 +7,7 @@ from .og import router as og_router
 from .whatsapp import router as whatsapp_router
 from .public import router as public_router
 from .admin import router as admin_router
+from .payment import router as payment_router
 
 ALL_ROUTERS = [
     auth_router,
@@ -17,4 +18,5 @@ ALL_ROUTERS = [
     whatsapp_router,
     public_router,
     admin_router,
+    payment_router,
 ]

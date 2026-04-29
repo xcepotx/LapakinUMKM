@@ -28,6 +28,29 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 15 (✅ 2026-04-29 — Midtrans Snap Payment Gateway)
+- **New modules**:
+  - `payment_service.py` — Midtrans Snap wrapper using `midtransclient` SDK, PLANS catalog (pro_monthly/pro_yearly/business_monthly/business_yearly matching tiers.py prices), `verify_webhook_signature` (SHA512), no-op 503 when keys empty.
+  - `routes/payment.py` (5 endpoints): `GET /payment/config` (public — plans + snap_url + client_key for frontend loader), `POST /payment/create-transaction` (auth — returns snap_token), `POST /payment/webhook` (public — SHA512 signature verification + idempotent tier activation), `GET /payment/status/{order_id}` (auth), `GET /payment/history` (auth — user's paid orders).
+  - Frontend `lib/midtransSnap.js` — dynamic Snap.js loader + `openSnapCheckout(planId, handlers)` + `pollPaymentStatus(orderId)`.
+- **Webhook security**:
+  - SHA512 of `order_id + status_code + gross_amount + server_key` compared with `hmac.compare_digest` against `signature_key` field.
+  - Idempotency: activate tier only when `existing.status != "success"`.
+  - Midtrans retries tolerated — webhook always returns 200 (logs "ignored" reason).
+- **Tier activation** (`_activate_subscription`):
+  - Upgrade `tier` (pro/business), cancel `trial`, set `subscription_plan_id`, `subscription_cycle`, `subscription_started_at`, `subscription_expires_at` (+ duration_days from plan), `subscription_last_order_id`.
+  - **Stacking**: if user renews same tier before expiry, new period starts from current expiry (not from now) — fair for customers who pay early.
+- **Auto-downgrade**: `require_user` middleware now checks both trial expiry AND paid subscription expiry — expires back to `free` when `subscription_expires_at < now`.
+- **Frontend updates**:
+  - `Pricing.jsx`: "Upgrade ke Pro/Bisnis" button now opens Snap popup directly (with auth gate + monthly/yearly toggle). Loading spinner per-plan.
+  - `Billing.jsx`: Replaced yellow "pembayaran belum aktif" banner with **4 upgrade cards** (pro monthly/yearly, business monthly/yearly, contextually filtered based on current tier). Added **Payment History** section showing order_id, amount, status badge (success/pending/failed/refunded), date, payment_type.
+  - `/api/auth/me` + `/api/billing/me` now expose `subscription_expires_at`, `subscription_plan_id`, `subscription_cycle`.
+- **`.env` vars added**: `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_IS_PRODUCTION`. All empty by default → backend runs in "pembayaran belum aktif" mode, returns 503 on create-transaction attempt.
+- **MongoDB indexes**: `payments.order_id` unique, `payments.(user_id, created_at desc)`, `payments.status`.
+- **Docs**: `/app/docs/MIDTRANS_SETUP.md` — full 4-step signup + sandbox keys + webhook URL config + test credentials (sandbox cards, e-wallet, VA simulator) + Midtrans fee reference for Indonesia.
+- **Tests**: 9 new in `tests/test_iter15_midtrans.py` (config plans, 503 when unconfigured, 401 no auth, 403 invalid signature, SHA512 algorithm correctness, PLANS match tiers.py, `_activate_subscription` sets fields correctly). Regression: **174/174 backend pytest PASS** (was 165 → +9).
+- **User status**: Waiting for user to (1) register at dashboard.midtrans.com, (2) copy sandbox Server + Client key, (3) set Payment Notification URL, (4) paste keys in chat. Until then, app runs with "Pembayaran belum aktif" toast on upgrade attempts.
+
 ### Iteration 14 (✅ 2026-04-29 — Resend Email Service)
 - **New modules**: `email_service.py` (async wrapper over Resend SDK with no-op logging fallback) + `email_templates.py` (4 branded HTML+text templates in Bahasa Indonesia: password_reset, welcome, trial_expiring, product_created_via_wa).
 - **Wired into flows**:
@@ -237,9 +260,9 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ### P2 — Phase 3
 - [ ] Marketplace mode (`gou mkm.id`-style hub)
-- [ ] Stripe / Midtrans / QRIS payment integration
+- [x] Midtrans payment integration — iter15 done. User needs Midtrans keys + webhook URL config.
 - [ ] Order management & analytics
-- [ ] Subscription billing (Free / Premium tiers)
+- [x] Subscription billing (Free / Pro / Bisnis) — iter11-15 done.
 - [ ] AI Reels generator (Sora 2)
 
 ## Known Code-Review Notes (non-blocking)

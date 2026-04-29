@@ -68,6 +68,9 @@ async def on_startup():
     await db.analytics_events.create_index([("shop_id", 1), ("timestamp", -1)])
     await db.analytics_events.create_index([("shop_id", 1), ("event", 1)])
     await db.shops.create_index("custom_domain", sparse=True, unique=True)
+    await db.payments.create_index("order_id", unique=True)
+    await db.payments.create_index([("user_id", 1), ("created_at", -1)])
+    await db.payments.create_index("status")
 
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@lapakin.id").lower()
