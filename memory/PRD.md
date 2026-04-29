@@ -28,6 +28,26 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 7 (✅ 2026-04-29 — Shop Sales Modes: Stok / Jam Buka / Selalu Ada)
+- **3 mode jualan** per toko — `shop.sells_by`: `"stock"` (default), `"hours"` (F&B/kuliner — buka/tutup toggle, no stock), `"always"` (jasa/digital — always available).
+- **Smart default**: shop with `business_type ∈ {kuliner, kopi}` auto-defaults to `sells_by="hours"` + `is_open=true` on first creation. Other types stay on stock.
+- **`shop.is_open`** boolean (default true) — only relevant when `sells_by="hours"`.
+- **`POST /api/shops/me/toggle-open`** — quick toggle endpoint, returns `{is_open}`.
+- **Per-product `available_days`** (list of ints 0..6, Python weekday convention, `[]`=setiap hari) — only enforced when shop is in `hours` mode. Use case: catering/warteg dengan menu rotasi harian.
+- **Dashboard**: when `sells_by="hours"`, prominent green/red banner with "STATUS TOKO: BUKA SEKARANG/TUTUP" + toggle button. Stats row adapts (Stok Total → Menu Hari Ini + Status).
+- **ShopSettings**: 3 mode picker cards (Stok / Jam Buka / Selalu Ada) with descriptions. Inline BUKA/TUTUP toggle when hours mode selected.
+- **AIStudio + EditProductDialog**: adapt fields per mode — Stok input only for stock mode; 7-day picker (Sen…Min) only for hours mode; mode label otherwise.
+- **Storefront** (mode-aware):
+  - Header: animated dot + status badge — green "Buka Sekarang" / red "Lagi Tutup" / generic "Selalu Tersedia"
+  - Closed banner "Maaf, lagi tutup 🙏" with shop hours + WA pre-order suggestion
+  - Section title flips: "Produk" ↔ "Menu Hari Ini" + today's day badge (RAB/SAB/etc.)
+  - "Tampilkan menu hari ini saja" filter toggle (auto-shown when products have available_days)
+  - Per-product day badge `📅 Sen, Rab, Jum` for products with day limits
+  - Faded product card + "Tidak tersedia hari ini" disabled CTA when filter OFF
+  - Empty state: "Tidak ada menu di hari X" with "Lihat semua menu →" link
+  - Cart drawer: red warning banner + checkout button text "Kirim Pre-Order via WhatsApp" when shop closed; WA message includes "(Toko sedang tutup — saya menanyakan ketersediaan.)"
+- Tested: **106/106 backend pytest passing** (98 prior + 8 new in `test_shop_modes.py`). Full E2E frontend verified via Playwright (login → dashboard toggle → settings mode picker → AI Studio day picker → storefront badge/filter/closed-banner). Zero JS pageerrors.
+
 ### Iteration 6 (✅ 2026-04-29 — Dynamic OpenGraph Share Preview)
 - **Backend `/api/og/shop/{slug}.png`** — returns 1200×630 PNG ready for social share. Uses shop's `cover_image` (decoded from base64, cropped+resized via Pillow LANCZOS) when available; otherwise auto-generates a polished fallback with brand-color background, white initial avatar, shop name + tagline + Lapakin footer using DejaVu fonts. Always 200 (returns generic placeholder for non-existent/suspended shops so cached crawlers never see 404).
 - **Backend `/api/og/shop/{slug}`** — returns HTML page with full OpenGraph + Twitter Card meta tags (`og:type`, `og:title`, `og:description`, `og:image` absolute https URL, `og:image:width=1200`, `og:image:height=630`, `og:url`, `og:locale=id_ID`, `twitter:card=summary_large_image`, etc.) plus `<meta http-equiv="refresh">` + JS `window.location.replace()` for human visitors. Honours `X-Forwarded-Proto` to force `https://` URLs in production.
