@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import api, { rupiah } from "@/lib/api";
-import { Sparkles, MessageCircle, Package } from "lucide-react";
+import { Sparkles, MessageCircle, Package, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function Storefront() {
@@ -9,6 +9,7 @@ export default function Storefront() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [viewer, setViewer] = useState(null); // {product, idx}
 
   useEffect(() => {
     (async () => {
@@ -39,6 +40,11 @@ export default function Storefront() {
     if (!num) return null;
     const text = encodeURIComponent(`Halo ${shop.name}, saya tertarik dengan ${productName}. Apakah masih ada?`);
     return `https://wa.me/${num}?text=${text}`;
+  };
+
+  const productImages = (p) => {
+    const imgs = Array.isArray(p.images) && p.images.length ? p.images : (p.image_data ? [p.image_data] : []);
+    return imgs.map((i) => (i?.startsWith("data:") ? i : `data:image/png;base64,${i}`));
   };
 
   return (
@@ -80,43 +86,48 @@ export default function Storefront() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
-            {products.map((p) => (
-              <article
-                key={p.product_id}
-                className="bg-white rounded-2xl overflow-hidden border border-brand-line shadow-card card-hover hover:shadow-cardHover"
-                data-testid={`storefront-product-${p.product_id}`}
-              >
-                <div className="aspect-square bg-brand-off">
-                  {p.image_data ? (
-                    <img
-                      src={p.image_data.startsWith("data:") ? p.image_data : `data:image/png;base64,${p.image_data}`}
-                      alt={p.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full grid place-items-center text-brand-mute"><Package className="w-7 h-7" /></div>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h3 className="font-semibold leading-snug line-clamp-2">{p.name}</h3>
-                  <div className="font-heading font-extrabold text-lg mt-1" style={{ color: brand }}>{rupiah(p.price)}</div>
-                  {p.description && <p className="text-xs text-brand-mute mt-2 line-clamp-3">{p.description}</p>}
-                  {waLink(p.name) ? (
-                    <a href={waLink(p.name)} target="_blank" rel="noopener noreferrer">
-                      <Button
-                        className="mt-3 w-full rounded-xl text-white font-semibold btn-press"
-                        style={{ background: brand }}
-                        data-testid={`buy-${p.product_id}`}
-                      >
-                        <MessageCircle className="w-4 h-4 mr-2" /> Pesan WhatsApp
-                      </Button>
-                    </a>
-                  ) : (
-                    <div className="mt-3 text-xs text-brand-mute text-center py-2 border border-dashed border-brand-line rounded-xl">
-                      Hubungi penjual
-                    </div>
-                  )}
-                </div>
-              </article>
-            ))}
+            {products.map((p) => {
+              const imgs = productImages(p);
+              return (
+                <article
+                  key={p.product_id}
+                  className="bg-white rounded-2xl overflow-hidden border border-brand-line shadow-card card-hover hover:shadow-cardHover"
+                  data-testid={`storefront-product-${p.product_id}`}
+                >
+                  <button onClick={() => imgs.length && setViewer({ product: p, idx: 0, imgs })}
+                    className="block w-full aspect-square bg-brand-off relative">
+                    {imgs.length ? (
+                      <img src={imgs[0]} alt={p.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full grid place-items-center text-brand-mute"><Package className="w-7 h-7" /></div>
+                    )}
+                    {imgs.length > 1 && (
+                      <span className="absolute top-2 right-2 bg-black/65 text-white text-[11px] font-bold rounded-full px-2 py-0.5">+{imgs.length - 1}</span>
+                    )}
+                  </button>
+                  <div className="p-4">
+                    <h3 className="font-semibold leading-snug line-clamp-2">{p.name}</h3>
+                    <div className="font-heading font-extrabold text-lg mt-1" style={{ color: brand }}>{rupiah(p.price)}</div>
+                    {p.description && <p className="text-xs text-brand-mute mt-2 line-clamp-3">{p.description}</p>}
+                    {waLink(p.name) ? (
+                      <a href={waLink(p.name)} target="_blank" rel="noopener noreferrer">
+                        <Button
+                          className="mt-3 w-full rounded-xl text-white font-semibold btn-press"
+                          style={{ background: brand }}
+                          data-testid={`buy-${p.product_id}`}
+                        >
+                          <MessageCircle className="w-4 h-4 mr-2" /> Pesan WhatsApp
+                        </Button>
+                      </a>
+                    ) : (
+                      <div className="mt-3 text-xs text-brand-mute text-center py-2 border border-dashed border-brand-line rounded-xl">
+                        Hubungi penjual
+                      </div>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </main>
@@ -127,6 +138,34 @@ export default function Storefront() {
           <Sparkles className="w-4 h-4" /> Powered by <span className="font-heading font-bold text-brand-ink">Lapakin</span>
         </Link>
       </footer>
+
+      {/* Lightbox */}
+      {viewer && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm grid place-items-center p-4" onClick={() => setViewer(null)}>
+          <button className="absolute top-4 right-4 bg-white/10 text-white rounded-full p-2 hover:bg-white/20"
+            onClick={() => setViewer(null)} aria-label="close">
+            <X className="w-5 h-5" />
+          </button>
+          <div className="max-w-3xl w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="relative aspect-square bg-brand-off rounded-2xl overflow-hidden">
+              <img src={viewer.imgs[viewer.idx]} alt="" className="w-full h-full object-contain" />
+              {viewer.imgs.length > 1 && (
+                <>
+                  <button className="absolute left-3 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2"
+                    onClick={() => setViewer((v) => ({ ...v, idx: (v.idx - 1 + v.imgs.length) % v.imgs.length }))}>
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button className="absolute right-3 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2"
+                    onClick={() => setViewer((v) => ({ ...v, idx: (v.idx + 1) % v.imgs.length }))}>
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="text-white text-center mt-3 font-semibold">{viewer.product.name} <span className="text-white/60 text-sm">· {viewer.idx + 1}/{viewer.imgs.length}</span></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

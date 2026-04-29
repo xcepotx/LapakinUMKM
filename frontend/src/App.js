@@ -6,12 +6,15 @@ import { Toaster } from "@/components/ui/sonner";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import AuthCallback from "@/pages/AuthCallback";
 import Onboarding from "@/pages/Onboarding";
 import Dashboard from "@/pages/Dashboard";
 import AIStudio from "@/pages/AIStudio";
 import Products from "@/pages/Products";
 import ShopSettings from "@/pages/ShopSettings";
+import WhatsAppConnect from "@/pages/WhatsAppConnect";
 import Storefront from "@/pages/Storefront";
 
 function ProtectedRoute({ children }) {
@@ -38,10 +41,13 @@ function AppRouter() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
       <Route path="/dashboard/ai-studio" element={<ProtectedRoute><AIStudio /></ProtectedRoute>} />
       <Route path="/dashboard/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
+      <Route path="/dashboard/whatsapp" element={<ProtectedRoute><WhatsAppConnect /></ProtectedRoute>} />
       <Route path="/dashboard/settings" element={<ProtectedRoute><ShopSettings /></ProtectedRoute>} />
       <Route path="/toko/:slug" element={<Storefront />} />
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,0 +1,178 @@
+import { useEffect, useState } from "react";
+import api, { formatApiError } from "@/lib/api";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Save, Plus, X, ImagePlus } from "lucide-react";
+import { toast } from "sonner";
+
+const MAX_IMAGES = 5;
+
+export default function EditProductDialog({ product, open, onOpenChange, onSaved }) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [stock, setStock] = useState("");
+  const [description, setDescription] = useState("");
+  const [igCaption, setIgCaption] = useState("");
+  const [tiktokCaption, setTiktokCaption] = useState("");
+  const [hashtags, setHashtags] = useState([]);
+  const [hashtagsInput, setHashtagsInput] = useState("");
+  const [images, setImages] = useState([]); // data URLs
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!product) return;
+    setName(product.name || "");
+    setPrice(String(product.price ?? ""));
+    setStock(String(product.stock ?? "0"));
+    setDescription(product.description || "");
+    setIgCaption(product.ig_caption || "");
+    setTiktokCaption(product.tiktok_caption || "");
+    setHashtags(Array.isArray(product.hashtags) ? product.hashtags : []);
+    setHashtagsInput((Array.isArray(product.hashtags) ? product.hashtags : []).join(" "));
+    const imgs = Array.isArray(product.images) && product.images.length > 0
+      ? product.images
+      : (product.image_data ? [product.image_data] : []);
+    setImages(imgs.map((i) => (i?.startsWith("data:") ? i : `data:image/png;base64,${i}`)));
+  }, [product]);
+
+  const onPickFile = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const remain = MAX_IMAGES - images.length;
+    if (remain <= 0) { toast.error(`Maksimal ${MAX_IMAGES} foto per produk`); return; }
+    const take = files.slice(0, remain);
+    Promise.all(take.map((f) => new Promise((res) => {
+      if (f.size > 8 * 1024 * 1024) { toast.error(`${f.name} > 8MB, dilewati`); res(null); return; }
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.readAsDataURL(f);
+    }))).then((arr) => {
+      setImages((prev) => [...prev, ...arr.filter(Boolean)]);
+    });
+    e.target.value = "";
+  };
+
+  const removeImage = (idx) => setImages((arr) => arr.filter((_, i) => i !== idx));
+  const moveFirst = (idx) => setImages((arr) => {
+    const next = [...arr]; const [it] = next.splice(idx, 1); next.unshift(it); return next;
+  });
+
+  const save = async () => {
+    if (!name) { toast.error("Nama produk wajib diisi"); return; }
+    setSaving(true);
+    try {
+      const tags = hashtagsInput
+        .split(/[\s,]+/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((t) => (t.startsWith("#") ? t : `#${t}`));
+      const payload = {
+        name, price: parseInt(price, 10) || 0, stock: parseInt(stock, 10) || 0,
+        description, image_data: images[0] || "", images,
+        ig_caption: igCaption, tiktok_caption: tiktokCaption, hashtags: tags,
+      };
+      const { data } = await api.put(`/products/${product.product_id}`, payload);
+      toast.success("Produk diperbarui");
+      onSaved?.(data);
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Gagal simpan");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl" data-testid="edit-product-dialog">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-xl">Edit Produk</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-5 mt-2">
+          {/* Images */}
+          <div>
+            <Label>Foto Produk (max {MAX_IMAGES})</Label>
+            <div className="mt-2 grid grid-cols-3 sm:grid-cols-5 gap-3">
+              {images.map((img, i) => (
+                <div key={i} className="relative group aspect-square rounded-xl overflow-hidden border border-brand-line"
+                  data-testid={`edit-img-${i}`}>
+                  <img src={img} alt="" className="w-full h-full object-cover" />
+                  {i === 0 && (
+                    <span className="absolute top-1 left-1 text-[10px] font-bold tracking-wider uppercase bg-brand text-white rounded-full px-2 py-0.5">Utama</span>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    {i !== 0 && (
+                      <button onClick={() => moveFirst(i)} type="button"
+                        className="text-xs bg-white/90 rounded px-2 py-1 font-semibold" data-testid={`set-primary-${i}`}>
+                        Jadikan Utama
+                      </button>
+                    )}
+                    <button onClick={() => removeImage(i)} type="button"
+                      className="text-white bg-red-600 rounded p-1.5" data-testid={`remove-img-${i}`}>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {images.length < MAX_IMAGES && (
+                <label className="aspect-square rounded-xl border-2 border-dashed border-brand-line bg-brand-off/40 cursor-pointer flex flex-col items-center justify-center text-brand-mute hover:border-brand hover:text-brand">
+                  <ImagePlus className="w-6 h-6" />
+                  <span className="text-xs mt-1">Tambah</span>
+                  <input type="file" multiple accept="image/*" className="hidden" onChange={onPickFile} data-testid="edit-add-image-input" />
+                </label>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Label>Nama Produk</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)}
+              className="mt-1 rounded-xl border-brand-line h-12" data-testid="edit-name-input" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Harga (Rp)</Label>
+              <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)}
+                className="mt-1 rounded-xl border-brand-line h-12" data-testid="edit-price-input" />
+            </div>
+            <div>
+              <Label>Stok</Label>
+              <Input type="number" min={0} value={stock} onChange={(e) => setStock(e.target.value)}
+                className="mt-1 rounded-xl border-brand-line h-12" data-testid="edit-stock-input" />
+            </div>
+          </div>
+          <div>
+            <Label>Deskripsi</Label>
+            <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)}
+              className="mt-1 rounded-xl border-brand-line" data-testid="edit-description-input" />
+          </div>
+          <div>
+            <Label>Caption Instagram</Label>
+            <Textarea rows={2} value={igCaption} onChange={(e) => setIgCaption(e.target.value)}
+              className="mt-1 rounded-xl border-brand-line" data-testid="edit-ig-input" />
+          </div>
+          <div>
+            <Label>Caption TikTok</Label>
+            <Textarea rows={2} value={tiktokCaption} onChange={(e) => setTiktokCaption(e.target.value)}
+              className="mt-1 rounded-xl border-brand-line" data-testid="edit-tiktok-input" />
+          </div>
+          <div>
+            <Label>Hashtag (pisah dengan spasi)</Label>
+            <Input value={hashtagsInput} onChange={(e) => setHashtagsInput(e.target.value)}
+              placeholder="#kopi #umkm #lokal" className="mt-1 rounded-xl border-brand-line h-12 font-mono text-sm"
+              data-testid="edit-hashtags-input" />
+          </div>
+        </div>
+        <DialogFooter className="mt-2">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="edit-cancel-btn">Batal</Button>
+          <Button onClick={save} disabled={saving}
+            className="bg-brand hover:bg-brand-hover text-white rounded-xl font-semibold btn-press"
+            data-testid="edit-save-btn">
+            <Save className="w-4 h-4 mr-2" /> {saving ? "Menyimpan…" : "Simpan"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

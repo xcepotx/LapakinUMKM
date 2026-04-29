@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api, { formatApiError, rupiah } from "@/lib/api";
+import api, { formatApiError } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Upload, Wand2, ImageIcon, Copy, Check, Save, RefreshCw } from "lucide-react";
+import { Upload, Wand2, ImageIcon, Copy, Check, Save, RefreshCw, X, Download, Instagram, Music2 } from "lucide-react";
 import { toast } from "sonner";
 
 const STYLES = [
@@ -14,12 +14,18 @@ const STYLES = [
   { id: "lifestyle", label: "Lifestyle Hangat" },
   { id: "minimal", label: "Minimal Putih" },
 ];
+const MAX_IMAGES = 5;
 
 export default function AIStudio() {
   const navigate = useNavigate();
   const [shop, setShop] = useState(null);
-  const [origImage, setOrigImage] = useState(null);    // data url
-  const [enhanced, setEnhanced] = useState(null);      // raw base64 (no prefix)
+
+  // Multi-image state
+  // origImages: array of data URLs (originals)
+  // enhancedImages: parallel array — null where not enhanced yet, otherwise enhanced data URL
+  const [origImages, setOrigImages] = useState([]);
+  const [enhancedImages, setEnhancedImages] = useState([]);
+  const [activeIdx, setActiveIdx] = useState(0);
   const [enhancing, setEnhancing] = useState(false);
   const [style, setStyle] = useState("clean");
 
@@ -44,24 +50,45 @@ export default function AIStudio() {
   }, [navigate]);
 
   const onPickFile = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 8 * 1024 * 1024) { toast.error("Ukuran foto maksimal 8MB"); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setOrigImage(reader.result);
-      setEnhanced(null);
-    };
-    reader.readAsDataURL(f);
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const remain = MAX_IMAGES - origImages.length;
+    if (remain <= 0) { toast.error(`Maksimal ${MAX_IMAGES} foto per produk`); return; }
+    const take = files.slice(0, remain);
+    Promise.all(take.map((f) => new Promise((res) => {
+      if (f.size > 8 * 1024 * 1024) { toast.error(`${f.name} > 8MB, dilewati`); res(null); return; }
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.readAsDataURL(f);
+    }))).then((arr) => {
+      const valid = arr.filter(Boolean);
+      setOrigImages((prev) => {
+        const next = [...prev, ...valid];
+        setActiveIdx(prev.length);
+        return next;
+      });
+      setEnhancedImages((prev) => [...prev, ...valid.map(() => null)]);
+    });
+    e.target.value = "";
+  };
+
+  const removeAt = (idx) => {
+    setOrigImages((arr) => arr.filter((_, i) => i !== idx));
+    setEnhancedImages((arr) => arr.filter((_, i) => i !== idx));
+    setActiveIdx((i) => Math.max(0, Math.min(i, origImages.length - 2)));
   };
 
   const enhance = async () => {
-    if (!origImage) { toast.error("Upload foto dulu"); return; }
+    if (origImages.length === 0) { toast.error("Upload foto dulu"); return; }
+    const idx = activeIdx;
+    const src = origImages[idx];
+    if (!src) return;
     setEnhancing(true);
     try {
-      const raw = origImage.startsWith("data:") ? origImage.split(",", 2)[1] : origImage;
+      const raw = src.startsWith("data:") ? src.split(",", 2)[1] : src;
       const { data } = await api.post("/ai/enhance-image", { image_base64: raw, style });
-      setEnhanced(data.image_base64);
+      const url = `data:${data.mime_type || "image/png"};base64,${data.image_base64}`;
+      setEnhancedImages((arr) => arr.map((v, i) => i === idx ? url : v));
       toast.success("Foto berhasil di-enhance!");
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || "Gagal enhance gambar");
@@ -92,16 +119,18 @@ export default function AIStudio() {
     }
   };
 
+  // Final images: enhanced if exists, else original (in order)
+  const finalImages = origImages.map((o, i) => enhancedImages[i] || o);
+
   const saveProduct = async () => {
     if (!name || !price) { toast.error("Nama & harga wajib diisi"); return; }
+    if (finalImages.length === 0) { toast.error("Upload minimal 1 foto"); return; }
     setSaving(true);
     try {
-      const finalImage = enhanced
-        ? `data:image/png;base64,${enhanced}`
-        : origImage || "";
       await api.post("/products", {
         name, price: parseInt(price, 10) || 0, stock: parseInt(stock, 10) || 0,
-        description, image_data: finalImage, ig_caption: igCaption, tiktok_caption: tiktokCaption, hashtags,
+        description, image_data: finalImages[0], images: finalImages,
+        ig_caption: igCaption, tiktok_caption: tiktokCaption, hashtags,
       });
       toast.success("Produk berhasil disimpan!");
       navigate("/dashboard/products");
@@ -112,37 +141,64 @@ export default function AIStudio() {
     }
   };
 
+  // ===== Share Pack (Instagram / TikTok simple-mode) =====
+  const downloadAll = async () => {
+    if (finalImages.length === 0) { toast.error("Belum ada foto"); return; }
+    finalImages.forEach((dataUrl, i) => {
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `${(name || "produk").replace(/\s+/g, "_").toLowerCase()}_${i + 1}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+    toast.success(`${finalImages.length} foto diunduh`);
+  };
+
+  const copyForIG = () => {
+    if (!igCaption && hashtags.length === 0) { toast.error("Belum ada caption Instagram"); return; }
+    const text = [igCaption, "", hashtags.join(" ")].filter(Boolean).join("\n");
+    navigator.clipboard.writeText(text);
+    toast.success("Caption + hashtag IG tersalin! Tinggal paste di Instagram.");
+  };
+
+  const copyForTikTok = () => {
+    if (!tiktokCaption && hashtags.length === 0) { toast.error("Belum ada caption TikTok"); return; }
+    const text = [tiktokCaption, hashtags.slice(0, 5).join(" ")].filter(Boolean).join(" ");
+    navigator.clipboard.writeText(text);
+    toast.success("Caption TikTok tersalin!");
+  };
+
+  const sharePack = async () => {
+    await downloadAll();
+    setTimeout(() => copyForIG(), 600);
+    toast.message("Share Pack siap!", { description: "Foto diunduh, caption IG di clipboard. Buka aplikasi IG, paste caption, tempel foto." });
+  };
+
+  const showImage = enhancedImages[activeIdx] || origImages[activeIdx] || null;
+
   return (
-    <DashboardLayout
-      shop={shop}
-      title="AI Studio"
-      subtitle="Upload foto, enhance, dan biarkan AI bikin deskripsi & caption."
-    >
+    <DashboardLayout shop={shop} title="AI Studio" subtitle="Upload foto, enhance, biarkan AI bikin deskripsi & caption.">
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Image side */}
         <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card">
           <div className="flex items-center justify-between">
             <h2 className="font-heading font-bold text-lg">1. Foto Produk</h2>
-            <span className="text-xs text-brand-mute">JPG/PNG, max 8MB</span>
+            <span className="text-xs text-brand-mute">JPG/PNG, max 8MB · sampai {MAX_IMAGES} foto</span>
           </div>
 
+          {/* Big preview of active image */}
           <div className="mt-5 grid grid-cols-2 gap-3">
-            <ImageBox
-              label="Asli (dari HP)"
-              src={origImage}
+            <ImageBox label="Asli" src={origImages[activeIdx] || null}
               empty={
                 <label className="cursor-pointer flex flex-col items-center justify-center text-brand-mute h-full">
                   <Upload className="w-7 h-7 mb-2" />
                   <span className="text-sm font-semibold">Upload foto</span>
                   <span className="text-xs">tap di sini</span>
-                  <input type="file" accept="image/*" className="hidden" onChange={onPickFile} data-testid="file-input" />
+                  <input type="file" multiple accept="image/*" className="hidden" onChange={onPickFile} data-testid="file-input" />
                 </label>
               }
               tid="image-original"
             />
-            <ImageBox
-              label="AI Enhanced"
-              src={enhanced ? `data:image/png;base64,${enhanced}` : null}
+            <ImageBox label="AI Enhanced" src={enhancedImages[activeIdx] || null}
               empty={
                 <div className="text-center text-brand-mute text-sm">
                   <ImageIcon className="w-7 h-7 mx-auto mb-2 opacity-60" />
@@ -153,8 +209,36 @@ export default function AIStudio() {
             />
           </div>
 
+          {/* Thumbnails */}
+          {origImages.length > 0 && (
+            <div className="mt-4">
+              <Label className="mb-2 block">Galeri ({origImages.length}/{MAX_IMAGES})</Label>
+              <div className="flex gap-2 flex-wrap">
+                {origImages.map((src, i) => (
+                  <button key={i} type="button" onClick={() => setActiveIdx(i)}
+                    className={`relative w-16 h-16 rounded-lg overflow-hidden border-2 ${activeIdx === i ? "border-brand" : "border-brand-line"} group`}
+                    data-testid={`thumb-${i}`}>
+                    <img src={enhancedImages[i] || src} alt={`thumb-${i}`} className="w-full h-full object-cover" />
+                    {i === 0 && <span className="absolute bottom-0 inset-x-0 bg-brand/85 text-white text-[9px] font-bold tracking-wider uppercase text-center">utama</span>}
+                    {enhancedImages[i] && <span className="absolute top-0.5 right-0.5 bg-green-600 text-white text-[8px] font-bold rounded-full w-3 h-3 grid place-items-center">✓</span>}
+                    <span onClick={(e) => { e.stopPropagation(); removeAt(i); }}
+                      className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-4 h-4 grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <X className="w-2.5 h-2.5" />
+                    </span>
+                  </button>
+                ))}
+                {origImages.length < MAX_IMAGES && (
+                  <label className="w-16 h-16 rounded-lg border-2 border-dashed border-brand-line bg-brand-off/40 grid place-items-center cursor-pointer hover:border-brand text-brand-mute hover:text-brand">
+                    <Upload className="w-4 h-4" />
+                    <input type="file" multiple accept="image/*" className="hidden" onChange={onPickFile} />
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-5">
-            <Label className="mb-2 block">Gaya Foto</Label>
+            <Label className="mb-2 block">Gaya Foto AI</Label>
             <div className="flex flex-wrap gap-2">
               {STYLES.map((s) => (
                 <button
@@ -170,18 +254,15 @@ export default function AIStudio() {
             </div>
           </div>
 
-          <div className="mt-5 flex gap-3">
+          <div className="mt-5">
             <Button
-              onClick={enhance} disabled={!origImage || enhancing}
-              className="flex-1 bg-brand hover:bg-brand-hover text-white rounded-xl h-12 font-semibold btn-press"
+              onClick={enhance} disabled={origImages.length === 0 || enhancing}
+              className="w-full bg-brand hover:bg-brand-hover text-white rounded-xl h-12 font-semibold btn-press"
               data-testid="enhance-btn"
             >
-              {enhancing ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sedang enhance…</> : <><Wand2 className="w-4 h-4 mr-2" /> Enhance dengan AI</>}
+              {enhancing ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Sedang enhance…</> : <><Wand2 className="w-4 h-4 mr-2" /> Enhance foto aktif dengan AI</>}
             </Button>
-            <label className="rounded-xl border border-brand-line bg-white px-4 py-3 cursor-pointer text-sm font-semibold flex items-center gap-2">
-              <Upload className="w-4 h-4" /> Ganti
-              <input type="file" accept="image/*" className="hidden" onChange={onPickFile} />
-            </label>
+            <p className="text-xs text-brand-mute mt-2 text-center">Tips: pilih thumbnail, lalu klik Enhance untuk foto itu saja.</p>
           </div>
         </div>
 
@@ -249,12 +330,41 @@ export default function AIStudio() {
           )}
         </div>
 
+        {/* Share Pack — Instagram simple mode */}
+        {(igCaption || tiktokCaption || finalImages.length > 0) && (
+          <div className="mt-7 pt-6 border-t border-brand-line">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="font-heading font-bold text-base">Share Pack 📦</h3>
+                <p className="text-sm text-brand-mute mt-0.5">Download foto + copy caption sekali klik, tinggal paste di IG/TikTok.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={downloadAll}
+                  className="rounded-xl border-brand-line" data-testid="share-download-btn">
+                  <Download className="w-4 h-4 mr-2" /> Download {finalImages.length || 0} Foto
+                </Button>
+                <Button variant="outline" onClick={copyForIG}
+                  className="rounded-xl border-brand-line" data-testid="share-ig-btn">
+                  <Instagram className="w-4 h-4 mr-2" /> Salin Caption IG
+                </Button>
+                <Button variant="outline" onClick={copyForTikTok}
+                  className="rounded-xl border-brand-line" data-testid="share-tiktok-btn">
+                  <Music2 className="w-4 h-4 mr-2" /> Salin Caption TikTok
+                </Button>
+                <Button onClick={sharePack}
+                  className="bg-brand hover:bg-brand-hover text-white rounded-xl font-semibold btn-press"
+                  data-testid="share-pack-btn">
+                  <Download className="w-4 h-4 mr-2" /> Share Pack (IG)
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 flex justify-end">
-          <Button
-            onClick={saveProduct} disabled={saving}
+          <Button onClick={saveProduct} disabled={saving}
             className="bg-brand hover:bg-brand-hover text-white rounded-xl px-6 h-12 font-semibold btn-press"
-            data-testid="save-product-btn"
-          >
+            data-testid="save-product-btn">
             <Save className="w-4 h-4 mr-2" /> {saving ? "Menyimpan…" : "Simpan ke Toko"}
           </Button>
         </div>

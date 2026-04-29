@@ -157,6 +157,21 @@ export default function Dashboard() {
               Foto dari atas (top-down) dengan latar polos biasanya menghasilkan hasil AI paling tajam.
             </p>
           </div>
+          <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2 h-2 rounded-full bg-green-500" />
+              <h3 className="font-heading font-bold">WhatsApp Bot</h3>
+            </div>
+            <p className="text-sm text-brand-mute">
+              Kelola produk lewat WhatsApp! Kirim foto + harga, AI tayang otomatis.
+            </p>
+            <Button onClick={() => navigate("/dashboard/whatsapp")}
+              variant="outline"
+              className="mt-3 w-full rounded-xl border-brand-line"
+              data-testid="rail-whatsapp-btn">
+              Hubungkan WhatsApp
+            </Button>
+          </div>
         </div>
       </div>
     </DashboardLayout>

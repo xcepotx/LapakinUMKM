@@ -125,6 +125,11 @@ export default function Login() {
             >
               {loading ? "Memproses…" : "Masuk"}
             </Button>
+            <div className="text-right">
+              <Link to="/forgot-password" className="text-sm text-brand-mute hover:text-brand-ink hover:underline" data-testid="goto-forgot-link">
+                Lupa password?
+              </Link>
+            </div>
           </form>
         </div>
       </div>

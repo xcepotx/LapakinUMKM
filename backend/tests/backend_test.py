@@ -309,3 +309,208 @@ class TestAI:
             # log but don't hard-fail (image is 1x1, model may refuse)
             print(f"enhance-image returned {r.status_code}: {r.text[:300]}")
             assert r.status_code in (200, 500, 502)
+
+
+# ---------- Forgot/Reset Password ----------
+class TestForgotPassword:
+    def test_forgot_unknown_email_no_token(self, session):
+        r = session.post(f"{API}/auth/forgot-password",
+                         json={"email": f"TEST_unknown_{RUN_ID}@example.com"})
+        assert r.status_code == 200
+        d = r.json()
+        assert d.get("ok") is True
+        assert "reset_token" not in d  # privacy: no token leaked
+
+    def test_forgot_known_returns_token(self, session, new_user):
+        r = session.post(f"{API}/auth/forgot-password", json={"email": new_user["email"]})
+        assert r.status_code == 200
+        d = r.json()
+        assert d.get("ok") is True
+        assert d.get("simple_mode") is True
+        assert isinstance(d.get("reset_token"), str)
+        assert len(d["reset_token"]) > 10
+        TestForgotPassword.token = d["reset_token"]
+
+    def test_reset_with_short_password(self, session):
+        r = session.post(f"{API}/auth/reset-password",
+                         json={"token": TestForgotPassword.token, "new_password": "abc"})
+        assert r.status_code == 422  # pydantic min_length
+
+    def test_reset_with_invalid_token(self, session):
+        r = session.post(f"{API}/auth/reset-password",
+                         json={"token": "garbage-token-xyz", "new_password": "newpass123"})
+        assert r.status_code == 400
+
+    def test_reset_success_and_login(self, session, new_user):
+        new_pw = "newpass456"
+        r = session.post(f"{API}/auth/reset-password",
+                         json={"token": TestForgotPassword.token, "new_password": new_pw})
+        assert r.status_code == 200, r.text
+        # Old password should fail
+        s = requests.Session()
+        r2 = s.post(f"{API}/auth/login",
+                    json={"email": new_user["email"], "password": new_user["password"]})
+        assert r2.status_code == 401
+        # New password should work
+        r3 = s.post(f"{API}/auth/login",
+                    json={"email": new_user["email"], "password": new_pw})
+        assert r3.status_code == 200
+        # update fixture password for downstream
+        new_user["password"] = new_pw
+
+    def test_reset_token_reuse_fails(self, session):
+        r = session.post(f"{API}/auth/reset-password",
+                         json={"token": TestForgotPassword.token, "new_password": "anotherpw99"})
+        assert r.status_code == 400
+
+
+# ---------- Multi-image Products ----------
+class TestMultiImage:
+    def test_create_with_images_array(self, auth_session):
+        payload = {
+            "name": f"MultiImg {RUN_ID}",
+            "price": 15000, "stock": 3, "description": "multi",
+            "images": ["data:image/png;base64,AAA", "data:image/png;base64,BBB", "data:image/png;base64,CCC"],
+            "image_data": "",
+            "ig_caption": "", "tiktok_caption": "", "hashtags": [],
+        }
+        r = auth_session.post(f"{API}/products", json=payload)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert len(d["images"]) == 3
+        # image_data auto-syncs to images[0]
+        assert d["image_data"] == "data:image/png;base64,AAA"
+        TestMultiImage.pid = d["product_id"]
+
+    def test_backward_compat_image_data_only(self, auth_session):
+        payload = {
+            "name": f"BackCompat {RUN_ID}",
+            "price": 5000, "stock": 1, "description": "",
+            "image_data": "data:image/png;base64,XYZ",
+            "images": [],
+            "ig_caption": "", "tiktok_caption": "", "hashtags": [],
+        }
+        r = auth_session.post(f"{API}/products", json=payload)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["images"] == ["data:image/png;base64,XYZ"]
+
+    def test_update_images_array(self, auth_session):
+        payload = {
+            "name": f"MultiImg {RUN_ID}",
+            "price": 15000, "stock": 3, "description": "multi",
+            "images": ["data:image/png;base64,NEW1", "data:image/png;base64,NEW2"],
+            "image_data": "",
+            "ig_caption": "", "tiktok_caption": "", "hashtags": [],
+        }
+        r = auth_session.put(f"{API}/products/{TestMultiImage.pid}", json=payload)
+        assert r.status_code == 200
+        d = r.json()
+        assert len(d["images"]) == 2
+        assert d["image_data"] == "data:image/png;base64,NEW1"
+
+
+# ---------- WhatsApp Bot ----------
+class TestWhatsApp:
+    def test_status_requires_auth(self):
+        r = requests.get(f"{API}/whatsapp/status")
+        assert r.status_code == 401
+
+    def test_status_initial(self, auth_session):
+        # ensure clean state
+        auth_session.post(f"{API}/whatsapp/disconnect")
+        r = auth_session.get(f"{API}/whatsapp/status")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["linked"] is False
+        assert "twilio_configured" in d
+        assert d["twilio_configured"] is False  # twilio env not set
+
+    def test_connect_start_returns_code(self, auth_session):
+        r = auth_session.post(f"{API}/whatsapp/connect/start")
+        assert r.status_code == 200
+        d = r.json()
+        assert "code" in d and len(d["code"]) == 6 and d["code"].isdigit()
+        assert d["expires_in_minutes"] == 15
+        assert "instructions" in d
+        TestWhatsApp.code = d["code"]
+
+    def test_webhook_pair_flow(self, auth_session):
+        # use a unique phone number for this run
+        phone = f"+62888{int(time.time()) % 1000000:06d}"
+        TestWhatsApp.phone = phone
+        r = requests.post(f"{API}/whatsapp/webhook",
+                          data={"From": f"whatsapp:{phone}",
+                                "Body": f"lapakin {TestWhatsApp.code}",
+                                "NumMedia": "0"})
+        assert r.status_code == 200
+        assert "xml" in r.headers.get("content-type", "").lower()
+        assert "terhubung" in r.text.lower() or "🎉" in r.text
+        # status should now be linked
+        st = auth_session.get(f"{API}/whatsapp/status").json()
+        assert st["linked"] is True
+        assert phone in (st["phone"] or "")
+
+    def test_webhook_help(self):
+        r = requests.post(f"{API}/whatsapp/webhook",
+                          data={"From": f"whatsapp:{TestWhatsApp.phone}",
+                                "Body": "help", "NumMedia": "0"})
+        assert r.status_code == 200
+        assert "lapakin" in r.text.lower()
+
+    def test_webhook_list(self):
+        r = requests.post(f"{API}/whatsapp/webhook",
+                          data={"From": f"whatsapp:{TestWhatsApp.phone}",
+                                "Body": "list", "NumMedia": "0"})
+        assert r.status_code == 200
+        # either "produk terakhir" or "Belum ada produk"
+        assert "produk" in r.text.lower()
+
+    def test_webhook_unlinked_phone(self):
+        r = requests.post(f"{API}/whatsapp/webhook",
+                          data={"From": "whatsapp:+62999000111", "Body": "hi", "NumMedia": "0"})
+        assert r.status_code == 200
+        assert "belum terhubung" in r.text.lower()
+
+    def test_webhook_text_no_media_when_linked_asks_photo(self):
+        r = requests.post(f"{API}/whatsapp/webhook",
+                          data={"From": f"whatsapp:{TestWhatsApp.phone}",
+                                "Body": "Kopi Susu Aren 25000",
+                                "NumMedia": "0"})
+        assert r.status_code == 200
+        # Parser ran and saw price -> asks for foto (no "Harga tidak terbaca")
+        assert "foto" in r.text.lower()
+        assert "harga tidak terbaca" not in r.text.lower()
+
+    def test_webhook_text_no_price_no_media(self):
+        r = requests.post(f"{API}/whatsapp/webhook",
+                          data={"From": f"whatsapp:{TestWhatsApp.phone}",
+                                "Body": "Sekedar pesan",
+                                "NumMedia": "0"})
+        assert r.status_code == 200
+        # either asks foto first OR says harga tidak terbaca; both acceptable
+        # current code path: num_media==0 returns asks-for-foto BEFORE parsing
+        assert "foto" in r.text.lower()
+
+    def test_disconnect(self, auth_session):
+        r = auth_session.post(f"{API}/whatsapp/disconnect")
+        assert r.status_code == 200
+        st = auth_session.get(f"{API}/whatsapp/status").json()
+        assert st["linked"] is False
+
+
+# ---------- WhatsApp text parser via direct import ----------
+class TestParser:
+    def test_parser_variants(self):
+        # Direct import from server module
+        import sys
+        sys.path.insert(0, "/app/backend")
+        from server import _parse_product_text
+        n, p, s = _parse_product_text("Kopi Susu Aren 25000 stok 20")
+        assert n == "Kopi Susu Aren" and p == 25000 and s == 20
+        n, p, s = _parse_product_text("Donat Kentang Rp 8.000")
+        assert "Donat" in n and p == 8000 and s == 0
+        n, p, s = _parse_product_text("Croissant 15rb")
+        assert "Croissant" in n and p == 15000
+        n, p, s = _parse_product_text("Es Teh 5k stok 50")
+        assert "Es Teh" in n and p == 5000 and s == 50

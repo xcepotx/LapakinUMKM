@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Sparkles, LayoutDashboard, Wand2, Package, Settings, LogOut, ExternalLink } from "lucide-react";
+import { Sparkles, LayoutDashboard, Wand2, Package, Settings, LogOut, ExternalLink, MessageSquare } from "lucide-react";
 
 export default function DashboardLayout({ children, shop, title, subtitle, actions }) {
   const { user, logout } = useAuth();
@@ -12,6 +12,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     { to: "/dashboard", icon: LayoutDashboard, label: "Beranda", tid: "nav-home" },
     { to: "/dashboard/ai-studio", icon: Wand2, label: "AI Studio", tid: "nav-ai-studio" },
     { to: "/dashboard/products", icon: Package, label: "Produk", tid: "nav-products" },
+    { to: "/dashboard/whatsapp", icon: MessageSquare, label: "WhatsApp", tid: "nav-whatsapp" },
     { to: "/dashboard/settings", icon: Settings, label: "Pengaturan", tid: "nav-settings" },
   ];
 

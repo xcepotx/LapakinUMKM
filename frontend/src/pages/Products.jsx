@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { formatApiError, rupiah } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
+import EditProductDialog from "@/components/EditProductDialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Package } from "lucide-react";
+import { Plus, Trash2, Package, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Products() {
@@ -11,6 +12,7 @@ export default function Products() {
   const [shop, setShop] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -21,7 +23,6 @@ export default function Products() {
       setProducts(p.data || []);
     } finally { setLoading(false); }
   };
-
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   const remove = async (id) => {
@@ -34,6 +35,18 @@ export default function Products() {
       toast.error(formatApiError(e.response?.data?.detail) || "Gagal hapus");
     }
   };
+
+  const onSaved = (updated) => {
+    setProducts((arr) => arr.map((p) => p.product_id === updated.product_id ? updated : p));
+  };
+
+  const primaryImg = (p) => {
+    const arr = Array.isArray(p.images) && p.images.length ? p.images : (p.image_data ? [p.image_data] : []);
+    if (!arr.length) return null;
+    const first = arr[0];
+    return first?.startsWith("data:") ? first : `data:image/png;base64,${first}`;
+  };
+  const imgCount = (p) => (Array.isArray(p.images) ? p.images.length : (p.image_data ? 1 : 0));
 
   return (
     <DashboardLayout
@@ -67,41 +80,59 @@ export default function Products() {
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {products.map((p) => (
-            <div key={p.product_id}
-              className="bg-white border border-brand-line rounded-2xl overflow-hidden shadow-card card-hover hover:shadow-cardHover hover:border-brand/40"
-              data-testid={`product-card-${p.product_id}`}
-            >
-              <div className="aspect-square bg-brand-off">
-                {p.image_data ? (
-                  <img
-                    src={p.image_data.startsWith("data:") ? p.image_data : `data:image/png;base64,${p.image_data}`}
-                    alt={p.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full grid place-items-center text-brand-mute">
-                    <Package className="w-8 h-8" />
+          {products.map((p) => {
+            const img = primaryImg(p);
+            const cnt = imgCount(p);
+            return (
+              <div key={p.product_id}
+                className="bg-white border border-brand-line rounded-2xl overflow-hidden shadow-card card-hover hover:shadow-cardHover hover:border-brand/40"
+                data-testid={`product-card-${p.product_id}`}
+              >
+                <div className="aspect-square bg-brand-off relative">
+                  {img ? (
+                    <img src={img} alt={p.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full grid place-items-center text-brand-mute">
+                      <Package className="w-8 h-8" />
+                    </div>
+                  )}
+                  {cnt > 1 && (
+                    <span className="absolute top-2 right-2 bg-black/65 text-white text-[11px] font-bold rounded-full px-2 py-0.5">+{cnt - 1}</span>
+                  )}
+                  {p.source === "whatsapp" && (
+                    <span className="absolute top-2 left-2 bg-green-600 text-white text-[10px] font-bold tracking-wider uppercase rounded-full px-2 py-0.5">via WA</span>
+                  )}
+                </div>
+                <div className="p-4">
+                  <h3 className="font-heading font-bold truncate">{p.name}</h3>
+                  <div className="text-brand text-lg font-extrabold mt-1">{rupiah(p.price)}</div>
+                  <div className="text-xs text-brand-mute mt-1">Stok: {p.stock || 0}</div>
+                  {p.description && <p className="text-sm text-brand-mute mt-2 line-clamp-2">{p.description}</p>}
+                  <div className="mt-3 flex justify-end gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(p)}
+                      className="text-brand-ink hover:text-brand hover:bg-brand-off"
+                      data-testid={`edit-${p.product_id}`}>
+                      <Pencil className="w-4 h-4 mr-1" /> Edit
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => remove(p.product_id)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      data-testid={`delete-${p.product_id}`}>
+                      <Trash2 className="w-4 h-4 mr-1" /> Hapus
+                    </Button>
                   </div>
-                )}
-              </div>
-              <div className="p-4">
-                <h3 className="font-heading font-bold truncate">{p.name}</h3>
-                <div className="text-brand text-lg font-extrabold mt-1">{rupiah(p.price)}</div>
-                <div className="text-xs text-brand-mute mt-1">Stok: {p.stock || 0}</div>
-                {p.description && <p className="text-sm text-brand-mute mt-2 line-clamp-2">{p.description}</p>}
-                <div className="mt-3 flex justify-end">
-                  <Button
-                    variant="ghost" size="sm" onClick={() => remove(p.product_id)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    data-testid={`delete-${p.product_id}`}
-                  >
-                    <Trash2 className="w-4 h-4 mr-1" /> Hapus
-                  </Button>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      <EditProductDialog
+        product={editing}
+        open={!!editing}
+        onOpenChange={(o) => { if (!o) setEditing(null); }}
+        onSaved={onSaved}
+      />
     </DashboardLayout>
   );
 }
