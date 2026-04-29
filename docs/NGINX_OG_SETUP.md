@@ -63,6 +63,38 @@ location ~ ^/toko/([a-zA-Z0-9-]+)/?$ {
 > Pastikan `try_files $uri /index.html;` ini mengarah ke folder build React kamu
 > sesuai konfigurasi `root` di server block.
 
+## ⚠️ Wajib: Pakai modifier `^~` di location /api/
+
+Jika nginx config kamu punya regex location untuk static asset (`.png`, `.jpg`, dst.),
+regex itu akan **ikut match** URL `/api/og/shop/<slug>.png` dan menyerahkan ke
+React build folder → 404 nginx.
+
+Solusinya: pakai `^~` di location `/api/` supaya prioritasnya naik di atas regex.
+
+```nginx
+# WAJIB pakai ^~ supaya prefix /api/ menang dari regex .png/.jpg
+location ^~ /api/ {
+    proxy_pass http://127.0.0.1:8001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
+}
+```
+
+Tanpa `^~`, request `/api/og/shop/kopi-senja.png` akan mismatch ke regex
+location `\.(js|css|png|...)$` dan gagal.
+
+Verifikasi cepat:
+```bash
+curl -I https://your-domain.com/api/og/shop/<slug>.png
+# Harus: HTTP/2 200, content-type: image/png
+# Salah: HTTP/2 404, server: nginx (berarti regex priority masih bermasalah)
+```
+
 ## Reload nginx
 
 ```bash
