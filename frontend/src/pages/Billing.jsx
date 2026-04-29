@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Zap, Rocket, Check, Loader2 } from "lucide-react";
+import { Sparkles, Zap, Rocket, Check, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { openSnapCheckout, pollPaymentStatus } from "@/lib/midtransSnap";
 
@@ -147,7 +147,15 @@ export default function Billing() {
 
         {/* Feature highlights */}
         <div className="mt-8 bg-white rounded-2xl border border-brand-line p-6 shadow-card">
-          <h2 className="font-heading font-bold text-xl mb-4">Fitur Aktif di Tier {data.tier_label}</h2>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <h2 className="font-heading font-bold text-xl">Fitur Aktif di Tier {data.tier_label}</h2>
+            <Link
+              to="/pricing#comparison"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-brand hover:underline shrink-0"
+              data-testid="compare-plans-link">
+              Bandingkan Semua Paket <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
           <div className="grid sm:grid-cols-2 gap-2">
             {[
               { key: "remove_branding", label: 'Tanpa "Powered by Lapakin"' },

@@ -39,6 +39,12 @@ export default function Pricing() {
   useEffect(() => {
     api.get("/billing/tiers").then((r) => setTiers(r.data.tiers)).finally(() => setLoading(false));
     api.get("/auth/me").then((r) => setMe(r.data)).catch(() => setMe(null));
+    // Support deep-link /pricing#comparison → scroll to table after load
+    if (window.location.hash === "#comparison") {
+      setTimeout(() => {
+        document.getElementById("comparison")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 300);
+    }
   }, []);
 
   const handleUpgrade = async (tierKey) => {
@@ -189,7 +195,7 @@ export default function Pricing() {
         </div>
 
         {/* Detailed comparison table */}
-        <div className="bg-white rounded-2xl border border-brand-line shadow-card overflow-x-auto" data-testid="tier-comparison-table">
+        <div id="comparison" className="bg-white rounded-2xl border border-brand-line shadow-card overflow-x-auto scroll-mt-24" data-testid="tier-comparison-table">
           <h2 className="font-heading font-bold text-2xl p-6 pb-3">Perbandingan Lengkap</h2>
           <table className="w-full text-sm">
             <thead className="bg-brand-off border-y border-brand-line">
