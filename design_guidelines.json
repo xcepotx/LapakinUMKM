@@ -1,0 +1,117 @@
+{
+  "theme": "LIGHT",
+  "archetype": "Archetype 1 (Organic & Earthy)",
+  "vibe": "Warm, trustworthy, approachable, grounded, distinctly Indonesian without clichés.",
+  "colors": {
+    "primary": "#C04A3B",
+    "primary_hover": "#A63E31",
+    "secondary": "#2D5A27",
+    "background_base": "#FDFBF7",
+    "surface_card": "#FFFFFF",
+    "surface_off": "#F5F2EA",
+    "text_main": "#2B2624",
+    "text_muted": "#7A736E",
+    "border": "#EBE7E0",
+    "success": "#3A7D44",
+    "warning": "#D98A36",
+    "danger": "#C04A3B",
+    "brand_accent": "#F2A65A"
+  },
+  "typography": {
+    "font_heading": "'Plus Jakarta Sans', sans-serif",
+    "font_body": "'Manrope', sans-serif",
+    "scales": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none font-bold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-tight font-semibold",
+      "h3": "text-xl sm:text-2xl tracking-tight leading-snug font-semibold",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm",
+      "overline": "text-xs tracking-[0.2em] uppercase font-bold"
+    }
+  },
+  "spacing_and_layout": {
+    "global_padding": "Generous spacing. Use p-6, p-8, p-12 for sections. Cards need p-6 internal padding.",
+    "container_max": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "border_radius": {
+      "cards": "rounded-2xl",
+      "buttons": "rounded-xl",
+      "inputs": "rounded-xl",
+      "images": "rounded-3xl"
+    },
+    "shadows": {
+      "card": "shadow-[0_8px_30px_rgb(192,74,59,0.04)]",
+      "hover": "shadow-[0_20px_40px_rgb(192,74,59,0.08)]",
+      "glass": "shadow-[0_8px_32px_rgba(0,0,0,0.04)]"
+    }
+  },
+  "surfaces": {
+    "marketing_hero": "Solid background_base (#FDFBF7) with organic abstract shapes. Do not use generic full-screen gradients. Text is left-aligned.",
+    "dashboard_cards": "Flat solid white (#FFFFFF) with 1px border (#EBE7E0) and soft card shadow. Nested radius: child (rounded-xl) <= parent (rounded-2xl).",
+    "storefront": "Mobile-first grid. 2 columns on mobile for products. Generous padding. Product images must have bg-surface_off (#F5F2EA) behind them to pop.",
+    "glassmorphism": "Only use for sticky nav. bg-white/80 backdrop-blur-xl border-b border-border."
+  },
+  "components": {
+    "buttons": "Thick padding (py-3 px-6), rounded-xl, font-semibold. Primary button: bg-primary text-white hover:bg-primary_hover transition-colors.",
+    "inputs": "Shadcn defaults but override border-radius to rounded-xl, border color to #EBE7E0, and focus ring to ring-primary/20 border-primary.",
+    "badges": "rounded-full px-3 py-1 text-xs font-semibold bg-surface_off text-text_main border border-border."
+  },
+  "animations": {
+    "hover": "Transition transform 0.2s ease, opacity 0.2s ease. Cards lift slightly (-translate-y-1).",
+    "entrance": "Staggered fade-up for product grids and features. Use framer-motion.",
+    "reduced_motion": "Respect prefers-reduced-motion."
+  },
+  "icons": "lucide-react",
+  "media_urls": {
+    "marketing": {
+      "hero": {
+        "url": "https://images.unsplash.com/photo-1777049645539-ed5b46f3fa5d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHNtYWxsJTIwYnVzaW5lc3MlMjBtYXJrZXQlMjBzdGFsbHxlbnwwfHx8fDE3Nzc0MzExMzh8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Indonesian female business owner at a market stall smiling"
+      },
+      "testimonials": [
+        {
+          "url": "https://images.pexels.com/photos/33633753/pexels-photo-33633753.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+          "alt": "Community life in traditional Indonesian warung"
+        },
+        {
+          "url": "https://images.pexels.com/photos/28494741/pexels-photo-28494741.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+          "alt": "Cheerful vendors at a vibrant Asian market stall"
+        }
+      ]
+    },
+    "dashboard": {
+      "ai_studio_placeholder": {
+        "url": "https://images.unsplash.com/photo-1706182044668-1e45c6556f32?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHwxfHxpbmRvbmVzaWFuJTIwY29mZmVlJTIwcHJvZHVjdHxlbnwwfHx8fDE3Nzc0MzExNjl8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Coffee beans processing - representing raw product before AI enhancement"
+      }
+    },
+    "storefront": {
+      "product_1": {
+        "url": "https://images.unsplash.com/photo-1655115287941-e08f8669d72e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODh8MHwxfHNlYXJjaHw0fHxpbmRvbmVzaWFuJTIwY29mZmVlJTIwcHJvZHVjdHxlbnwwfHx8fDE3Nzc0MzExNjl8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Kopi Susu Gula Aren"
+      },
+      "product_2": {
+        "url": "https://images.unsplash.com/photo-1776073975923-91e45221f088?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwzfHxpbmRvbmVzaWFuJTIwcGFzdHJ5JTIwZGVzc2VydHxlbnwwfHx8fDE3Nzc0MzExNjl8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Martabak Manis Spesial"
+      },
+      "product_3": {
+        "url": "https://images.unsplash.com/photo-1747192031359-cc583ec574fb?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxpbmRvbmVzaWFuJTIwcGFzdHJ5JTIwZGVzc2VydHxlbnwwfHx8fDE3Nzc0MzExNjl8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Donat Kampung Gula Halus"
+      },
+      "product_4": {
+        "url": "https://images.unsplash.com/photo-1776073976386-2e7f9a220c4e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwyfHxpbmRvbmVzaWFuJTIwcGFzdHJ5JTIwZGVzc2VydHxlbnwwfHx8fDE3Nzc0MzExNjl8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Kue Leker Berbagai Rasa"
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. STRUCTURE: Design 3 distinct surfaces: Marketing Landing Page (B2B), Owner Dashboard (B2B SaaS), and Public Storefront (B2C).",
+    "2. LOCALIZATION: The target audience is Indonesian UMKM owners. Use Bahasa Indonesia ('Masuk', 'Daftar', 'Dashboard', 'Toko Saya', 'AI Studio').",
+    "3. TYPOGRAPHY: Apply 'Plus Jakarta Sans' for headings and 'Manrope' for body text. Do not use generic fonts like Inter. Use Google Fonts.",
+    "4. VISUAL IDENTITY: Strictly use the warm, grounded 'Organic & Earthy' palette (Primary: #C04A3B, Base: #FDFBF7). Do NOT use generic purple/teal AI gradients.",
+    "5. DASHBOARD UX: Dashboard must be mobile-first. Use stacked cards and prioritize the 'AI Product Studio' feature. Keep it breathable.",
+    "6. STOREFRONT UX: Storefront must look like a high-end, clean shop page, easily browsable on mobile (2 columns).",
+    "7. MOTION: Use framer-motion for simple micro-interactions (e.g., hover states, dialog pop-ups, staggered list items).",
+    "8. TESTING: All interactive elements MUST have a data-testid attribute in kebab-case."
+  ]
+}
