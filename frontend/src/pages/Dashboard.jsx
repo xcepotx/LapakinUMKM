@@ -211,20 +211,20 @@ export default function Dashboard() {
 
             {/* Share-aware URL field */}
             <div className="mt-4 rounded-xl bg-brand-off border border-brand-line p-3">
-              <div className="text-[11px] uppercase font-bold tracking-wider text-brand-mute">Link Share (preview otomatis)</div>
+              <div className="text-[11px] uppercase font-bold tracking-wider text-brand-mute">Link Toko (untuk dibagikan)</div>
               <div className="flex items-center gap-2 mt-1">
                 <code className="flex-1 text-xs sm:text-sm font-mono bg-white border border-brand-line rounded-lg px-2 py-2 truncate" data-testid="share-url-text">
-                  {shareUrl}
+                  {storefrontUrl}
                 </code>
                 <button
-                  onClick={() => { navigator.clipboard.writeText(shareUrl); toast.success("Link disalin"); }}
+                  onClick={() => { navigator.clipboard.writeText(storefrontUrl); toast.success("Link disalin"); }}
                   className="inline-flex items-center gap-1.5 bg-brand text-white rounded-lg px-3 py-2 text-xs font-bold hover:bg-brand-dark"
                   data-testid="copy-share-link">
                   <Copy className="w-3.5 h-3.5" /> Salin
                 </button>
               </div>
               <p className="text-[11px] text-brand-mute mt-2 leading-relaxed">
-                ✨ Pakai link ini saat share ke WhatsApp/IG/FB — preview banner toko langsung muncul. Pelanggan yang klik akan otomatis diarahkan ke toko.
+                ✨ Bagikan link ini ke WhatsApp/IG/FB — preview banner toko muncul otomatis (asal nginx config sudah di-setup di VPS).
               </p>
             </div>
 
@@ -235,14 +235,20 @@ export default function Dashboard() {
                 <ExternalLink className="w-4 h-4" /> Lihat Gambar OG
               </a>
               <button
-                onClick={() => { navigator.clipboard.writeText(storefrontUrl); toast.success("Link toko disalin"); }}
+                onClick={() => { navigator.clipboard.writeText(shareUrl); toast.success("Link alternatif disalin"); }}
                 className="inline-flex items-center gap-2 bg-brand-off hover:bg-white border border-brand-line rounded-xl px-3 py-2 text-sm font-semibold"
-                data-testid="copy-storefront-direct">
-                <Copy className="w-4 h-4" /> Salin Link Toko (langsung)
+                data-testid="copy-storefront-direct"
+                title="Untuk hosting yang BELUM punya nginx config — bypasses /toko prefix">
+                <Copy className="w-4 h-4" /> Salin Link Alt (/api/og/shop/...)
               </button>
+              <a href="https://developers.facebook.com/tools/debug/" target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-brand-off hover:bg-white border border-brand-line rounded-xl px-3 py-2 text-sm font-semibold"
+                data-testid="open-fb-debugger">
+                <ExternalLink className="w-4 h-4" /> Refresh Cache FB/WA
+              </a>
             </div>
             <p className="text-[11px] text-brand-mute mt-3 leading-relaxed">
-              Tip: Setelah setup nginx config (lihat <code className="bg-brand-off px-1 rounded">docs/NGINX_OG_SETUP.md</code>), link <b>{window.location.host}/toko/{shop?.slug}</b> langsung punya preview tanpa perlu /api/og/shop. Sebelum itu, pakai "Link Share" di atas.
+              💡 Tips: Setelah ganti cover/tagline, klik <b>Refresh Cache FB/WA</b> → paste link toko → klik "Scrape Again" supaya WhatsApp ambil preview baru (cache mereka 1-7 hari).
             </p>
           </div>
 

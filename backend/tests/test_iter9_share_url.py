@@ -31,13 +31,13 @@ def test_og_html_canonical_url_is_storefront_not_api():
 
 
 def test_og_html_has_meta_refresh_redirect():
+    """Iteration 10: meta http-equiv=refresh was REMOVED because FB/LinkedIn bots
+    were following it and ending up at React index.html. The JS redirect (next test)
+    handles human browsers; bots stay on the OG endpoint and read the correct tags."""
     r = requests.get(f"{BASE_URL}/api/og/shop/{SLUG}", allow_redirects=False, timeout=15)
-    html = r.text
-    assert '<meta http-equiv="refresh"' in html, "meta-refresh redirect required for human users"
-    # extract refresh url
-    m = re.search(r'http-equiv="refresh"\s+content="0;\s*url=([^"]+)"', html)
-    assert m is not None
-    assert m.group(1).endswith(f"/toko/{SLUG}")
+    html_no_comments = re.sub(r"<!--.*?-->", "", r.text, flags=re.DOTALL)
+    assert not re.search(r'<meta[^>]+http-equiv\s*=\s*"refresh"', html_no_comments), \
+        "iter10: meta http-equiv=refresh must be removed (FB bot followed it)"
 
 
 def test_og_html_has_js_redirect():

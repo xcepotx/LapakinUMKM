@@ -71,7 +71,8 @@ export default function Products() {
 
   const handleShareWA = async (p) => {
     const slug = shop?.slug || "";
-    const shareUrl = `${window.location.origin}/api/og/shop/${slug}`;
+    // /toko/<slug> works for both bots (via nginx rewrite) and humans.
+    const shareUrl = `${window.location.origin}/toko/${slug}`;
     const caption = `${p.name} — ${rupiahShort(p.price)}\nPesan via ${shareUrl}`;
     const imgUrl = `${window.location.origin}/api/og/product/${p.product_id}/story.png`;
     const waText = encodeURIComponent(caption);

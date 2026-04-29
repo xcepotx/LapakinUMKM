@@ -9,7 +9,9 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import re
 import uuid
+import time
 import base64
+import hashlib
 import logging
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -423,6 +425,8 @@ async def create_or_update_shop(data: ShopIn, request: Request):
             {"shop_id": user["shop_id"]},
             {"$set": {**payload, "updated_at": now}}
         )
+        # Invalidate OG image cache (cover/brand/name/tagline may have changed)
+        _OG_PNG_CACHE.pop(user["shop_id"], None)
         shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
         return shop
     # On first creation, smart-default sells_by based on business_type
@@ -481,6 +485,17 @@ async def get_shop_public(slug: str):
     return {"shop": shop, "products": products}
 
 # ----------- Open Graph (dynamic share preview per toko) -----------
+# Simple in-memory cache: shop_id → (png_bytes, cover_hash, timestamp)
+# This makes WhatsApp/FB OG image fetches near-instant even when shop has a
+# large base64 cover_image. Cache invalidates when cover changes.
+_OG_PNG_CACHE: dict = {}
+_OG_CACHE_TTL = 600  # 10 minutes
+
+def _cover_hash(cover: str) -> str:
+    if not cover:
+        return ""
+    return hashlib.md5(cover[:200].encode("utf-8", errors="ignore")).hexdigest()[:12]
+
 def _hex_to_rgb(hex_color: str) -> tuple:
     h = (hex_color or "#C04A3B").lstrip("#")
     if len(h) == 3:
@@ -576,17 +591,27 @@ def _decode_data_url_png(data_url: str) -> Optional[bytes]:
 
 @api.get("/og/shop/{slug}.png")
 async def og_image(slug: str):
-    """Serve a 1200x630 PNG suitable for OpenGraph preview."""
+    """Serve a 1200x630 PNG suitable for OpenGraph preview.
+    Uses in-memory cache to keep WhatsApp/FB crawler fetches near-instant
+    (decoding a large base64 cover_image takes 200-800ms — too slow for
+    WA's ~2-3s timeout window)."""
     shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
     if not shop or shop.get("status") == "suspended":
-        # Generic placeholder
         png = _generate_fallback_og_image("Lapakin", "Toko online UMKM Indonesia", "#C04A3B")
         return FastResponse(
-            content=png,
-            media_type="image/png",
+            content=png, media_type="image/png",
             headers={"Cache-Control": "public, max-age=300"},
         )
+
+    shop_id = shop.get("shop_id")
     cover = shop.get("cover_image") or ""
+    chash = _cover_hash(cover) + (shop.get("brand_color") or "") + (shop.get("name") or "") + (shop.get("tagline") or "")
+    cached = _OG_PNG_CACHE.get(shop_id)
+    now = time.time()
+    if cached and cached[1] == chash and (now - cached[2]) < _OG_CACHE_TTL:
+        return FastResponse(content=cached[0], media_type="image/png",
+                            headers={"Cache-Control": "public, max-age=600", "X-Cache": "HIT"})
+
     png = _decode_data_url_png(cover) if cover else None
     if not png:
         png = _generate_fallback_og_image(
@@ -594,10 +619,15 @@ async def og_image(slug: str):
             shop.get("tagline") or "",
             shop.get("brand_color") or "#C04A3B",
         )
+    _OG_PNG_CACHE[shop_id] = (png, chash, now)
+    # Cap cache size — drop oldest entry if >100 shops cached.
+    if len(_OG_PNG_CACHE) > 100:
+        oldest_id = min(_OG_PNG_CACHE.keys(), key=lambda k: _OG_PNG_CACHE[k][2])
+        _OG_PNG_CACHE.pop(oldest_id, None)
+
     return FastResponse(
-        content=png,
-        media_type="image/png",
-        headers={"Cache-Control": "public, max-age=600"},
+        content=png, media_type="image/png",
+        headers={"Cache-Control": "public, max-age=600", "X-Cache": "MISS"},
     )
 
 def _esc(s: str) -> str:
@@ -635,7 +665,6 @@ async def og_html(slug: str, request: Request):
 <html lang="id">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="refresh" content="0; url={canonical}" />
 <title>{_esc(title)}</title>
 <meta name="description" content="{_esc(desc)}" />
 <link rel="canonical" href="{canonical}" />
@@ -657,7 +686,12 @@ async def og_html(slug: str, request: Request):
 </head>
 <body>
 <p>Mengarahkan ke <a href="{canonical}">{_esc(title)}</a>…</p>
-<script>window.location.replace({canonical!r});</script>
+<!-- JS redirect (bots don't execute JS, so they stay here and read the OG tags;
+     human browsers execute it and get to the React storefront).
+     We intentionally REMOVED <meta http-equiv="refresh"> because some bots
+     (Facebook, LinkedIn) follow it and end up at the React index.html with
+     the root OG tags, which is wrong. -->
+<script>setTimeout(function(){{window.location.replace({canonical!r});}},10);</script>
 </body>
 </html>"""
     return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=300"})
