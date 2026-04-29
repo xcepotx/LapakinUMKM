@@ -33,6 +33,8 @@ map $http_user_agent $is_social_bot {
     default 0;
     "~*facebookexternalhit"  1;
     "~*Facebot"              1;
+    "~*meta-externalagent"   1;
+    "~*facebookcatalog"      1;
     "~*WhatsApp"             1;
     "~*Twitterbot"           1;
     "~*TelegramBot"          1;
@@ -47,21 +49,36 @@ map $http_user_agent $is_social_bot {
 ```
 
 Lalu di dalam `server { }` block, **sebelum** location lain untuk `/toko/`,
-tambahkan rule routing kondisional:
+tambahkan rule routing kondisional menggunakan pola `error_page` trick
+(LEBIH RELIABLE dari `if+rewrite+last` yang notorious buggy di nginx):
 
 ```nginx
-# Bot crawler diarahkan ke endpoint OG
-location ~ ^/toko/([a-zA-Z0-9-]+)/?$ {
-    if ($is_social_bot = 1) {
-        rewrite ^/toko/([a-zA-Z0-9-]+)/?$ /api/og/shop/$1 last;
-    }
+# Bot crawler diarahkan ke endpoint OG via internal redirect
+location ~ ^/toko/(?<shop_slug>[a-zA-Z0-9-]+)/?$ {
+    error_page 418 = @bot_og;
+    recursive_error_pages on;
+    if ($is_social_bot = 1) { return 418; }
     # Manusia → React SPA fallback
     try_files $uri /index.html;
+}
+
+# Internal-only location: proxy ke backend OG endpoint
+location @bot_og {
+    proxy_pass http://127.0.0.1:8001/api/og/shop/$shop_slug;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
 
 > Pastikan `try_files $uri /index.html;` ini mengarah ke folder build React kamu
 > sesuai konfigurasi `root` di server block.
+
+> Pola `error_page 418 = @location` sebagai workaround untuk "if is evil" issue
+> di nginx — `if + rewrite + last` di dalam location block sering bermasalah,
+> sedangkan `error_page` ke named location SELALU bekerja konsisten.
 
 ## ⚠️ Wajib: Pakai modifier `^~` di location /api/
 
