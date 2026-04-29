@@ -28,6 +28,30 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 11 (✅ 2026-04-29 — 3-Tier Subscription System)
+- **3 tiers**: `free` (Rp 0, 5 produk, 5 AI/bulan), `pro` (Rp 49.000/bulan, 100 produk, AI generous, custom subdomain, no Lapakin branding), `business` (Rp 149.000/bulan, unlimited semua + custom domain + IG autopost + API access + multi-toko).
+- **Module `tiers.py`** — `TIER_LIMITS` dict, helpers `get_tier`, `get_limits`, `current_month_bucket` (YYYY-MM in Asia/Jakarta), `get_usage`/`increment_usage`/`check_quota`/`require_feature`. Mini-refactor — full `server.py` split deferred.
+- **Backend gating**:
+  - Product create — counts existing products vs `max_products`, returns 402 with helpful message
+  - `/api/ai/enhance-image` (`ai_photo` bucket), `/api/ai/generate-content` + `/api/ai/generate-about` (`ai_copy`), `/api/ai/generate-cover` (`ai_cover`) — each checks monthly quota, returns 402 when exceeded
+  - `track_ai_usage` extended to also auto-increment `monthly_usage` collection (user_id, year_month, kind)
+  - MongoDB unique index `(user_id, year_month, kind)` on `monthly_usage`
+- **Backend endpoints**:
+  - `GET /api/billing/tiers` public — list all tiers with limits + prices
+  - `GET /api/billing/me` auth — current tier + month-to-date usage with limits
+  - `POST /api/admin/users/{user_id}/tier` admin — manual tier change (PUT also supported for legacy)
+  - `GET /api/shops/by-slug/{slug}` now injects `shop.owner_tier` and `shop.remove_branding`
+- **Frontend new pages**:
+  - `/pricing` public — 3 tier cards with "PALING POPULER" PRO highlight, monthly/annual toggle (annual saves ~2 months), full comparison table
+  - `/dashboard/billing` — current tier card, usage progress bars (red when ≥80%), feature highlights with active/inactive states, "Pembayaran belum aktif" notice
+- **Frontend gating UI**:
+  - Tier badge in DashboardLayout top-right (GRATIS/Pro/Bisnis colors), clicks → /dashboard/billing
+  - "Akun" nav link added
+  - Storefront "Powered by Lapakin" footer hidden when `shop.remove_branding=true` (Pro/Business owner) — replaced with `© Shop Name`
+  - Landing nav has new "Paket" link → /pricing
+- Tested: **145/145 backend pytest passing** (16 new in `test_iter11_billing_tiers.py` + 129 prior; flaky timing test passed too). Full E2E verified — quota gates trigger at exact limit, admin tier change works, conditional footer responds to tier change live. Zero JS pageerrors.
+- **Payment provider integration DEFERRED** — admin manually upgrades tier for now. Next iteration: Midtrans/Stripe integration with subscription webhook + auto-renew.
+
 ### Iteration 10 (✅ 2026-04-29 — OG meta-refresh fix + PNG caching)
 - **Fix Facebook bot bug**: removed `<meta http-equiv="refresh">` from `/api/og/shop/<slug>` HTML. FB bot was following the refresh and ending up at React index.html (root OG tags). Now bots stay on the OG endpoint and read correct shop tags. Humans still get redirected via JS `window.location.replace()` (bots don't run JS).
 - **In-memory PNG cache** for `/api/og/shop/<slug>.png` — TTL 10 min, max 100 shops. Cache key includes cover hash + brand_color + name + tagline; auto-invalidates on shop update. Response header `X-Cache: HIT|MISS` for verification. Critical because Pillow decoding of large base64 cover_image takes 200-800ms — too slow for WhatsApp's ~2-3s og:image fetch timeout.
