@@ -222,7 +222,7 @@ export default function Landing() {
       )}
 
       {/* HARGA */}
-      <section id="harga"  className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20"> className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      <section id="harga" className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
         <div className="text-center max-w-2xl mx-auto">
           <span className="text-xs font-bold tracking-[0.2em] uppercase text-brand">Harga</span>
           <h2 className="font-heading font-bold text-3xl sm:text-4xl mt-3">Mulai gratis, upgrade kalau butuh.</h2>
