@@ -28,6 +28,13 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 6 (✅ 2026-04-29 — Dynamic OpenGraph Share Preview)
+- **Backend `/api/og/shop/{slug}.png`** — returns 1200×630 PNG ready for social share. Uses shop's `cover_image` (decoded from base64, cropped+resized via Pillow LANCZOS) when available; otherwise auto-generates a polished fallback with brand-color background, white initial avatar, shop name + tagline + Lapakin footer using DejaVu fonts. Always 200 (returns generic placeholder for non-existent/suspended shops so cached crawlers never see 404).
+- **Backend `/api/og/shop/{slug}`** — returns HTML page with full OpenGraph + Twitter Card meta tags (`og:type`, `og:title`, `og:description`, `og:image` absolute https URL, `og:image:width=1200`, `og:image:height=630`, `og:url`, `og:locale=id_ID`, `twitter:card=summary_large_image`, etc.) plus `<meta http-equiv="refresh">` + JS `window.location.replace()` for human visitors. Honours `X-Forwarded-Proto` to force `https://` URLs in production.
+- **Dashboard "Pratinjau Saat Dibagikan" card** (`data-testid="share-preview-card"`) — WhatsApp-style mock chat bubble that previews how the toko link will appear when shared, with image + host + title + tagline. Buttons: "Salin Link Share" + "Lihat Gambar OG" + link to FB Sharing Debugger for cache invalidation.
+- **Nginx setup doc** at `/app/docs/NGINX_OG_SETUP.md` — drop-in `map $http_user_agent $is_social_bot` snippet + `location ~ ^/toko/` rewrite rule that routes social-bot User-Agents (facebookexternalhit, WhatsApp, Twitterbot, TelegramBot, LinkedInBot, Slackbot, Discordbot, etc.) to the OG HTML endpoint while humans continue to React SPA. Validation steps via curl + FB Sharing Debugger included.
+- Tested: 98/98 backend pytest passing (16 new OG tests + 82 prior). Frontend share preview verified end-to-end.
+
 ### Iteration 5 (✅ 2026-04-29 — Multi-Product Mini Cart on Storefront)
 - **Cart state**: client-side, persisted in `localStorage` per shop slug (`lapakin_cart_<slug>`). Lazy `useState` initializer reads storage synchronously to survive StrictMode double-render + page reloads.
 - **Product card UI**: "+ Keranjang" button replaces single-product "Pesan" CTA. Once added, button becomes inline qty stepper (-/+). Qty bounded by `product.stock` (or 99 if no stock tracking). Out-of-stock shows "Stok habis".
