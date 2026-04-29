@@ -28,6 +28,18 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 5 (✅ 2026-04-29 — Multi-Product Mini Cart on Storefront)
+- **Cart state**: client-side, persisted in `localStorage` per shop slug (`lapakin_cart_<slug>`). Lazy `useState` initializer reads storage synchronously to survive StrictMode double-render + page reloads.
+- **Product card UI**: "+ Keranjang" button replaces single-product "Pesan" CTA. Once added, button becomes inline qty stepper (-/+). Qty bounded by `product.stock` (or 99 if no stock tracking). Out-of-stock shows "Stok habis".
+- **Floating Cart FAB**: `data-testid="storefront-cart-fab"` appears bottom-right (above WA FAB) when cart has items — shows count + total in Rupiah.
+- **Cart Drawer** (right slide-in): per-item card with image, name, unit price, qty stepper, per-item subtotal, trash button. Footer shows total + "Pesan Semua via WhatsApp" button.
+- **WhatsApp message composer**: builds a single combined message with numbered list, qty × price = subtotal per line, separator, grand total, and confirmation text. Opens `wa.me/<number>?text=<encoded>` in new tab.
+- **Empty state** + "Kosongkan keranjang" reset.
+- Tested: 82/82 backend pytest passing, full E2E cart flow verified by testing agent (add, qty stepper, drawer, persistence, checkout link, stock cap).
+
+### Iteration 4 (✅ 2026-04-29 — Storefront Pro Bundle + Shop Story Reel)
+- **Cover banner** + AI-generated "Tentang Kami" + "Cerita Toko" Story Reel (IG-style vertical viewer with progress bars), promo banner, info chips, empty-state placeholders, floating WhatsApp FAB, Shop QR Code page, AI cover generation endpoint.
+
 ### Iteration 3 (✅ 2026-04-29 — Admin Panel: all 11 features)
 - **Role-based access**: `require_admin` helper, `AdminRoute` guard. Login response now includes `role` + `tier`.
 - **Admin Panel UI** with sidebar nav (dark brand-ink theme): Overview, Toko UMKM, Pengguna, Moderasi Produk, Broadcast, AI Usage, Audit Log
