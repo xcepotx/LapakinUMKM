@@ -1,0 +1,17 @@
+{
+  "short_name": "Lapakin",
+  "name": "Lapakin — AI bikin tokomu cling",
+  "description": "CMS UMKM Indonesia. Upload foto, AI bikin deskripsi & caption. Toko online instan.",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "16x16 32x32 48x48 64x64", "type": "image/x-icon" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#C04A3B",
+  "background_color": "#FDFBF7",
+  "lang": "id",
+  "categories": ["business", "productivity", "shopping"]
+}
