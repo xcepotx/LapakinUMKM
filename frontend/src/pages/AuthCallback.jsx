@@ -27,7 +27,10 @@ export default function AuthCallback() {
         setUser(data);
         // Clean the hash from URL
         window.history.replaceState(null, "", window.location.pathname);
-        navigate(data?.shop_id ? "/dashboard" : "/onboarding", { replace: true, state: { user: data } });
+        const dest = data?.role === "admin"
+          ? "/admin"
+          : (data?.shop_id ? "/dashboard" : "/onboarding");
+        navigate(dest, { replace: true, state: { user: data } });
       } catch (e) {
         navigate("/login?error=google", { replace: true });
       }

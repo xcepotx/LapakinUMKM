@@ -28,6 +28,18 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 3 (✅ 2026-04-29 — Admin Panel: all 11 features)
+- **Role-based access**: `require_admin` helper, `AdminRoute` guard. Login response now includes `role` + `tier`.
+- **Admin Panel UI** with sidebar nav (dark brand-ink theme): Overview, Toko UMKM, Pengguna, Moderasi Produk, Broadcast, AI Usage, Audit Log
+- **Overview Dashboard**: stat cards (users / shops / products / AI calls) + 14-day growth LineChart (recharts)
+- **Toko UMKM Manager**: list with search, joined owner data + product counts, suspend/activate (suspended shops 404 publicly), featured toggle
+- **Pengguna Manager**: list with search, tier toggle (Free↔Premium), generate password reset link (admin support feature)
+- **Moderasi Produk**: search & delete any product (with audit log)
+- **Broadcast**: composer (title, message, variant, target=all|whatsapp), banner shown on user dashboard via `BroadcastBanner`, dismissible per-user
+- **AI Usage Stats**: per-day line chart + totals + top 10 users (tracked via `track_ai_usage` in 3 AI endpoints)
+- **Audit Log**: all admin actions logged with timestamp, action label, target, meta
+- **Featured Shops**: public `/api/featured-shops` endpoint, "Toko Pilihan" section on landing page
+
 ### Iteration 2 (✅ 2026-04-29 — features 1, 4, 5 + simplified 2 & 3)
 - **Edit Produk**: `EditProductDialog` component with full edit (name, price, stock, description, captions, hashtags, images reorder/remove)
 - **Multi-foto produk**: up to 5 images per product. Backward-compat field `image_data` auto-syncs to `images[0]`. Storefront has lightbox with prev/next.

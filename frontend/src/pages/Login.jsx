@@ -31,7 +31,8 @@ export default function Login() {
       const { data } = await api.post("/auth/login", { email, password });
       setUser(data);
       toast.success("Berhasil masuk!");
-      navigate(data?.shop_id ? "/dashboard" : "/onboarding");
+      if (data?.role === "admin") navigate("/admin");
+      else navigate(data?.shop_id ? "/dashboard" : "/onboarding");
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);
     } finally {

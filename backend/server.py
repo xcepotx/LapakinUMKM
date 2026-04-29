@@ -246,7 +246,9 @@ async def login(data: LoginIn, response: Response):
                         max_age=7 * 24 * 3600, path="/")
     return {"user_id": user["user_id"], "email": email, "name": user.get("name"),
             "picture": user.get("picture", ""), "auth_provider": user.get("auth_provider", "email"),
-            "shop_id": user.get("shop_id"), "access_token": token}
+            "shop_id": user.get("shop_id"),
+            "role": user.get("role", "user"), "tier": user.get("tier", "free"),
+            "access_token": token}
 
 @api.post("/auth/logout")
 async def logout(request: Request, response: Response):
