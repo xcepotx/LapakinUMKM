@@ -67,6 +67,14 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
             </Button>
           </div>
         </div>
+        {user?.role === "admin" && (
+          <div className="bg-brand-ink text-white text-xs">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1.5 flex items-center justify-between">
+              <span>👋 Mode Admin aktif</span>
+              <Link to="/admin" className="font-bold hover:underline" data-testid="goto-admin-link">Buka Admin Panel →</Link>
+            </div>
+          </div>
+        )}
         {/* Mobile nav */}
         <div className="md:hidden border-t border-brand-line overflow-x-auto">
           <div className="flex gap-1 px-4 py-2">

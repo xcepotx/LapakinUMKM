@@ -1,7 +1,9 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Wand2, ImageIcon, Smartphone, ArrowRight, Check } from "lucide-react";
+import { Sparkles, Wand2, ImageIcon, Smartphone, ArrowRight, Check, Store } from "lucide-react";
 
 const HERO_IMG =
   "https://images.unsplash.com/photo-1777049645539-ed5b46f3fa5d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHNtYWxsJTIwYnVzaW5lc3MlMjBtYXJrZXQlMjBzdGFsbHxlbnwwfHx8fDE3Nzc0MzExMzh8MA&ixlib=rb-4.1.0&q=85";
@@ -9,6 +11,12 @@ const HERO_IMG =
 export default function Landing() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [featured, setFeatured] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try { const { data } = await api.get("/featured-shops"); setFeatured(data || []); } catch (_) {}
+    })();
+  }, []);
 
   return (
     <div className="min-h-screen bg-brand-sand text-brand-ink">
@@ -186,8 +194,35 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* FEATURED SHOPS */}
+      {featured.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20" data-testid="featured-section">
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <span className="text-xs font-bold tracking-[0.2em] uppercase text-brand">Toko Pilihan</span>
+              <h2 className="font-heading font-bold text-3xl sm:text-4xl mt-3">UMKM yang sudah cling pakai Lapakin.</h2>
+            </div>
+          </div>
+          <div className="mt-10 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {featured.map((s) => (
+              <Link key={s.shop_id} to={`/toko/${s.slug}`}
+                className="bg-white rounded-2xl border border-brand-line p-5 shadow-card card-hover hover:shadow-cardHover hover:border-brand/40"
+                data-testid={`featured-${s.slug}`}>
+                <div className="w-12 h-12 rounded-xl grid place-items-center text-white font-heading font-extrabold text-lg"
+                  style={{ background: s.brand_color || "#C04A3B" }}>
+                  {(s.name || "?")[0].toUpperCase()}
+                </div>
+                <div className="font-heading font-bold mt-3 line-clamp-1">{s.name}</div>
+                {s.tagline && <p className="text-xs text-brand-mute mt-1 line-clamp-2">{s.tagline}</p>}
+                <div className="text-[10px] uppercase tracking-wider font-bold text-brand-mute mt-3">{s.business_type}</div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* HARGA */}
-      <section id="harga" className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      <section id="harga"  className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20"> className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
         <div className="text-center max-w-2xl mx-auto">
           <span className="text-xs font-bold tracking-[0.2em] uppercase text-brand">Harga</span>
           <h2 className="font-heading font-bold text-3xl sm:text-4xl mt-3">Mulai gratis, upgrade kalau butuh.</h2>

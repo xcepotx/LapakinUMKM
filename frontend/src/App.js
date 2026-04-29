@@ -17,6 +17,24 @@ import ShopSettings from "@/pages/ShopSettings";
 import WhatsAppConnect from "@/pages/WhatsAppConnect";
 import Storefront from "@/pages/Storefront";
 
+import AdminDashboard from "@/pages/admin/AdminDashboard";
+import AdminShops from "@/pages/admin/AdminShops";
+import AdminUsers from "@/pages/admin/AdminUsers";
+import AdminProducts from "@/pages/admin/AdminProducts";
+import AdminBroadcasts from "@/pages/admin/AdminBroadcasts";
+import AdminAIUsage from "@/pages/admin/AdminAIUsage";
+import AdminAudit from "@/pages/admin/AdminAudit";
+
+function AdminRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return <div className="min-h-screen grid place-items-center text-brand-mute">Memeriksa akses…</div>;
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "admin") return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -50,6 +68,13 @@ function AppRouter() {
       <Route path="/dashboard/whatsapp" element={<ProtectedRoute><WhatsAppConnect /></ProtectedRoute>} />
       <Route path="/dashboard/settings" element={<ProtectedRoute><ShopSettings /></ProtectedRoute>} />
       <Route path="/toko/:slug" element={<Storefront />} />
+      <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+      <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />
+      <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
+      <Route path="/admin/products" element={<AdminRoute><AdminProducts /></AdminRoute>} />
+      <Route path="/admin/broadcasts" element={<AdminRoute><AdminBroadcasts /></AdminRoute>} />
+      <Route path="/admin/ai-usage" element={<AdminRoute><AdminAIUsage /></AdminRoute>} />
+      <Route path="/admin/audit" element={<AdminRoute><AdminAudit /></AdminRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

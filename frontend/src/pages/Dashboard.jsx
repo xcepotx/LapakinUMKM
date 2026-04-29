@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
+import BroadcastBanner from "@/components/BroadcastBanner";
 import { Button } from "@/components/ui/button";
 import { Wand2, Package, ExternalLink, Plus, Sparkles } from "lucide-react";
 import { rupiah } from "@/lib/api";
@@ -50,6 +51,7 @@ export default function Dashboard() {
         </Button>
       }
     >
+      <BroadcastBanner />
       {/* Stats */}
       <div className="grid sm:grid-cols-3 gap-4 mb-8">
         <StatCard label="Total Produk" value={products.length} icon={<Package className="w-5 h-5" />} tid="stat-products" />

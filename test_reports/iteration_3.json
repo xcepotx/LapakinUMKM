@@ -1,0 +1,56 @@
+{
+  "summary": "Tested all 11 admin features end-to-end. Backend: 27/27 new admin pytest tests pass + 45/45 regression tests still pass (72/72 overall). Admin endpoints (stats, list shops/users, suspend, featured, product moderation, password reset gen, tier mgmt, audit log, broadcasts CRUD, AI usage stats) all work with proper role gating (403 for non-admin, 401 for unauth). Frontend: /admin sidebar with all 7 nav items renders, stats cards + LineChart, shops table with featured/suspend toggles, users table with tier toggle + reset PW (modal-card shows token), broadcasts CRUD, AI usage chart with totals + top users, audit log table — all working. AdminRoute correctly blocks non-admin. Regular user sees BroadcastBanner on /dashboard and can dismiss it. Landing shows featured-section. Found ONE frontend bug: admin login redirects to /onboarding instead of /admin (admin has no shop_id so generic post-login logic pushes them to onboarding).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Login.jsx (post-login redirect)",
+        "issue": "When admin@lapakin.id logs in, they are redirected to /onboarding (because admin user has no shop_id). Expected: admin should be redirected to /admin (or at least to /dashboard so they can use the 'Mode Admin aktif → Buka Admin Panel' link). Currently the only way in is to manually type /admin in the URL bar. AdminRoute itself works correctly.",
+        "selector": "n/a (post-login navigate logic)",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_admin.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/admin_results.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix Login.jsx post-login redirect: if user.role === 'admin' navigate('/admin'); else if !user.shop_id navigate('/onboarding'); else navigate('/dashboard'). Same fix likely needed in AuthCallback and Register.",
+    "(Optional) bc-variant-id / bc-target-id are actually rendered as bc-variant-{info|success|warning} and bc-target-{all|whatsapp} (per-option testids). Spec wording was inconsistent — no code change needed, just clarify spec/docs."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1145 lines with 5 resource groups + 11 admin endpoints + WhatsApp + AI. Splitting into routers/admin.py, routers/whatsapp.py, services/* is overdue.",
+    "admin_stats does 14×4=56 sequential count_documents calls inside the for-loop (NOT gathered). Will be slow once data scales — should batch with $facet aggregation or asyncio.gather per-day.",
+    "admin_ai_usage same pattern — 30×3=90 sequential count_documents in for-loop. Use a single aggregate with $bucket / $group on truncated date.",
+    "PUT /api/admin/broadcasts/{id}/active reuses FeaturedIn ({featured: bool}) for an 'active' field — confusing API contract. Define a dedicated ActiveIn or accept either key. Also a small bug risk: any caller posting {active: true} (the obvious shape) gets validation error because pydantic will fail on missing 'featured'.",
+    "admin_set_shop_status / featured / tier do not return updated doc — only {ok, ...}. Frontend re-fetches the full list (acceptable but wastes a round-trip).",
+    "audit_logs has no TTL index — will grow unbounded. Add an expireAfterSeconds (e.g. 180 days) or rotate.",
+    "POST /admin/broadcasts target='whatsapp' does best-effort send but swallows ALL exceptions silently. Should at least log the failure count for observability.",
+    "ai_usage tracking is inserted from /api/ai/* with try/except pass — good degradation, but no aggregation on user_id+date for fast top_users; pipeline scans full collection every call.",
+    "Frontend AdminBroadcasts uses bc-variant-{id} / bc-target-{id} per-option testids — selecting an option requires clicking the pill. The selected state is encoded only in JS state (no aria-pressed/aria-selected). Minor a11y gap.",
+    "Admin login UX bug (see frontend_issues.ui_bugs[0]) — admin lands on shop onboarding page after login.",
+    "AdminRoute returns plain text 'Memeriksa akses…' while loading — fine but inconsistent with ProtectedRoute which shows a styled wrapper. Minor polish.",
+    "GET /api/featured-shops has no limit pagination param — hardcoded to 8. OK for landing but expose for future."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_admin.py (new — 27 admin API tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (27/27 admin + 45/45 regression = 72/72)",
+    "frontend": "95% (all admin flows work; 1 medium login-redirect bug for admin user)"
+  },
+  "test_credentials": "admin@lapakin.id / lapakin123 (role:admin) and sari@warung.id / newpass123 both work. sari's password was reset+restored during reset-token test.",
+  "seed_data_creation": "Created broadcast 'TEST UI BC' via UI (later auto-cleaned in flow). Created and deleted TEST_AdminDel_<runid> product owned by sari for moderation test. Featured toggle was clicked on first shop in admin shops list — current featured state may be ON; main agent can verify or toggle.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression: pytest /app/backend/tests/ -v runs 72 tests in ~50s. New admin testids verified: admin-nav-{overview,shops,users,products,broadcasts,ai,audit}, stat-{users,shops,products,ai}, admin-growth-chart, admin-shops-search(+btn), admin-shop-row-{id}, status-{id}, featured-{id}, admin-users-search, admin-user-row-{id}, tier-{id}, reset-{id}, admin-reset-link-card, admin-products-search, admin-prod-row-{id}, admin-del-{id}, bc-{title,message,create-btn,item-{id}}, bc-variant-{info|success|warning} (per-option), bc-target-{all|whatsapp} (per-option), usage-{enhance,content,theme,chart}, audit-row-{id}, broadcast-banner, broadcast-dismiss, goto-admin-link, featured-section, admin-logout-btn. Admin login bug: reproduced — admin redirects to /onboarding because shop_id is null. AdminRoute itself is correct.",
+  "rca of the issue": "RCA admin-login-redirect: Login.jsx (and likely AuthCallback.jsx) decides redirect based on user.shop_id only — `navigate(user.shop_id ? '/dashboard' : '/onboarding')`. Admin user has shop_id=null so falls into the onboarding branch. Fix: prepend `if (user.role === 'admin') return navigate('/admin')` before the shop_id check. Reproduction: open /login → email admin@lapakin.id pwd lapakin123 → ends on /onboarding form 'Ceritakan tentang tokomu'. Mitigation already in place: AdminRoute lets admin reach /admin via direct URL navigation, and the dashboard's 'goto-admin-link' badge bar works for admins who manually visit /dashboard."
+}
