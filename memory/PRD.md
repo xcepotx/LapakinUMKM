@@ -28,6 +28,13 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 2 (✅ 2026-04-29 — features 1, 4, 5 + simplified 2 & 3)
+- **Edit Produk**: `EditProductDialog` component with full edit (name, price, stock, description, captions, hashtags, images reorder/remove)
+- **Multi-foto produk**: up to 5 images per product. Backward-compat field `image_data` auto-syncs to `images[0]`. Storefront has lightbox with prev/next.
+- **Forgot Password (simple mode)**: token returned in API response + UI "reset link card" with copy/open buttons. Real email send deferred to phase 2.
+- **WhatsApp Bot via Twilio**: webhook endpoint at `/api/whatsapp/webhook` that handles pairing (`lapakin <code>`), help, list, unlink, and full product creation flow (text + media). Indonesian price parser handles `25000`, `25rb`, `25k`, `Rp 25.000`. Twilio creds optional — bot works without them in pairing/list modes (webhook returns TwiML XML directly). `_wa_send` and `_download_media` no-op when creds absent.
+- **Auto-post Instagram (Share Pack mode)**: instead of full Meta Graph API, the AI Studio now has a "Share Pack 📦" section with: download all images, copy IG caption + hashtags to clipboard, copy TikTok caption, "Share Pack (IG)" one-click combo. No external API needed; pragmatic for UMKM that still post manually.
+
 ### Backend (`/app/backend/server.py`)
 - Auth: register/login/logout/me/refresh, JWT cookies + Bearer fallback, bcrypt hashing, brute-force not yet (deferred)
 - Google OAuth: `/api/auth/google/session` exchanges Emergent session_id → cookie
@@ -57,17 +64,15 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 ## Backlog (Prioritized)
 
 ### P0 — Next sprint
-- [ ] Edit product flow (currently only create + delete)
-- [ ] Product image upload from already-saved file (re-upload)
-- [ ] Forgot password flow
+- [ ] (none — all P0 from iter1 are done)
 
 ### P1 — Phase 2
-- [ ] WhatsApp Business API integration (Twilio): manage products via WA chat
-- [ ] Auto-post to Instagram via Meta Graph API
+- [ ] Email service (Resend/SendGrid) for forgot-password instead of "simple mode"
+- [ ] Real Twilio creds + signature verification (X-Twilio-Signature HMAC) on `/api/whatsapp/webhook`
+- [ ] Direct Instagram posting via Meta Graph API (currently Share Pack manual flow)
 - [ ] Auto-post to TikTok via TikTok Business API
 - [ ] Custom domain support
-- [ ] Multiple product images (gallery)
-- [ ] Categories / tags
+- [ ] Categories / tags for products
 
 ### P2 — Phase 3
 - [ ] Marketplace mode (`gou mkm.id`-style hub)
