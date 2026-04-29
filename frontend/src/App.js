@@ -14,6 +14,7 @@ import Dashboard from "@/pages/Dashboard";
 import AIStudio from "@/pages/AIStudio";
 import Products from "@/pages/Products";
 import ShopSettings from "@/pages/ShopSettings";
+import ShopQR from "@/pages/ShopQR";
 import WhatsAppConnect from "@/pages/WhatsAppConnect";
 import Storefront from "@/pages/Storefront";
 
@@ -67,6 +68,7 @@ function AppRouter() {
       <Route path="/dashboard/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
       <Route path="/dashboard/whatsapp" element={<ProtectedRoute><WhatsAppConnect /></ProtectedRoute>} />
       <Route path="/dashboard/settings" element={<ProtectedRoute><ShopSettings /></ProtectedRoute>} />
+      <Route path="/dashboard/qr" element={<ProtectedRoute><ShopQR /></ProtectedRoute>} />
       <Route path="/toko/:slug" element={<Storefront />} />
       <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
       <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />

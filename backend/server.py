@@ -170,6 +170,19 @@ class ShopIn(BaseModel):
     whatsapp: Optional[str] = ""
     brand_color: Optional[str] = "#C04A3B"
     logo_url: Optional[str] = ""
+    # New (Storefront Pro)
+    cover_image: Optional[str] = ""           # base64 data URL
+    about: Optional[str] = ""                 # AI-generated story
+    hours: Optional[str] = ""                 # e.g., "Senin-Sabtu 08:00-21:00"
+    address: Optional[str] = ""
+    instagram: Optional[str] = ""             # handle without @
+    tiktok: Optional[str] = ""                # handle without @
+    shopee: Optional[str] = ""                # URL
+    promo_active: Optional[bool] = False
+    promo_title: Optional[str] = ""
+    promo_description: Optional[str] = ""
+    promo_code: Optional[str] = ""
+    story: List[dict] = []                    # [{image, caption}] max 5
 
 class ShopOut(ShopIn):
     shop_id: str
@@ -205,6 +218,17 @@ class AIContentIn(BaseModel):
 class AIThemeIn(BaseModel):
     business_type: str
     shop_name: str
+
+class AIAboutIn(BaseModel):
+    shop_name: str
+    business_type: str
+    tagline: Optional[str] = ""
+    description: Optional[str] = ""
+
+class AICoverIn(BaseModel):
+    shop_name: str
+    business_type: str
+    style: Optional[str] = "warm"  # warm / minimal / vibrant
 
 class AIEnhanceIn(BaseModel):
     image_base64: str  # raw base64, no data: prefix
@@ -594,6 +618,82 @@ async def ai_suggest_theme(data: AIThemeIn, request: Request):
     except Exception:
         logger.exception("suggest-theme failed")
         return {"brand_color": "#C04A3B", "tagline": ""}
+
+@api.post("/ai/generate-about")
+async def ai_generate_about(data: AIAboutIn, request: Request):
+    user = await require_user(request)
+    system = (
+        "Kamu adalah copywriter brand UMKM Indonesia. "
+        "Tulis cerita singkat dan hangat tentang toko (3-4 kalimat) dalam Bahasa Indonesia. "
+        "Gaya: personal, jujur, tidak lebay. Selalu balas dalam JSON valid tanpa markdown."
+    )
+    prompt = (
+        f"Buat cerita 'Tentang Kami' untuk toko UMKM:\n"
+        f"- Nama: {data.shop_name}\n"
+        f"- Jenis: {data.business_type}\n"
+        f"- Tagline: {data.tagline or '-'}\n"
+        f"- Deskripsi singkat: {data.description or '-'}\n\n"
+        f"Hasilkan JSON: {{\"about\": \"3-4 kalimat hangat dan personal\"}}.\n"
+        f"Hindari klaim berlebihan. Fokus ke kepercayaan & cerita."
+    )
+    try:
+        chat = _new_chat(f"abt_{uuid.uuid4().hex[:8]}", system)
+        chat.with_model("gemini", "gemini-2.5-flash")
+        text = await chat.send_message(UserMessage(text=prompt))
+        import json as _json
+        raw = text.strip()
+        if raw.startswith("```"):
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.MULTILINE).strip()
+        try:
+            parsed = _json.loads(raw)
+        except Exception:
+            m = re.search(r"\{[\s\S]*\}", raw)
+            parsed = _json.loads(m.group(0)) if m else {"about": raw[:400]}
+        await track_ai_usage(user["user_id"], "content")
+        return {"about": (parsed.get("about") or "").strip()}
+    except Exception as e:
+        logger.exception("generate-about failed")
+        raise HTTPException(status_code=500, detail=f"Gagal generate cerita: {str(e)[:200]}")
+
+@api.post("/ai/generate-cover")
+async def ai_generate_cover(data: AICoverIn, request: Request):
+    user = await require_user(request)
+    style_hint = {
+        "warm": "warm earthy tones, terracotta and cream, hand-crafted feeling, soft natural light, Indonesian aesthetic",
+        "minimal": "minimal off-white background, modern sans serif vibe, single product hero composition",
+        "vibrant": "vibrant warm colors, festive Indonesian market vibe, lively and inviting",
+    }.get(data.style or "warm", "warm earthy tones, Indonesian aesthetic")
+
+    business_visual = {
+        "kuliner": "delicious Indonesian food spread on rustic wooden table",
+        "kopi": "cozy specialty coffee shop scene, espresso steam, beans",
+        "fashion": "stylish clothing rack, fabric textures, atmospheric studio",
+        "kerajinan": "handmade crafts on natural wood, artisanal workshop",
+        "kecantikan": "skincare product flatlay with natural elements",
+    }.get(data.business_type, f"product display for {data.business_type} business")
+
+    prompt = (
+        f"Wide cinematic banner image (16:6 aspect ratio feel), {business_visual}, {style_hint}. "
+        f"Professional storefront cover photo for an Indonesian small business named '{data.shop_name}'. "
+        f"NO TEXT, NO LOGOS, NO LETTERS in the image. Just atmospheric scene. "
+        f"Shallow depth of field, magazine quality."
+    )
+    try:
+        chat = _new_chat(f"cov_{uuid.uuid4().hex[:8]}",
+                         "You are a master commercial photographer.")
+        chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+        msg = UserMessage(text=prompt)
+        text, images = await chat.send_message_multimodal_response(msg)
+        if not images:
+            raise HTTPException(status_code=502, detail="AI tidak menghasilkan gambar")
+        out = images[0]
+        await track_ai_usage(user["user_id"], "enhance")
+        return {"image_base64": out["data"], "mime_type": out.get("mime_type", "image/png")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("generate-cover failed")
+        raise HTTPException(status_code=500, detail=f"Gagal generate cover: {str(e)[:200]}")
 
 # ----------- WhatsApp Bot (Twilio) -----------
 def _twilio_client():
