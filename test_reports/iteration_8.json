@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 8 (Auto-Schedule + Toko Cards Generator) verified end-to-end. Backend: 9 new pytest cases (/app/backend/tests/test_iter8_schedule_cards.py) all PASS, plus full regression of 115/115 (106 prior + 9 new) PASS in 62s. Verified: (a) ShopIn accepts/persists auto_schedule_enabled + schedule (7-entry list with HH:MM dicts or None), (b) GET /api/shops/by-slug/warung-sari injects schedule_status with correct shape {is_open_now, auto, opens_at, closes_at}, (c) when auto=on the shop.is_open is overridden by computed value (set is_open=false manually + window-now schedule → public is_open=true), (d) when auto=off behavior is identical to iteration 7 (schedule_status.auto=false, manual is_open returned), (e) opens_at returns 'Kam 08:00' (with day prefix) for next-day open, just 'HH:MM' for today, (f) closes_at returns 'HH:MM' when currently open, (g) GET /api/og/product/{id}/post.png returns 1080x1080 PNG with Cache-Control, (h) story.png returns 1080x1920 PNG, (i) 404 for unknown product, (j) renderer doesn't crash with no images (branded gradient placeholder works for 'TEST_NoImage Card' with price 12345 Rp). Frontend Playwright (sari@warung.id): /dashboard/settings shows schedule-editor + all 7 schedule-row-{0..6} + auto-schedule-toggle (checked=true per seed). settings-toggle-open is correctly DISABLED when auto=on with hint 'Status otomatis dari jadwal di bawah. Manual toggle dinonaktifkan.' visible; toggling auto OFF re-enables the manual button. Mon (idx 0) shows 08:00-21:00 per seed. Sun (idx 6) checkbox unchecked (Libur); clicking 'Buka' populates time inputs with 08:00-21:00 default. /dashboard/products shows 4 IG Post + 4 Story buttons per testid pattern download-post-{pid}/download-story-{pid} with hrefs /api/og/product/{pid}/post.png and /story.png and target=_blank. /toko/warung-sari (now 23:16 WIB Wed, past 21:00 close) shows storefront-closed-banner with text 'Buka lagi: Kam 08:00 WIB' driven by schedule_status.opens_at — exactly per spec. The complementary storefront-closes-at hint was verified via API (test_open_window_now confirmed closes_at populated when in-window) and code review (Storefront.jsx line 232: shown only when sellsBy=='hours' && isOpen && autoSchedule && scheduleStatus.closes_at). Zero JS pageerrors. Shop state restored to canonical (Mon-Fri 08-21, Sat 09-22, Sun null, auto=true).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "compute_schedule_status",
+        "issue": "When sells_by!='hours' the helper returns {is_open_now: True, auto: False} for any shop including stock-mode ones — i.e. is_open_now is hardcoded True rather than reflecting product.stock. Storefront isOpen check separately falls back to sells_by!='hours' or is_open !== false, so this is functionally fine, but the field is_open_now in this branch is misleading (should arguably be omitted or set to None for non-hours modes)."
+      },
+      {
+        "endpoint": "GET /api/shops/by-slug/{slug}",
+        "issue": "Carry-over from iter7: legacy products created before iter7 still lack `available_days` field in the response. Frontend coalesces, so non-blocking."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter8_schedule_cards.py",
+    "/app/test_reports/pytest/iter8_results.xml",
+    "/app/test_reports/pytest/iter8_full_results.xml"
+  ],
+  "action_items": [
+    "(Nit) compute_schedule_status: for non-hours shops return is_open_now=None or omit it — current True is misleading though not user-visible.",
+    "(Carry-over iter7) backfill products with available_days=[] or normalize on read in by-slug endpoint.",
+    "(Carry-over iter6) server.py is now ~1719 lines — well past 700-line threshold. Strongly consider splitting OG endpoints + image generation (schedule helpers, _render_product_card, og endpoints, product card endpoints — ~200 lines) into /app/backend/og_routes.py.",
+    "(Carry-over iter5) ShopSettings.jsx >700 lines.",
+    "(Carry-over iter4) Admin login still redirects to /onboarding instead of /admin."
+  ],
+  "critical_code_review_comments": [
+    "compute_schedule_status correctly handles wrap-around with offset 0..7 for opens_at search. Day prefix logic ('Sen', 'Sel', etc., only when offset>0) matches spec exactly.",
+    "ShopIn.schedule typed as List[Optional[dict]]; stored verbatim. Frontend defensively pads to length 7 in setEntry which is good — but POST allows arbitrary length lists. Consider validating len(schedule)==7 in ShopIn validator (currently can save schedule=[] which leaves all days closed when auto=on).",
+    "_render_product_card price formatting: f'Rp {price:,}'.replace(',', '.') — uses comma-then-replace trick to get Indonesian thousands separator '12.345'. Correct for typical positive ints. Caveat: Python f-string ',' uses locale-independent comma so this is safe.",
+    "Card endpoints set Cache-Control: public, max-age=600 — 10 min cache is reasonable for storefront sharing. Good.",
+    "by-slug now mutates the shop dict to set is_open from schedule_status before returning — clean override that doesn't require frontend changes (existing iter7 logic just consumes shop.is_open).",
+    "Time-picker uses native <input type='time'> — per code review heuristic this could be replaced with a shadcn picker for design consistency, but native is acceptable for this feature."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter8_schedule_cards.py (new — 9 tests covering schedule fields, schedule_status open/closed/auto-disabled, post/story PNG dimensions, 404 unknown product, no-image fallback)"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 new tests + 115/115 full regression in 62s)",
+    "frontend": "100% (login, schedule-editor, all 7 day rows, auto-toggle disable/enable settings-toggle-open, Sun toggle default-fill, Products page IG Post+Story buttons, storefront closed-banner with auto opens_at)"
+  },
+  "test_credentials": "sari@warung.id / newpass123 (from /app/memory/test_credentials.md). Generated TEST_modes_*@test.io and TEST_fashion_*@test.io ephemeral users in iter7 are still in DB.",
+  "seed_data_creation": "Created+deleted 'TEST_NoImage Card' product within sari's shop during no-image card render test. No persistent seed changes. Shop state restored to canonical (Mon-Fri 08-21, Sat 09-22, Sun null, auto_schedule_enabled=true) after testing. Verified via curl post-test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 8 fully verified. Run `pytest /app/backend/tests/ -v` for full regression (115 tests, ~62s). Iter8 module restores shop state via module-scope fixture teardown — if you interrupt mid-run, run the restoration snippet at the top of /app/backend/tests/test_iter8_schedule_cards.py manually. The closes_at + storefront-closes-at hint can ONLY be visually verified during a window when sched covers current Jakarta time (today is 23:16 WIB Wed, past 21:00 close). The backend test_open_window_now does cover this functionally by setting a fresh window around 'now' and asserting closes_at populated. Today's Jakarta weekday at test time: Wednesday (idx 2). Test product chosen for cards = first product in warung-sari list (currently 'Rendang' with no image — confirms gradient fallback path).",
+  "rca of the issue": "No bugs. Iteration 8 implementation is correct and matches spec. Two nits surfaced: (1) compute_schedule_status returns is_open_now=True for non-hours shops which is semantically odd but harmless; (2) no length validation on schedule (can save shorter array — defensive padding handled in compute_schedule_status via `today_idx < len(schedule)` guard so it's safe)."
+}

@@ -188,6 +188,10 @@ class ShopIn(BaseModel):
     # Sales mode (Iteration 7)
     sells_by: Optional[str] = "stock"         # "stock" | "hours" | "always"
     is_open: Optional[bool] = True            # only relevant when sells_by == "hours"
+    # Auto-schedule (Iteration 8) — 7 entries idx 0=Senin..6=Minggu.
+    # Each entry: {"open": "HH:MM", "close": "HH:MM"} or None/empty = tutup hari itu.
+    auto_schedule_enabled: Optional[bool] = False
+    schedule: List[Optional[dict]] = []
 
 class ShopOut(ShopIn):
     shop_id: str
@@ -468,6 +472,12 @@ async def get_shop_public(slug: str):
     if shop.get("status") == "suspended":
         raise HTTPException(status_code=404, detail="Toko tidak tersedia")
     products = await db.products.find({"shop_id": shop["shop_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    # Compute live schedule status (mode=hours + auto_schedule_enabled).
+    schedule_status = compute_schedule_status(shop)
+    if schedule_status.get("auto"):
+        # Override is_open with auto-computed value when auto-schedule is enabled.
+        shop["is_open"] = bool(schedule_status.get("is_open_now"))
+    shop["schedule_status"] = schedule_status
     return {"shop": shop, "products": products}
 
 # ----------- Open Graph (dynamic share preview per toko) -----------
@@ -651,6 +661,254 @@ async def og_html(slug: str, request: Request):
 </body>
 </html>"""
     return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=300"})
+
+# ----------- Auto-schedule helpers (Iteration 8) -----------
+JAKARTA_OFFSET = timedelta(hours=7)  # WIB
+
+def _now_jakarta() -> datetime:
+    return datetime.now(timezone.utc) + JAKARTA_OFFSET
+
+def _parse_hhmm(s: str) -> Optional[tuple]:
+    """Parse 'HH:MM' → (hour, minute). Returns None on failure."""
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        parts = s.strip().split(":")
+        if len(parts) != 2:
+            return None
+        h, m = int(parts[0]), int(parts[1])
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return (h, m)
+    except Exception:
+        return None
+    return None
+
+def compute_schedule_status(shop: dict) -> dict:
+    """Given a shop doc, compute live open/close status from schedule + Jakarta time.
+    Returns dict {is_open_now, opens_at, closes_at, next_change_in_minutes}.
+    Only meaningful when shop.sells_by=='hours' and shop.auto_schedule_enabled==True."""
+    if not shop:
+        return {"is_open_now": False}
+    if (shop.get("sells_by") or "stock") != "hours":
+        return {"is_open_now": True, "auto": False}
+    if not shop.get("auto_schedule_enabled"):
+        return {"is_open_now": bool(shop.get("is_open", True)), "auto": False}
+
+    schedule = shop.get("schedule") or []
+    now = _now_jakarta()
+    today_idx = now.weekday()  # 0=Mon..6=Sun
+    today_min = now.hour * 60 + now.minute
+
+    today_entry = schedule[today_idx] if today_idx < len(schedule) else None
+    is_open_now = False
+    closes_at = None
+    if today_entry and isinstance(today_entry, dict):
+        op = _parse_hhmm(today_entry.get("open", ""))
+        cl = _parse_hhmm(today_entry.get("close", ""))
+        if op and cl:
+            op_min = op[0] * 60 + op[1]
+            cl_min = cl[0] * 60 + cl[1]
+            if op_min <= today_min < cl_min:
+                is_open_now = True
+                closes_at = today_entry["close"]
+
+    # Find next opening (look ahead up to 7 days)
+    opens_at = None
+    if not is_open_now:
+        for offset in range(0, 8):
+            d_idx = (today_idx + offset) % 7
+            entry = schedule[d_idx] if d_idx < len(schedule) else None
+            if not entry or not isinstance(entry, dict):
+                continue
+            op = _parse_hhmm(entry.get("open", ""))
+            if not op:
+                continue
+            op_min = op[0] * 60 + op[1]
+            if offset == 0 and op_min <= today_min:
+                continue  # today already passed open time
+            day_label = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"][d_idx]
+            opens_at = f"{day_label} {entry['open']}" if offset > 0 else entry["open"]
+            break
+
+    return {
+        "is_open_now": is_open_now,
+        "auto": True,
+        "opens_at": opens_at,
+        "closes_at": closes_at,
+    }
+
+# ----------- Toko Cards Generator (Iteration 8) -----------
+def _try_font_path(size: int):
+    for path in [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+def _try_regular_font(size: int):
+    for path in [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+def _wrap_text(text: str, font, max_width: int, draw):
+    """Word-wrap text to fit max_width, returning list of lines."""
+    if not text:
+        return []
+    words = text.split()
+    lines, cur = [], ""
+    for w in words:
+        candidate = (cur + " " + w).strip()
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if (bbox[2] - bbox[0]) <= max_width:
+            cur = candidate
+        else:
+            if cur:
+                lines.append(cur)
+            cur = w
+    if cur:
+        lines.append(cur)
+    return lines
+
+def _decode_image(data_url_or_b64: str) -> Optional[Image.Image]:
+    if not data_url_or_b64:
+        return None
+    try:
+        s = data_url_or_b64
+        if "," in s and s.startswith("data:"):
+            s = s.split(",", 1)[1]
+        raw = base64.b64decode(s)
+        return Image.open(BytesIO(raw)).convert("RGB")
+    except Exception:
+        return None
+
+def _render_product_card(product: dict, shop: dict, format_type: str) -> bytes:
+    """Render product as IG post (1080x1080) or story (1080x1920)."""
+    brand_rgb = _hex_to_rgb(shop.get("brand_color") or "#C04A3B")
+    shop_name = shop.get("name") or "Toko"
+    product_name = product.get("name") or "Produk"
+    price = product.get("price") or 0
+    tagline = (shop.get("tagline") or "")[:80]
+
+    # Pick first image
+    imgs = product.get("images") or ([product["image_data"]] if product.get("image_data") else [])
+    primary = _decode_image(imgs[0]) if imgs else None
+
+    if format_type == "post":
+        W, H = 1080, 1080
+        img_h = 700  # photo area height
+    else:  # story
+        W, H = 1080, 1920
+        img_h = 1300
+
+    canvas = Image.new("RGB", (W, H), brand_rgb)
+
+    # Photo area: object-cover fill into top portion
+    if primary:
+        pw, ph = primary.size
+        target_ratio = W / img_h
+        ratio = pw / ph
+        if ratio > target_ratio:
+            new_w = int(ph * target_ratio)
+            left = (pw - new_w) // 2
+            primary = primary.crop((left, 0, left + new_w, ph))
+        else:
+            new_h = int(pw / target_ratio)
+            top = (ph - new_h) // 2
+            primary = primary.crop((0, top, pw, top + new_h))
+        primary = primary.resize((W, img_h), Image.LANCZOS)
+        canvas.paste(primary, (0, 0))
+    else:
+        # Branded gradient placeholder
+        draw_p = ImageDraw.Draw(canvas)
+        for y in range(img_h):
+            mix = y / img_h
+            r = int(brand_rgb[0] * (1 - mix * 0.2))
+            g = int(brand_rgb[1] * (1 - mix * 0.2))
+            b = int(brand_rgb[2] * (1 - mix * 0.2))
+            draw_p.line([(0, y), (W, y)], fill=(r, g, b))
+
+    # Bottom white panel with content
+    panel = Image.new("RGB", (W, H - img_h), (255, 255, 255))
+    canvas.paste(panel, (0, img_h))
+    draw = ImageDraw.Draw(canvas)
+
+    # Top brand strip on photo
+    strip_h = 80
+    strip = Image.new("RGBA", (W, strip_h), (0, 0, 0, 100))
+    canvas.paste(Image.alpha_composite(canvas.crop((0, 0, W, strip_h)).convert("RGBA"), strip), (0, 0))
+    draw_strip = ImageDraw.Draw(canvas)
+    initial = (shop_name or "L")[0].upper()
+    cx, cy, r = 50, strip_h // 2, 24
+    draw_strip.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(255, 255, 255))
+    bbox = draw_strip.textbbox((0, 0), initial, font=_try_font_path(28))
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw_strip.text((cx - tw / 2, cy - th / 2 - 3), initial, fill=brand_rgb, font=_try_font_path(28))
+    draw_strip.text((90, cy - 18), shop_name[:28], fill=(255, 255, 255), font=_try_font_path(32))
+
+    # Bottom content
+    pad_x = 60
+    content_y = img_h + 50
+    name_font = _try_font_path(64 if format_type == "post" else 80)
+    price_font = _try_font_path(80 if format_type == "post" else 100)
+    tag_font = _try_regular_font(28 if format_type == "post" else 36)
+    foot_font = _try_regular_font(24 if format_type == "post" else 30)
+
+    # Wrap product name to 2 lines max
+    name_lines = _wrap_text(product_name, name_font, W - 2 * pad_x, draw)[:2]
+    for i, line in enumerate(name_lines):
+        draw.text((pad_x, content_y + i * (name_font.size + 8)), line, fill=(30, 30, 30), font=name_font)
+    content_y += len(name_lines) * (name_font.size + 8) + 25
+
+    # Price
+    price_text = f"Rp {price:,}".replace(",", ".")
+    draw.text((pad_x, content_y), price_text, fill=brand_rgb, font=price_font)
+    content_y += price_font.size + 30
+
+    # Tagline (if room)
+    if tagline:
+        tag_lines = _wrap_text(tagline, tag_font, W - 2 * pad_x, draw)[:2]
+        for i, line in enumerate(tag_lines):
+            draw.text((pad_x, content_y + i * (tag_font.size + 6)), line, fill=(110, 110, 110), font=tag_font)
+
+    # Footer: "powered by Lapakin · /toko/<slug>"
+    footer_text = f"lapakin.id/toko/{shop.get('slug', '')}"
+    fb = draw.textbbox((0, 0), footer_text, font=foot_font)
+    fw = fb[2] - fb[0]
+    draw.text((W - pad_x - fw, H - 50 - foot_font.size), footer_text, fill=(160, 160, 160), font=foot_font)
+
+    buf = BytesIO()
+    canvas.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+@api.get("/og/product/{product_id}/post.png")
+async def product_card_post(product_id: str):
+    product = await db.products.find_one({"product_id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    shop = await db.shops.find_one({"shop_id": product.get("shop_id")}, {"_id": 0}) or {}
+    png = _render_product_card(product, shop, "post")
+    return FastResponse(content=png, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=600"})
+
+@api.get("/og/product/{product_id}/story.png")
+async def product_card_story(product_id: str):
+    product = await db.products.find_one({"product_id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    shop = await db.shops.find_one({"shop_id": product.get("shop_id")}, {"_id": 0}) or {}
+    png = _render_product_card(product, shop, "story")
+    return FastResponse(content=png, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=600"})
 
 # ----------- Products -----------
 @api.get("/products")

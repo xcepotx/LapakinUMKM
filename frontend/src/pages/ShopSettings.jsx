@@ -147,25 +147,93 @@ export default function ShopSettings() {
               ))}
             </div>
             {(shop.sells_by || "stock") === "hours" && (
-              <div className="mt-4 p-4 rounded-xl bg-brand-off border border-brand-line">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="font-semibold flex items-center gap-2">
-                      Status Toko Sekarang:{" "}
-                      <span className={shop.is_open !== false ? "text-green-700" : "text-red-700"}>
-                        {shop.is_open !== false ? "BUKA" : "TUTUP"}
-                      </span>
+              <>
+                <div className="mt-4 p-4 rounded-xl bg-brand-off border border-brand-line">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold flex items-center gap-2">
+                        Status Toko Sekarang:{" "}
+                        <span className={shop.is_open !== false ? "text-green-700" : "text-red-700"}>
+                          {shop.is_open !== false ? "BUKA" : "TUTUP"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-brand-mute mt-0.5">
+                        {shop.auto_schedule_enabled
+                          ? "Status otomatis dari jadwal di bawah. Manual toggle dinonaktifkan."
+                          : "Toggle ini juga ada di Beranda untuk akses cepat."}
+                      </div>
                     </div>
-                    <div className="text-xs text-brand-mute mt-0.5">Toggle ini juga ada di Beranda untuk akses cepat.</div>
+                    <button type="button"
+                      disabled={!!shop.auto_schedule_enabled}
+                      onClick={() => update("is_open", !(shop.is_open !== false))}
+                      className={`px-4 py-2 rounded-xl font-bold text-sm ${shop.is_open !== false ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"} disabled:opacity-40 disabled:cursor-not-allowed`}
+                      data-testid="settings-toggle-open">
+                      {shop.is_open !== false ? "Tutup Toko" : "Buka Toko"}
+                    </button>
                   </div>
-                  <button type="button"
-                    onClick={() => update("is_open", !(shop.is_open !== false))}
-                    className={`px-4 py-2 rounded-xl font-bold text-sm ${shop.is_open !== false ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}`}
-                    data-testid="settings-toggle-open">
-                    {shop.is_open !== false ? "Tutup Toko" : "Buka Toko"}
-                  </button>
                 </div>
-              </div>
+
+                {/* AUTO-SCHEDULE EDITOR */}
+                <div className="mt-4 p-4 rounded-xl bg-white border border-brand-line" data-testid="schedule-editor">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" className="mt-1 w-4 h-4 accent-brand"
+                      checked={!!shop.auto_schedule_enabled}
+                      onChange={(e) => update("auto_schedule_enabled", e.target.checked)}
+                      data-testid="auto-schedule-toggle" />
+                    <div>
+                      <div className="font-semibold">Auto Buka/Tutup Sesuai Jadwal ⏰</div>
+                      <div className="text-xs text-brand-mute mt-0.5">
+                        Toko otomatis BUKA dan TUTUP berdasarkan jadwal di bawah (zona waktu WIB / Jakarta).
+                      </div>
+                    </div>
+                  </label>
+
+                  <div className={`mt-4 space-y-2 ${shop.auto_schedule_enabled ? "" : "opacity-50 pointer-events-none"}`}>
+                    {[
+                      { idx: 0, label: "Senin" },
+                      { idx: 1, label: "Selasa" },
+                      { idx: 2, label: "Rabu" },
+                      { idx: 3, label: "Kamis" },
+                      { idx: 4, label: "Jumat" },
+                      { idx: 5, label: "Sabtu" },
+                      { idx: 6, label: "Minggu" },
+                    ].map((day) => {
+                      const entry = (shop.schedule || [])[day.idx];
+                      const isOpenDay = !!(entry && entry.open && entry.close);
+                      const setEntry = (next) => {
+                        const arr = [...(shop.schedule || [])];
+                        while (arr.length < 7) arr.push(null);
+                        arr[day.idx] = next;
+                        update("schedule", arr);
+                      };
+                      return (
+                        <div key={day.idx} className="flex items-center gap-2 sm:gap-3 py-1" data-testid={`schedule-row-${day.idx}`}>
+                          <div className="w-20 sm:w-24 font-semibold text-sm">{day.label}</div>
+                          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                            <input type="checkbox" className="w-3.5 h-3.5 accent-brand"
+                              checked={isOpenDay}
+                              onChange={(e) => setEntry(e.target.checked ? { open: "08:00", close: "21:00" } : null)}
+                              data-testid={`schedule-open-${day.idx}`} />
+                            Buka
+                          </label>
+                          <input type="time" disabled={!isOpenDay}
+                            value={entry?.open || ""}
+                            onChange={(e) => setEntry({ ...(entry || {}), open: e.target.value })}
+                            className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white disabled:bg-brand-off disabled:text-brand-mute"
+                            data-testid={`schedule-open-time-${day.idx}`} />
+                          <span className="text-brand-mute text-sm">–</span>
+                          <input type="time" disabled={!isOpenDay}
+                            value={entry?.close || ""}
+                            onChange={(e) => setEntry({ ...(entry || {}), close: e.target.value })}
+                            className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white disabled:bg-brand-off disabled:text-brand-mute"
+                            data-testid={`schedule-close-time-${day.idx}`} />
+                          {!isOpenDay && <span className="text-xs text-brand-mute italic">Libur</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </Section>
 

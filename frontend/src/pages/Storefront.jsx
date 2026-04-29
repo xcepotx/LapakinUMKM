@@ -81,6 +81,9 @@ export default function Storefront() {
   const sellsBy = shop?.sells_by || "stock";
   const isOpen = shop?.is_open !== false;
   const shopClosed = sellsBy === "hours" && !isOpen;
+  // Schedule status from backend (Iteration 8)
+  const scheduleStatus = shop?.schedule_status || {};
+  const autoSchedule = !!scheduleStatus.auto;
   // Today index (0=Mon..6=Sun) — JS Date.getDay() returns 0=Sun..6=Sat
   const todayIdx = (new Date().getDay() + 6) % 7;
   const DAY_LABELS_SHORT = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
@@ -217,9 +220,22 @@ export default function Storefront() {
             <div className="min-w-0 flex-1">
               <div className="font-heading font-extrabold text-lg text-red-800">Maaf, lagi tutup 🙏</div>
               <p className="text-sm text-red-900/80 mt-0.5">
-                Pesanan tidak bisa diproses sekarang. {shop?.hours ? `Jam buka: ${shop.hours}.` : "Cek lagi nanti ya!"} Boleh kontak via WhatsApp untuk pre-order.
+                {autoSchedule && scheduleStatus.opens_at
+                  ? <>Buka lagi: <b>{scheduleStatus.opens_at} WIB</b>. Boleh kontak via WhatsApp untuk pre-order.</>
+                  : <>Pesanan tidak bisa diproses sekarang. {shop?.hours ? `Jam buka: ${shop.hours}.` : "Cek lagi nanti ya!"} Boleh kontak via WhatsApp untuk pre-order.</>}
               </p>
             </div>
+          </div>
+        )}
+
+        {/* AUTO-SCHEDULE OPEN HINT (when open + closing soon) */}
+        {sellsBy === "hours" && isOpen && autoSchedule && scheduleStatus.closes_at && (
+          <div className="rounded-2xl p-3 mb-6 flex items-center gap-2 bg-green-50 border border-green-300 text-sm"
+            data-testid="storefront-closes-at">
+            <Clock className="w-4 h-4 text-green-700" />
+            <span className="text-green-800">
+              Tutup hari ini jam <b>{scheduleStatus.closes_at} WIB</b>
+            </span>
           </div>
         )}
 
