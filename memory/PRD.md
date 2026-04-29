@@ -28,6 +28,20 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 8 (✅ 2026-04-29 — Auto-Schedule + Toko Cards Generator)
+- **Auto-schedule open/close** (Asia/Jakarta WIB):
+  - New shop fields: `auto_schedule_enabled` (bool) + `schedule` (List of 7 entries, idx 0=Senin..6=Minggu, each `{open: "HH:MM", close: "HH:MM"}` or null=tutup hari itu).
+  - Backend helper `compute_schedule_status(shop)` calculates real-time `{is_open_now, auto, opens_at, closes_at}`. `opens_at` includes weekday prefix for next-day open (`"Kam 08:00"`), bare time for today.
+  - GET `/api/shops/by-slug/{slug}` injects `schedule_status` and overrides `shop.is_open` with computed value when auto enabled — storefront just renders, no FE clock parsing needed.
+  - ShopSettings UI: 7-row schedule editor (`Senin`..`Minggu` with "Buka" checkbox + open time + close time inputs, "Libur" badge for null entries). Master toggle "Auto Buka/Tutup Sesuai Jadwal ⏰" disables manual `Tutup Toko` button when on.
+  - Storefront: closed banner shows "Buka lagi: Kam 08:00 WIB" when auto+closed; green hint "Tutup hari ini jam 21:00 WIB" when auto+open.
+- **Toko Cards Generator** (PIL renderer):
+  - GET `/api/og/product/{product_id}/post.png` → 1080×1080 IG post (700px photo on top, white panel below with shop name strip, product name 2-line wrap, large price in brand color, tagline, footer `lapakin.id/toko/<slug>`).
+  - GET `/api/og/product/{product_id}/story.png` → 1080×1920 IG story (1300px photo, larger text in bottom panel).
+  - Branded gradient placeholder when product has no photo, never crashes.
+  - Products page: per-card "IG Post" + "Story" download buttons with `target=_blank` opens in new tab so owner can save image.
+- Tested: **115/115 backend pytest passing** (106 prior + 9 new in `test_iter8_schedule_cards.py`). Full E2E frontend verified — schedule editor populates default times, manual toggle correctly disabled when auto=on, storefront banner shows live computed text.
+
 ### Iteration 7 (✅ 2026-04-29 — Shop Sales Modes: Stok / Jam Buka / Selalu Ada)
 - **3 mode jualan** per toko — `shop.sells_by`: `"stock"` (default), `"hours"` (F&B/kuliner — buka/tutup toggle, no stock), `"always"` (jasa/digital — always available).
 - **Smart default**: shop with `business_type ∈ {kuliner, kopi}` auto-defaults to `sells_by="hours"` + `is_open=true` on first creation. Other types stay on stock.
