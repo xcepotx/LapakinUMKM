@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 13 retest: All 3 previously-failing iter11 billing tests now PASS after fixture fix (fresh_user and quota_user fixtures admin-downgrade newly-registered users to 'free' before running quota tests). Full iter8-12 regression sweep: 56/56 PASS. Frontend Products page tier gating verified: free-tier sees 'Bulk Pack 🔒' (bulk-pack-locked) navigating to /pricing; pro-tier sees 'Bulk Card Pack' (bulk-pack-btn) with href=/api/og/bulk-pack.zip. Sari reverted to free after test.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter11_billing_tiers.py",
+    "/app/test_reports/pytest/iter11_retest_results.xml",
+    "/app/test_reports/pytest/iter8_12_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "test files (iter9, iter10) still call os.environ.get('REACT_APP_BACKEND_URL').rstrip('/') without a None-guard; they crash on collection if env var is not pre-exported. iter11/iter12 have a fallback reading /app/frontend/.env. Consider standardizing via a shared conftest.py BASE_URL fixture.",
+    "server.py still >2000 lines; recommend splitting into routers (as noted prior iteration).",
+    "Trial auto-downgrade runs on every authenticated request inside require_user — acceptable at current scale but a candidate for caching."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (56/56 iter8-12, 16/16 iter11 retest)", "frontend": "100% (bulk-pack free/pro UI states correct)"},
+  "test_credentials": "admin@lapakin.id / lapakin123 and sari@warung.id / newpass123. Sari tier was flipped pro→free during test and confirmed reverted.",
+  "seed_data_creation": "Two TEST_quota_* and TEST_aiquota_* users created by iter11 fixtures; one TEST_iter12sanity_* user for sanity check. All remain in DB but cleanly prefixed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iter11 regressions fixed. iter12 sanity verified: /api/auth/register → /api/billing/me returns tier='pro', trial=true, trial_expires_at=~now+14d. Products page tier gating correctly shows bulk-pack-locked for free users and bulk-pack-btn for paid users. Regression baseline (iter8-12) is 56/56 green.",
+  "rca_of_the_issue": "Prior iter11 regression was caused by iter12 introducing trial=pro on register; main agent fixed by admin-downgrading to free in both fresh_user and quota_user fixtures before quota assertions. Retest confirms fix works."
+}

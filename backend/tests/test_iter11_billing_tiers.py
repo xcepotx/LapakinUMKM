@@ -225,6 +225,12 @@ class TestProductLimitGating:
         r = s.post(f"{API}/auth/register",
                    json={"email": email, "password": "secret123", "name": "Quota User"})
         assert r.status_code == 200, r.text
+        user_id = r.json()["user_id"]
+        # Downgrade to free tier (fresh registers now get trial=pro, but these tests expect free)
+        admin_s = requests.Session()
+        admin_s.headers.update({"Content-Type": "application/json"})
+        admin_s.post(f"{API}/auth/login", json={"email": "admin@lapakin.id", "password": "lapakin123"})
+        admin_s.post(f"{API}/admin/users/{user_id}/tier", json={"tier": "free"})
         # Create shop
         r = s.post(f"{API}/shops/me", json={
             "name": f"Quota Shop {RUN_ID}", "tagline": "t", "description": "d",
@@ -263,6 +269,12 @@ class TestAIQuotaGating:
         r = s.post(f"{API}/auth/register",
                    json={"email": email, "password": "secret123", "name": "AIQ User"})
         assert r.status_code == 200, r.text
+        user_id = r.json()["user_id"]
+        # Downgrade to free tier
+        admin_s = requests.Session()
+        admin_s.headers.update({"Content-Type": "application/json"})
+        admin_s.post(f"{API}/auth/login", json={"email": "admin@lapakin.id", "password": "lapakin123"})
+        admin_s.post(f"{API}/admin/users/{user_id}/tier", json={"tier": "free"})
         # Create shop (some endpoints need it)
         s.post(f"{API}/shops/me", json={
             "name": f"AIQ Shop {RUN_ID}", "tagline": "t", "description": "d",

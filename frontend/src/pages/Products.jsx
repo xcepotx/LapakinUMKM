@@ -6,6 +6,7 @@ import EditProductDialog from "@/components/EditProductDialog";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Package, Pencil, Image as ImageIcon, Smartphone, Share2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 const rupiahShort = (n) => `Rp ${(n || 0).toLocaleString("id-ID")}`;
 
@@ -38,6 +39,8 @@ async function sharePhotoOrFallback({ url, filename, caption, fallbackUrl }) {
 
 export default function Products() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isPaid = (user?.tier || "free") !== "free";
   const [shop, setShop] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -103,12 +106,21 @@ export default function Products() {
       subtitle="Kelola katalog produk tokomu."
       actions={
         <div className="flex gap-2">
-          <a href="/api/og/bulk-pack.zip" download
-            className="hidden sm:inline-flex items-center gap-2 bg-brand-off border border-brand-line hover:bg-white rounded-xl px-4 h-12 font-semibold text-brand-ink"
-            data-testid="bulk-pack-btn"
-            title="Download ZIP semua kartu produk (tier Pro/Bisnis)">
-            <Package className="w-4 h-4" /> Bulk Card Pack
-          </a>
+          {isPaid ? (
+            <a href="/api/og/bulk-pack.zip" download
+              className="hidden sm:inline-flex items-center gap-2 bg-brand-off border border-brand-line hover:bg-white rounded-xl px-4 h-12 font-semibold text-brand-ink"
+              data-testid="bulk-pack-btn"
+              title="Download ZIP semua kartu produk">
+              <Package className="w-4 h-4" /> Bulk Card Pack
+            </a>
+          ) : (
+            <button onClick={() => navigate("/pricing")}
+              className="hidden sm:inline-flex items-center gap-2 bg-brand-off border border-dashed border-brand-line hover:bg-white rounded-xl px-4 h-12 font-semibold text-brand-mute opacity-70"
+              data-testid="bulk-pack-locked"
+              title="Fitur Bulk Card Pack khusus tier Pro & Bisnis">
+              <Package className="w-4 h-4" /> Bulk Pack 🔒
+            </button>
+          )}
           <Button
             onClick={() => navigate("/dashboard/ai-studio")}
             className="bg-brand hover:bg-brand-hover text-white rounded-xl px-6 h-12 font-semibold btn-press"
