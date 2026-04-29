@@ -28,6 +28,27 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 13 (✅ 2026-04-29 — Modular backend refactor)
+- **`server.py` split**: 2104 → 93 lines (95% reduction). Thin aggregator — mounts routers, middleware, startup indexes, admin seeding.
+- **New modules** (`/app/backend/`):
+  - `deps.py` (169 lines) — db client, JWT/auth helpers, `require_user`/`require_admin`, `log_admin_action`, `track_ai_usage`, Twilio env, logger, `slugify`, `asyncio_gather_safe`
+  - `models.py` (160 lines) — all Pydantic request/response models
+  - `schedule_utils.py` (80 lines) — `compute_schedule_status`, `_now_jakarta`, `_parse_hhmm`
+  - `og_render.py` (253 lines) — Pillow rendering: fallback OG, shop cover, product card post/story; `OG_PNG_CACHE` shared state
+- **Route modules** (`/app/backend/routes/`):
+  - `auth.py` (177) — register, login, logout, me, Google OAuth, forgot/reset password
+  - `shops.py` (184) — shop CRUD, toggle-open, by-slug (+ live schedule), custom-domain set/verify/remove (BISNIS tier)
+  - `products.py` (77) — product CRUD with tier limit enforcement
+  - `ai.py` (221) — enhance-image, generate-content, suggest-theme, generate-about, generate-cover (all quota-gated)
+  - `og.py` (193) — OG shop PNG (cached), OG HTML (no meta-refresh), product IG post/story PNGs, bulk-pack ZIP (PRO+)
+  - `whatsapp.py` (234) — Twilio webhook, pairing flow, product-from-text parser (`_parse_product_text` re-exported from `server` for legacy test)
+  - `public.py` (187) — health, featured-shops, broadcast banner, billing/tiers, billing/me, analytics track + shop stats
+  - `admin.py` (265) — stats, shops/users list, suspend/feature toggle, product moderation, tier manager, audit log, broadcasts, AI usage
+  - `routes/__init__.py` — exports `ALL_ROUTERS` list, `server.py` iterates and mounts
+- **Zero behavior change** — all endpoints keep same URLs, request/response shapes, cookies, and side-effects. Shared state (OG PNG cache) lives in `og_render.py` so both `og.py` (read) and `shops.py` (invalidate on update) reference the same dict.
+- **Test results**: **162/162 backend pytest PASS** (was 161/162 before refactor; I also fixed a stale iter10 test `test_og_share.py::test_meta_refresh_present` → `test_meta_refresh_absent` that asserted the opposite of the iter10 spec — it was obsolete, not a regression). Frontend smoke screenshot verified landing page renders identically.
+- **Why now?** Agreed with user to refactor BEFORE implementing Midtrans payment gateway — so the new `routes/billing.py` (for Snap checkout + webhook) lands cleanly without polluting the monolith further.
+
 ### Iteration 12 (✅ 2026-04-29 — Trial Pro + Custom Domain + Analytics + Bulk Card Pack)
 - **Trial Pro 14 hari**: new users registered via `/api/auth/register` auto-receive `tier=pro, trial=true, trial_expires_at=now+14d`. `require_user` auto-downgrades expired trials to `free`. Dashboard shows yellow countdown banner; Billing page shows "TRIAL" badge + expiry date.
 - **Custom Domain** (Bisnis tier only, `require_feature(user, 'custom_domain')`):
@@ -208,7 +229,8 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 - [ ] AI Reels generator (Sora 2)
 
 ## Known Code-Review Notes (non-blocking)
-- `server.py` is monolithic (~540 lines) — split into routers when adding more features
+- ✅ ~~`server.py` is monolithic~~ — Done in iter13. Now thin aggregator; logic lives in `deps.py`, `models.py`, `schedule_utils.py`, `og_render.py`, `routes/*.py`.
 - Tighten CORS allowlist in production (currently `*`)
 - Friendly Indonesian error messages for AI failures
 - Use `<a target="_blank">` instead of `onClick` for "Lihat Toko" so middle-click works
+- Migrate FastAPI `@app.on_event("startup"/"shutdown")` to lifespan context manager (deprecation warning)

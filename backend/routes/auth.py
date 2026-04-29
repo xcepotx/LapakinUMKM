@@ -1,0 +1,177 @@
+"""Auth routes: register, login, logout, me, Google OAuth, forgot/reset password."""
+import uuid
+import secrets
+from datetime import datetime, timezone, timedelta
+
+import httpx
+from fastapi import APIRouter, HTTPException, Request, Response
+
+from deps import (
+    db, logger, hash_password, verify_password, create_access_token
+)
+from deps import require_user
+from models import RegisterIn, LoginIn, GoogleSessionIn, ForgotIn, ResetIn
+
+router = APIRouter()
+
+
+@router.post("/auth/register")
+async def register(data: RegisterIn, response: Response):
+    email = data.email.lower().strip()
+    existing = await db.users.find_one({"email": email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email sudah terdaftar")
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    # Trial Pro 14 hari otomatis untuk user baru
+    now = datetime.now(timezone.utc)
+    trial_end = (now + timedelta(days=14)).isoformat()
+    user_doc = {
+        "user_id": user_id,
+        "email": email,
+        "password_hash": hash_password(data.password),
+        "name": data.name.strip(),
+        "picture": "",
+        "auth_provider": "email",
+        "shop_id": None,
+        "tier": "pro",
+        "trial": True,
+        "trial_expires_at": trial_end,
+        "created_at": now.isoformat(),
+    }
+    await db.users.insert_one(user_doc)
+    token = create_access_token(user_id, email)
+    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
+                        max_age=7 * 24 * 3600, path="/")
+    return {"user_id": user_id, "email": email, "name": data.name, "picture": "",
+            "auth_provider": "email", "shop_id": None, "tier": "pro",
+            "trial": True, "trial_expires_at": trial_end, "access_token": token}
+
+
+@router.post("/auth/login")
+async def login(data: LoginIn, response: Response):
+    email = data.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user or not user.get("password_hash") or not verify_password(data.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Email atau password salah")
+    token = create_access_token(user["user_id"], email)
+    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
+                        max_age=7 * 24 * 3600, path="/")
+    return {"user_id": user["user_id"], "email": email, "name": user.get("name"),
+            "picture": user.get("picture", ""), "auth_provider": user.get("auth_provider", "email"),
+            "shop_id": user.get("shop_id"),
+            "role": user.get("role", "user"), "tier": user.get("tier", "free"),
+            "access_token": token}
+
+
+@router.post("/auth/logout")
+async def logout(request: Request, response: Response):
+    response.delete_cookie("access_token", path="/")
+    sess_token = request.cookies.get("session_token")
+    if sess_token:
+        await db.user_sessions.delete_one({"session_token": sess_token})
+    response.delete_cookie("session_token", path="/")
+    return {"ok": True}
+
+
+@router.get("/auth/me")
+async def get_me(request: Request):
+    user = await require_user(request)
+    return {"user_id": user["user_id"], "email": user["email"], "name": user.get("name"),
+            "picture": user.get("picture", ""), "auth_provider": user.get("auth_provider", "email"),
+            "shop_id": user.get("shop_id"), "role": user.get("role", "user"),
+            "tier": user.get("tier", "free"),
+            "trial": bool(user.get("trial")),
+            "trial_expires_at": user.get("trial_expires_at")}
+
+
+@router.post("/auth/google/session")
+async def google_session(data: GoogleSessionIn, response: Response):
+    """Exchange Emergent OAuth session_id for our session_token cookie."""
+    async with httpx.AsyncClient(timeout=15) as cx:
+        r = await cx.get(
+            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+            headers={"X-Session-ID": data.session_id},
+        )
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Sesi Google tidak valid")
+    info = r.json()
+    email = (info.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email Google tidak ditemukan")
+
+    user = await db.users.find_one({"email": email})
+    if user:
+        update = {"picture": info.get("picture") or user.get("picture", "")}
+        if user.get("auth_provider") == "email":
+            update["auth_provider"] = "both"
+        elif not user.get("auth_provider"):
+            update["auth_provider"] = "google"
+        if not user.get("name"):
+            update["name"] = info.get("name") or email.split("@")[0]
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+        user_id = user["user_id"]
+    else:
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        await db.users.insert_one({
+            "user_id": user_id, "email": email, "name": info.get("name") or email.split("@")[0],
+            "picture": info.get("picture") or "", "auth_provider": "google",
+            "shop_id": None, "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    sess_token = info.get("session_token") or secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.user_sessions.insert_one({
+        "user_id": user_id, "session_token": sess_token, "expires_at": expires_at,
+        "created_at": datetime.now(timezone.utc),
+    })
+    response.set_cookie("session_token", sess_token, httponly=True, secure=True, samesite="none",
+                        max_age=7 * 24 * 3600, path="/")
+    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    return {"user_id": user_doc["user_id"], "email": user_doc["email"], "name": user_doc.get("name"),
+            "picture": user_doc.get("picture", ""), "auth_provider": user_doc.get("auth_provider"),
+            "shop_id": user_doc.get("shop_id")}
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(data: ForgotIn):
+    """Simple-mode reset: token returned in response so UI shows a copyable reset link."""
+    email = data.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        return {"ok": True, "message": "Jika email terdaftar, link reset akan diberikan."}
+    token = secrets.token_urlsafe(32)
+    await db.password_reset_tokens.insert_one({
+        "token": token,
+        "user_id": user["user_id"],
+        "email": email,
+        "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
+        "used": False,
+        "created_at": datetime.now(timezone.utc),
+    })
+    logger.info("Password reset token generated for %s", email)
+    return {"ok": True, "message": "Token reset berhasil dibuat.",
+            "reset_token": token, "expires_in_minutes": 60,
+            "simple_mode": True}
+
+
+@router.post("/auth/reset-password")
+async def reset_password(data: ResetIn):
+    rec = await db.password_reset_tokens.find_one({"token": data.token, "used": False})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Token tidak valid atau sudah dipakai")
+    expires_at = rec.get("expires_at")
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Token sudah kadaluarsa")
+    new_hash = hash_password(data.new_password)
+    cur = await db.users.find_one({"user_id": rec["user_id"]})
+    new_auth = "both" if (cur or {}).get("auth_provider") == "google" else "email"
+    await db.users.update_one(
+        {"user_id": rec["user_id"]},
+        {"$set": {"password_hash": new_hash, "auth_provider": new_auth}}
+    )
+    await db.password_reset_tokens.update_one({"token": data.token}, {"$set": {"used": True}})
+    return {"ok": True, "message": "Password berhasil di-reset."}

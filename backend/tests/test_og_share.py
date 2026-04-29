@@ -126,9 +126,16 @@ class TestOGHtml:
         # Should mention "tidak ditemukan" or similar
         assert "tidak ditemukan" in body.lower() or "lapakin" in body.lower()
 
-    def test_meta_refresh_present(self, session):
+    def test_meta_refresh_absent(self, session):
+        """Iter10: we intentionally REMOVED meta http-equiv=refresh because
+        some bots (Facebook, LinkedIn) followed it and landed on the React
+        index.html with root OG tags. Humans still get redirected via JS."""
         r = self._get(session, EXISTING_SLUG)
-        assert 'http-equiv="refresh"' in r.text
+        # Only match an actual <meta http-equiv="refresh"> tag (not comments).
+        import re as _re
+        assert not _re.search(r'<meta\s+http-equiv="refresh"', r.text)
+        # JS redirect must still be present for human browsers.
+        assert "window.location.replace" in r.text
 
     def test_image_dimensions_meta(self, session):
         r = self._get(session, EXISTING_SLUG)
