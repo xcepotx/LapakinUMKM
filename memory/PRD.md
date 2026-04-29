@@ -28,6 +28,20 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 14 (✅ 2026-04-29 — Resend Email Service)
+- **New modules**: `email_service.py` (async wrapper over Resend SDK with no-op logging fallback) + `email_templates.py` (4 branded HTML+text templates in Bahasa Indonesia: password_reset, welcome, trial_expiring, product_created_via_wa).
+- **Wired into flows**:
+  - `POST /api/auth/register` → welcome email (+ Trial Pro 14 hari CTA)
+  - `POST /api/auth/forgot-password` → reset link email with 60-min expiry. Simple-mode fallback (token in response) still works when `RESEND_API_KEY` empty — preserves backward-compat with existing tests + dev flow.
+  - `require_user` middleware → trial expiring reminder at H-3 (once per user via `trial_reminder_sent_at` flag)
+  - WhatsApp webhook → notify owner email when product created via WA
+- **`.env` added**: `RESEND_API_KEY`, `SENDER_EMAIL=noreply@lapakin.my.id`, `SENDER_NAME=Lapakin`, `PUBLIC_APP_URL=https://lapakin.my.id`
+- **No-op logging mode** when `RESEND_API_KEY` is empty — backend never crashes, emails logged with `[EMAIL-NOOP→recipient]` lines. Perfect for local dev + CI without keys.
+- **Frontend**: `ForgotPassword.jsx` toast message updated to "Cek inbox kamu 📬" when no token returned (email-mode); still shows reset-link card when simple-mode active.
+- **Docs**: `/app/docs/RESEND_EMAIL_SETUP.md` — step-by-step signup + SPF/DKIM/DMARC DNS setup for `lapakin.my.id` + troubleshooting.
+- **Tests**: 3 new in `tests/test_iter14_email.py` (no-op flow, privacy for unknown email, templates render). Regression: **165/165 backend pytest PASS**.
+- **User status**: Waiting for user to (1) sign up at resend.com, (2) add DNS records, (3) paste API key. Until then, app runs in no-op mode.
+
 ### Iteration 13 (✅ 2026-04-29 — Modular backend refactor)
 - **`server.py` split**: 2104 → 93 lines (95% reduction). Thin aggregator — mounts routers, middleware, startup indexes, admin seeding.
 - **New modules** (`/app/backend/`):
@@ -214,7 +228,7 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 - [ ] (none — all P0 from iter1 are done)
 
 ### P1 — Phase 2
-- [ ] Email service (Resend/SendGrid) for forgot-password instead of "simple mode"
+- [x] Email service (Resend) — iter14 done. User needs to paste API key + verify DNS.
 - [ ] Real Twilio creds + signature verification (X-Twilio-Signature HMAC) on `/api/whatsapp/webhook`
 - [ ] Direct Instagram posting via Meta Graph API (currently Share Pack manual flow)
 - [ ] Auto-post to TikTok via TikTok Business API

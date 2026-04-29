@@ -21,7 +21,8 @@ export default function ForgotPassword() {
       if (data?.reset_token) {
         setResetToken(data.reset_token);
       } else {
-        toast.success("Jika email terdaftar, link reset akan diberikan.");
+        toast.success("Kalau email terdaftar, link reset kami kirim ke inbox kamu. Cek email (termasuk folder Spam) ya 📬");
+        setEmail("");
       }
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);

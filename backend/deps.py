@@ -111,13 +111,32 @@ async def require_user(request: Request) -> dict:
     if user.get("trial") and user.get("trial_expires_at"):
         try:
             exp = datetime.fromisoformat(user["trial_expires_at"].replace("Z", "+00:00"))
-            if exp < datetime.now(timezone.utc):
+            now = datetime.now(timezone.utc)
+            if exp < now:
                 await db.users.update_one(
                     {"user_id": user["user_id"]},
-                    {"$set": {"tier": "free", "trial": False, "trial_ended_at": datetime.now(timezone.utc).isoformat()}}
+                    {"$set": {"tier": "free", "trial": False,
+                              "trial_ended_at": now.isoformat()}}
                 )
                 user["tier"] = "free"
                 user["trial"] = False
+            else:
+                # H-3 trial expiring email (best-effort, once per user)
+                days_left = (exp - now).days
+                if 0 <= days_left <= 3 and not user.get("trial_reminder_sent_at"):
+                    try:
+                        from email_service import send_email
+                        from email_templates import trial_expiring
+                        subj, html, text = trial_expiring(
+                            user.get("name") or "", max(1, days_left + 1)
+                        )
+                        await send_email(user["email"], subj, html, text)
+                        await db.users.update_one(
+                            {"user_id": user["user_id"]},
+                            {"$set": {"trial_reminder_sent_at": now.isoformat()}}
+                        )
+                    except Exception:
+                        logger.exception("trial reminder email failed")
         except Exception:
             pass
     return user

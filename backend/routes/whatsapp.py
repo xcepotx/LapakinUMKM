@@ -228,6 +228,17 @@ async def whatsapp_webhook(request: Request):
     }
     await db.products.insert_one(doc)
     shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0, "slug": 1})
+    # Owner email notification (fire-and-forget)
+    try:
+        if user.get("email") and shop:
+            from email_service import send_email as _send_email
+            from email_templates import product_created_via_wa as _wa_email_tpl
+            subj, html, text = _wa_email_tpl(
+                user.get("name") or "", name, price, stock, shop.get("slug", "")
+            )
+            await _send_email(user["email"], subj, html, text)
+    except Exception:
+        logger.exception("wa product email failed")
     base = os.environ.get("PUBLIC_BASE_URL", "")
     link_text = f"\n\nLihat: {base}/toko/{shop['slug']}" if base and shop else ""
     return _twiml(f"✅ Produk \"{name}\" sudah tayang di tokomu!\nHarga: Rp {price:,}".replace(",", ".")

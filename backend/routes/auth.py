@@ -1,6 +1,7 @@
 """Auth routes: register, login, logout, me, Google OAuth, forgot/reset password."""
 import uuid
 import secrets
+import os
 from datetime import datetime, timezone, timedelta
 
 import httpx
@@ -11,8 +12,14 @@ from deps import (
 )
 from deps import require_user
 from models import RegisterIn, LoginIn, GoogleSessionIn, ForgotIn, ResetIn
+from email_service import send_email
+from email_templates import welcome as welcome_email, password_reset as reset_email
 
 router = APIRouter()
+
+
+def _public_app_url() -> str:
+    return os.environ.get("PUBLIC_APP_URL", "https://lapakin.my.id").rstrip("/")
 
 
 @router.post("/auth/register")
@@ -42,6 +49,12 @@ async def register(data: RegisterIn, response: Response):
     token = create_access_token(user_id, email)
     response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
                         max_age=7 * 24 * 3600, path="/")
+    # Welcome email (fire-and-forget; no-ops when RESEND_API_KEY absent)
+    try:
+        subj, html, text = welcome_email(data.name)
+        await send_email(email, subj, html, text)
+    except Exception:
+        logger.exception("welcome email failed")
     return {"user_id": user_id, "email": email, "name": data.name, "picture": "",
             "auth_provider": "email", "shop_id": None, "tier": "pro",
             "trial": True, "trial_expires_at": trial_end, "access_token": token}
@@ -134,11 +147,16 @@ async def google_session(data: GoogleSessionIn, response: Response):
 
 @router.post("/auth/forgot-password")
 async def forgot_password(data: ForgotIn):
-    """Simple-mode reset: token returned in response so UI shows a copyable reset link."""
+    """Sends reset link via email when RESEND_API_KEY configured. When not
+    configured, falls back to 'simple mode' (token returned in response) so
+    local/dev still works without external deps."""
+    from email_service import is_configured as email_ok
     email = data.email.lower().strip()
     user = await db.users.find_one({"email": email})
+    # Always return same shape to avoid email enumeration
+    generic = {"ok": True, "message": "Jika email terdaftar, link reset akan dikirim ke inbox kamu."}
     if not user:
-        return {"ok": True, "message": "Jika email terdaftar, link reset akan diberikan."}
+        return generic
     token = secrets.token_urlsafe(32)
     await db.password_reset_tokens.insert_one({
         "token": token,
@@ -148,10 +166,24 @@ async def forgot_password(data: ForgotIn):
         "used": False,
         "created_at": datetime.now(timezone.utc),
     })
-    logger.info("Password reset token generated for %s", email)
-    return {"ok": True, "message": "Token reset berhasil dibuat.",
-            "reset_token": token, "expires_in_minutes": 60,
-            "simple_mode": True}
+    reset_link = f"{_public_app_url()}/reset-password?token={token}"
+    # Try to send email; log result
+    try:
+        subj, html, text = reset_email(user.get("name") or "", reset_link)
+        email_id = await send_email(email, subj, html, text)
+    except Exception:
+        logger.exception("password reset email failed")
+        email_id = None
+    logger.info("Password reset requested for %s (email_id=%s)", email, email_id)
+    # Simple-mode fallback: if Resend not configured, surface token in response
+    # so local dev / testing can still complete the flow.
+    if not email_ok():
+        return {
+            **generic,
+            "reset_token": token, "expires_in_minutes": 60, "simple_mode": True,
+            "reset_link": reset_link,
+        }
+    return generic
 
 
 @router.post("/auth/reset-password")
