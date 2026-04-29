@@ -28,6 +28,16 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 10 (✅ 2026-04-29 — OG meta-refresh fix + PNG caching)
+- **Fix Facebook bot bug**: removed `<meta http-equiv="refresh">` from `/api/og/shop/<slug>` HTML. FB bot was following the refresh and ending up at React index.html (root OG tags). Now bots stay on the OG endpoint and read correct shop tags. Humans still get redirected via JS `window.location.replace()` (bots don't run JS).
+- **In-memory PNG cache** for `/api/og/shop/<slug>.png` — TTL 10 min, max 100 shops. Cache key includes cover hash + brand_color + name + tagline; auto-invalidates on shop update. Response header `X-Cache: HIT|MISS` for verification. Critical because Pillow decoding of large base64 cover_image takes 200-800ms — too slow for WhatsApp's ~2-3s og:image fetch timeout.
+- **Dashboard share-preview-card update**:
+  - Primary share URL flipped back to `/toko/<slug>` (canonical short URL, works once user has nginx config from `docs/NGINX_OG_SETUP.md`).
+  - "Salin Link Alt" button copies `/api/og/shop/<slug>` for hosts without nginx config.
+  - New "Refresh Cache FB/WA" button opens Facebook Sharing Debugger directly.
+- **Products page WA share** uses `/toko/<slug>` in caption (not `/api/og/shop/...`).
+- Tested: **128/129 backend pytest passing** (7 new in `test_iter10_og_cache.py` + 121 prior; 1 pre-existing flaky timing test unrelated to this iteration). Full E2E verified — share URL is /toko/<slug>, FB debugger button opens correctly, cache HIT/MISS sequence works.
+
 ### Iteration 9 (✅ 2026-04-29 — OG-aware share URL + WA Status share)
 - **OG-aware share URL** in Dashboard share-preview-card — new `share-url-text` field shows `<host>/api/og/shop/<slug>`. This URL works for **all crawlers TODAY** without requiring nginx changes (server-rendered OG HTML with auto-redirect for humans). The canonical og:url still points to `/toko/<slug>` so click-through goes to the proper storefront.
 - New copy buttons: "Salin" (OG-aware URL, primary) + "Salin Link Toko (langsung)" (regular `/toko/<slug>`).
