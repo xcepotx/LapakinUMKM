@@ -28,6 +28,15 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
+### Iteration 9 (✅ 2026-04-29 — OG-aware share URL + WA Status share)
+- **OG-aware share URL** in Dashboard share-preview-card — new `share-url-text` field shows `<host>/api/og/shop/<slug>`. This URL works for **all crawlers TODAY** without requiring nginx changes (server-rendered OG HTML with auto-redirect for humans). The canonical og:url still points to `/toko/<slug>` so click-through goes to the proper storefront.
+- New copy buttons: "Salin" (OG-aware URL, primary) + "Salin Link Toko (langsung)" (regular `/toko/<slug>`).
+- **WhatsApp share** button per product card (Products page) — green `WA` button uses Web Share API:
+  - Mobile: fetches `/api/og/product/<id>/story.png` as blob → `navigator.share({files:[file], text})` opens OS share sheet → user picks WhatsApp → can post to Status, send to contact, etc.
+  - Desktop fallback: downloads image + opens `api.whatsapp.com/send?text=...` in new tab (caption includes product name + price + share URL).
+  - Helper `sharePhotoOrFallback()` utility handles both paths gracefully.
+- Tested: **122/122 backend pytest passing** (115 prior + 7 new in `test_iter9_share_url.py`). Full E2E verified — share-url-text contains `/api/og/shop/<slug>`, copy buttons write correct URLs to clipboard, WA fallback path opens wa.me with proper caption.
+
 ### Iteration 8 (✅ 2026-04-29 — Auto-Schedule + Toko Cards Generator)
 - **Auto-schedule open/close** (Asia/Jakarta WIB):
   - New shop fields: `auto_schedule_enabled` (bool) + `schedule` (List of 7 entries, idx 0=Senin..6=Minggu, each `{open: "HH:MM", close: "HH:MM"}` or null=tutup hari itu).
