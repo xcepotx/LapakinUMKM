@@ -1,0 +1,107 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api, { formatApiError, rupiah } from "@/lib/api";
+import DashboardLayout from "@/components/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Plus, Trash2, Package } from "lucide-react";
+import { toast } from "sonner";
+
+export default function Products() {
+  const navigate = useNavigate();
+  const [shop, setShop] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [s, p] = await Promise.all([api.get("/shops/me"), api.get("/products")]);
+      if (!s.data) { navigate("/onboarding"); return; }
+      setShop(s.data);
+      setProducts(p.data || []);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const remove = async (id) => {
+    if (!window.confirm("Hapus produk ini?")) return;
+    try {
+      await api.delete(`/products/${id}`);
+      setProducts((arr) => arr.filter((p) => p.product_id !== id));
+      toast.success("Produk dihapus");
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Gagal hapus");
+    }
+  };
+
+  return (
+    <DashboardLayout
+      shop={shop}
+      title="Produk"
+      subtitle="Kelola katalog produk tokomu."
+      actions={
+        <Button
+          onClick={() => navigate("/dashboard/ai-studio")}
+          className="bg-brand hover:bg-brand-hover text-white rounded-xl px-6 h-12 font-semibold btn-press"
+          data-testid="add-product-btn"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Tambah dengan AI
+        </Button>
+      }
+    >
+      {loading ? (
+        <div className="text-brand-mute" data-testid="products-loading">Memuat produk…</div>
+      ) : products.length === 0 ? (
+        <div className="bg-white border border-brand-line rounded-2xl p-12 text-center shadow-card">
+          <Package className="w-10 h-10 mx-auto text-brand-mute" />
+          <h3 className="font-heading font-bold text-xl mt-4">Belum ada produk</h3>
+          <p className="text-brand-mute mt-2">Mulai dengan upload satu foto produk dan biarkan AI yang bekerja.</p>
+          <Button
+            onClick={() => navigate("/dashboard/ai-studio")}
+            className="mt-6 bg-brand hover:bg-brand-hover text-white rounded-xl btn-press"
+            data-testid="empty-add-product-btn"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Buat Produk Pertama
+          </Button>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {products.map((p) => (
+            <div key={p.product_id}
+              className="bg-white border border-brand-line rounded-2xl overflow-hidden shadow-card card-hover hover:shadow-cardHover hover:border-brand/40"
+              data-testid={`product-card-${p.product_id}`}
+            >
+              <div className="aspect-square bg-brand-off">
+                {p.image_data ? (
+                  <img
+                    src={p.image_data.startsWith("data:") ? p.image_data : `data:image/png;base64,${p.image_data}`}
+                    alt={p.name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full grid place-items-center text-brand-mute">
+                    <Package className="w-8 h-8" />
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <h3 className="font-heading font-bold truncate">{p.name}</h3>
+                <div className="text-brand text-lg font-extrabold mt-1">{rupiah(p.price)}</div>
+                <div className="text-xs text-brand-mute mt-1">Stok: {p.stock || 0}</div>
+                {p.description && <p className="text-sm text-brand-mute mt-2 line-clamp-2">{p.description}</p>}
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    variant="ghost" size="sm" onClick={() => remove(p.product_id)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    data-testid={`delete-${p.product_id}`}
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" /> Hapus
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </DashboardLayout>
+  );
+}
