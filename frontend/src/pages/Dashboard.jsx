@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import BroadcastBanner from "@/components/BroadcastBanner";
 import { Button } from "@/components/ui/button";
-import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy, Power, PowerOff } from "lucide-react";
+import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy, Power, PowerOff, Coffee, X } from "lucide-react";
 import { rupiah } from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,6 +57,23 @@ export default function Dashboard() {
       toast.error("Gagal ubah status. Coba lagi.");
     }
   };
+
+  const snoozeShop = async (minutes) => {
+    try {
+      const { data } = await api.post("/shops/me/snooze", { minutes });
+      setShop((s) => ({ ...s, snooze_until: data.snooze_until }));
+      if (minutes === 0) toast.success("Snooze dibatalkan");
+      else toast.success(`Toko istirahat ${minutes} menit ☕`);
+    } catch (e) {
+      toast.error("Gagal set snooze. Coba lagi.");
+    }
+  };
+
+  const snoozeUntil = shop?.snooze_until ? new Date(shop.snooze_until) : null;
+  const isSnoozed = snoozeUntil && snoozeUntil > new Date();
+  const snoozeMinsLeft = isSnoozed
+    ? Math.max(1, Math.ceil((snoozeUntil - new Date()) / 60000))
+    : 0;
 
   return (
     <DashboardLayout
@@ -138,6 +155,60 @@ export default function Dashboard() {
             data-testid="dashboard-toggle-open">
             {isOpen ? <><PowerOff className="w-4 h-4 mr-2" /> Tutup Toko</> : <><Power className="w-4 h-4 mr-2" /> Buka Toko</>}
           </Button>
+        </div>
+      )}
+
+      {/* SNOOZE BUKA — istirahat singkat 15/30/60 menit (F&B) */}
+      {sellsByHours && isOpen && (
+        <div className={`mb-6 rounded-2xl p-4 border-2 shadow-card flex items-center justify-between gap-4 flex-wrap ${
+          isSnoozed ? "bg-amber-50 border-amber-300" : "bg-brand-off border-brand-line"
+        }`}
+          data-testid="dashboard-snooze-card">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${
+              isSnoozed ? "bg-amber-500 text-white" : "bg-white text-brand-mute border border-brand-line"
+            }`}>
+              <Coffee className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              {isSnoozed ? (
+                <>
+                  <div className="text-xs font-bold tracking-widest uppercase text-amber-700">Istirahat</div>
+                  <div className="font-heading font-bold text-lg text-amber-900" data-testid="snooze-active-label">
+                    Buka lagi {snoozeMinsLeft} menit lagi
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-xs font-bold tracking-widest uppercase text-brand-mute">Istirahat Singkat</div>
+                  <div className="font-heading font-bold text-base">Tutup sebentar tanpa perlu toggle</div>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isSnoozed ? (
+              <Button
+                onClick={() => snoozeShop(0)}
+                variant="outline"
+                size="sm"
+                className="rounded-lg border-amber-400 text-amber-900 bg-white hover:bg-amber-50 font-semibold h-10 px-4"
+                data-testid="snooze-cancel">
+                <X className="w-4 h-4 mr-1.5" /> Batalkan
+              </Button>
+            ) : (
+              [15, 30, 60].map((m) => (
+                <Button key={m}
+                  onClick={() => snoozeShop(m)}
+                  size="sm"
+                  variant="outline"
+                  className="rounded-lg border-brand-line bg-white hover:bg-brand-sand font-semibold h-10 px-3.5 text-sm"
+                  data-testid={`snooze-${m}`}>
+                  {m} mnt
+                </Button>
+              ))
+            )}
+          </div>
         </div>
       )}
 

@@ -200,38 +200,112 @@ export default function ShopSettings() {
                       { idx: 6, label: "Minggu" },
                     ].map((day) => {
                       const entry = (shop.schedule || [])[day.idx];
-                      const isOpenDay = !!(entry && entry.open && entry.close);
-                      const setEntry = (next) => {
+                      // Normalize to shifts array (legacy {open,close} → 1-shift)
+                      const shifts = (() => {
+                        if (!entry) return [];
+                        if (Array.isArray(entry.shifts) && entry.shifts.length) return entry.shifts;
+                        if (entry.open && entry.close) return [{ open: entry.open, close: entry.close }];
+                        return [];
+                      })();
+                      const isOpenDay = shifts.length > 0;
+                      const writeShifts = (next) => {
                         const arr = [...(shop.schedule || [])];
                         while (arr.length < 7) arr.push(null);
-                        arr[day.idx] = next;
+                        if (!next || next.length === 0) {
+                          arr[day.idx] = null;
+                        } else if (next.length === 1) {
+                          // Keep legacy single-shift format for backward compat
+                          arr[day.idx] = { open: next[0].open, close: next[0].close };
+                        } else {
+                          arr[day.idx] = { shifts: next };
+                        }
                         update("schedule", arr);
                       };
+                      const setShift = (i, key, val) => {
+                        const next = [...shifts];
+                        next[i] = { ...next[i], [key]: val };
+                        writeShifts(next);
+                      };
+                      const addShift = () => writeShifts([...shifts, { open: "17:00", close: "21:00" }]);
+                      const removeShift = (i) => writeShifts(shifts.filter((_, idx) => idx !== i));
+
                       return (
-                        <div key={day.idx} className="flex items-center gap-2 sm:gap-3 py-1" data-testid={`schedule-row-${day.idx}`}>
-                          <div className="w-20 sm:w-24 font-semibold text-sm">{day.label}</div>
-                          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                            <input type="checkbox" className="w-3.5 h-3.5 accent-brand"
-                              checked={isOpenDay}
-                              onChange={(e) => setEntry(e.target.checked ? { open: "08:00", close: "21:00" } : null)}
-                              data-testid={`schedule-open-${day.idx}`} />
-                            Buka
-                          </label>
-                          <input type="time" disabled={!isOpenDay}
-                            value={entry?.open || ""}
-                            onChange={(e) => setEntry({ ...(entry || {}), open: e.target.value })}
-                            className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white disabled:bg-brand-off disabled:text-brand-mute"
-                            data-testid={`schedule-open-time-${day.idx}`} />
-                          <span className="text-brand-mute text-sm">–</span>
-                          <input type="time" disabled={!isOpenDay}
-                            value={entry?.close || ""}
-                            onChange={(e) => setEntry({ ...(entry || {}), close: e.target.value })}
-                            className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white disabled:bg-brand-off disabled:text-brand-mute"
-                            data-testid={`schedule-close-time-${day.idx}`} />
-                          {!isOpenDay && <span className="text-xs text-brand-mute italic">Libur</span>}
+                        <div key={day.idx} className="rounded-lg border border-brand-line bg-white/60 p-2.5" data-testid={`schedule-row-${day.idx}`}>
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="w-20 sm:w-24 font-semibold text-sm">{day.label}</div>
+                            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 accent-brand"
+                                checked={isOpenDay}
+                                onChange={(e) => writeShifts(e.target.checked ? [{ open: "08:00", close: "21:00" }] : [])}
+                                data-testid={`schedule-open-${day.idx}`} />
+                              Buka
+                            </label>
+                            {!isOpenDay && <span className="text-xs text-brand-mute italic">Libur</span>}
+                          </div>
+                          {isOpenDay && (
+                            <div className="mt-2 ml-22 sm:ml-26 space-y-1.5">
+                              {shifts.map((sh, i) => (
+                                <div key={i} className="flex items-center gap-2 flex-wrap" data-testid={`schedule-shift-${day.idx}-${i}`}>
+                                  <span className="text-[10px] uppercase tracking-wider font-bold text-brand-mute w-12">
+                                    {shifts.length > 1 ? (i === 0 ? "Shift 1" : `Shift ${i + 1}`) : "Jam"}
+                                  </span>
+                                  <input type="time"
+                                    value={sh.open || ""}
+                                    onChange={(e) => setShift(i, "open", e.target.value)}
+                                    className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white"
+                                    data-testid={`schedule-open-time-${day.idx}${i > 0 ? `-${i}` : ""}`} />
+                                  <span className="text-brand-mute text-sm">–</span>
+                                  <input type="time"
+                                    value={sh.close || ""}
+                                    onChange={(e) => setShift(i, "close", e.target.value)}
+                                    className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white"
+                                    data-testid={`schedule-close-time-${day.idx}${i > 0 ? `-${i}` : ""}`} />
+                                  {shifts.length > 1 && (
+                                    <button type="button" onClick={() => removeShift(i)}
+                                      className="text-xs text-red-500 hover:text-red-700 font-semibold"
+                                      data-testid={`schedule-remove-shift-${day.idx}-${i}`}>
+                                      Hapus
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {shifts.length < 2 && (
+                                <button type="button" onClick={addShift}
+                                  className="text-xs text-brand font-semibold hover:underline ml-14"
+                                  data-testid={`schedule-add-shift-${day.idx}`}>
+                                  + Tambah shift kedua (mis. dinner)
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* PRE-ORDER CUTOFF */}
+                  <div className="mt-5 pt-4 border-t border-brand-line">
+                    <label className="block">
+                      <div className="font-semibold text-sm">⏱️ Last Order Sebelum Tutup</div>
+                      <div className="text-xs text-brand-mute mt-0.5 mb-2">
+                        Stop terima order N menit sebelum jam tutup. Contoh: tutup 21:00, last order 30 menit = stop pesanan jam 20:30.
+                        Berguna biar dapur sempat siap-siap.
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {[0, 15, 30, 45, 60].map((m) => (
+                          <button key={m} type="button"
+                            onClick={() => update("last_order_minutes_before_close", m)}
+                            className={`rounded-lg px-3 h-9 text-sm font-semibold border transition ${
+                              (shop.last_order_minutes_before_close || 0) === m
+                                ? "bg-brand text-white border-brand"
+                                : "bg-white text-brand-ink border-brand-line hover:bg-brand-sand"
+                            }`}
+                            data-testid={`last-order-cutoff-${m}`}>
+                            {m === 0 ? "Tidak" : `${m} mnt`}
+                          </button>
+                        ))}
+                      </div>
+                    </label>
                   </div>
                 </div>
               </>

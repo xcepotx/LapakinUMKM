@@ -302,3 +302,39 @@ def product_created_via_wa(name: str, product_name: str, price: int,
         f"— Tim Lapakin"
     )
     return subject, html, text
+
+
+
+# ---------- Subdomain Live ----------
+def subdomain_live(name: str, shop_name: str, subdomain_url: str) -> tuple:
+    """Kirim sekali saat <slug>.lapakin.my.id pertama kali resolve."""
+    subject = f"🎉 Subdomain kustom {shop_name} sudah live!"
+    body = f"""
+      <p>Halo {name or 'Bos'},</p>
+      <p>Kabar gembira — toko kamu sekarang punya <strong>alamat pendek sendiri</strong>
+         yang gampang diingat pelanggan:</p>
+      <div style="background:#FFF3EC;border:1px dashed #C04A3B;border-radius:12px;
+                  padding:16px;text-align:center;margin:18px 0;">
+        <a href="{subdomain_url}"
+           style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;
+                  color:#C04A3B;text-decoration:none;">{subdomain_url}</a>
+      </div>
+      <p>Bagikan link ini ke WhatsApp, Instagram bio, atau kartu nama kamu.
+         Preview OG (foto + tagline) otomatis muncul saat link di-share. 💅</p>
+      <p style="font-size:13px;color:{MUTED};">
+         Tips: ganti bio Instagram kamu jadi link ini. Terlihat jauh lebih profesional
+         dibanding pakai link toko lain.
+      </p>"""
+    html = _base_layout(
+        f"Selamat, {shop_name} 🚀",
+        body,
+        cta_label="Buka Toko",
+        cta_url=subdomain_url,
+    )
+    text = (
+        f"Halo {name or 'Bos'},\n\n"
+        f"Subdomain kustom toko kamu sudah live:\n{subdomain_url}\n\n"
+        f"Bagikan di WhatsApp/IG — preview otomatis muncul.\n\n"
+        f"— Tim Lapakin"
+    )
+    return subject, html, text

@@ -2,7 +2,7 @@
 import os
 import re as _re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -77,6 +77,38 @@ async def toggle_shop_open(request: Request):
         {"$set": {"is_open": new_state, "updated_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"is_open": new_state}
+
+
+@router.post("/shops/me/snooze")
+async def snooze_shop(request: Request):
+    """Temporarily close the shop for N minutes (F&B 'istirahat singkat').
+    Body: {"minutes": int}  — 15/30/60 recommended. 0 = cancel snooze.
+    """
+    user = await require_user(request)
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    minutes = int(body.get("minutes", 0) or 0)
+    if minutes < 0 or minutes > 480:  # max 8 hours
+        raise HTTPException(status_code=400, detail="Durasi snooze 0–480 menit")
+
+    now = datetime.now(timezone.utc)
+    if minutes == 0:
+        await db.shops.update_one(
+            {"shop_id": user["shop_id"]},
+            {"$set": {"snooze_until": None, "updated_at": now.isoformat()}},
+        )
+        return {"snooze_until": None, "snoozed": False}
+
+    until = (now + timedelta(minutes=minutes)).isoformat()
+    await db.shops.update_one(
+        {"shop_id": user["shop_id"]},
+        {"$set": {"snooze_until": until, "updated_at": now.isoformat()}},
+    )
+    return {"snooze_until": until, "snoozed": True, "minutes": minutes}
 
 
 @router.get("/shops/by-slug/{slug}")
@@ -259,5 +291,32 @@ async def share_health(request: Request):
         logger.info(f"share-health subdomain check failed: {e}")
         result["subdomain"]["reachable"] = False
         result["subdomain"]["og_valid"] = False
+
+    # Fire one-shot "subdomain live" email the first time it resolves cleanly
+    if (result["subdomain"]["dns_resolves"]
+            and result["subdomain"]["og_valid"]
+            and not user.get("subdomain_live_notified_at")):
+        try:
+            from email_service import send_email
+            from email_templates import subdomain_live
+            subject, html, text = subdomain_live(
+                user.get("name") or "",
+                shop.get("name") or slug,
+                subdomain_base,
+            )
+            sent = await send_email(
+                to=user["email"],
+                subject=subject,
+                html=html,
+                text=text,
+            )
+            if sent:
+                await db.users.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {"subdomain_live_notified_at": datetime.now(timezone.utc).isoformat()}},
+                )
+                result["subdomain"]["just_notified"] = True
+        except Exception as e:
+            logger.info(f"subdomain_live email failed: {e}")
 
     return result

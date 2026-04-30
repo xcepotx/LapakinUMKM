@@ -90,6 +90,9 @@ export default function Storefront({ tenantSlug = null }) {
   // Schedule status from backend (Iteration 8)
   const scheduleStatus = shop?.schedule_status || {};
   const autoSchedule = !!scheduleStatus.auto;
+  const isSnoozed = !!scheduleStatus.snoozed;
+  const notAcceptingOrders = scheduleStatus.accepting_orders === false;
+  const lastOrderAt = scheduleStatus.last_order_at || null;
   // Today index (0=Mon..6=Sun) — JS Date.getDay() returns 0=Sun..6=Sat
   const todayIdx = (new Date().getDay() + 6) % 7;
   const DAY_LABELS_SHORT = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
@@ -112,6 +115,7 @@ export default function Storefront({ tenantSlug = null }) {
 
   const canAdd = (p) => {
     if (shopClosed) return false;
+    if (notAcceptingOrders) return false; // past last-order cutoff OR snoozed
     if (sellsBy === "hours" && !isAvailableToday(p)) return false;
     if (sellsBy === "stock" && (p.stock !== undefined && p.stock !== null && p.stock <= 0)) return false;
     return true;
@@ -216,6 +220,40 @@ export default function Storefront({ tenantSlug = null }) {
       </div>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+        {/* SNOOZE BANNER — F&B istirahat singkat */}
+        {isSnoozed && (
+          <div className="rounded-2xl p-5 mb-6 flex items-center gap-4 bg-amber-50 border-2 border-amber-300 shadow-card"
+            data-testid="storefront-snooze-banner">
+            <div className="w-12 h-12 rounded-xl bg-amber-500 text-white grid place-items-center shrink-0 shadow-md text-2xl">
+              ☕
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-heading font-extrabold text-lg text-amber-900">Lagi istirahat sebentar 🙏</div>
+              <p className="text-sm text-amber-900/85 mt-0.5">
+                Penjual lagi istirahat singkat. Boleh chat WhatsApp untuk info lebih lanjut ya.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* LAST-ORDER BANNER — F&B pre-order cutoff passed (masih buka, tapi stop order) */}
+        {!shopClosed && !isSnoozed && notAcceptingOrders && lastOrderAt && (
+          <div className="rounded-2xl p-5 mb-6 flex items-center gap-4 bg-yellow-50 border-2 border-yellow-300 shadow-card"
+            data-testid="storefront-cutoff-banner">
+            <div className="w-12 h-12 rounded-xl bg-yellow-500 text-white grid place-items-center shrink-0 shadow-md">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-heading font-extrabold text-lg text-yellow-900">
+                Pesanan hari ini sudah ditutup
+              </div>
+              <p className="text-sm text-yellow-900/85 mt-0.5">
+                Last order tadi pukul <b>{lastOrderAt} WIB</b>. Dapur lagi siap-siap tutup. Sampai jumpa besok! 🍽️
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* CLOSED BANNER (mode=hours & is_open=false) */}
         {shopClosed && (
           <div className="rounded-2xl p-5 mb-6 flex items-center gap-4 bg-red-50 border-2 border-red-300 shadow-card"
@@ -236,12 +274,17 @@ export default function Storefront({ tenantSlug = null }) {
 
         {/* AUTO-SCHEDULE OPEN HINT (when open + closing soon) */}
         {sellsBy === "hours" && isOpen && autoSchedule && scheduleStatus.closes_at && (
-          <div className="rounded-2xl p-3 mb-6 flex items-center gap-2 bg-green-50 border border-green-300 text-sm"
+          <div className="rounded-2xl p-3 mb-6 flex items-center gap-2 bg-green-50 border border-green-300 text-sm flex-wrap"
             data-testid="storefront-closes-at">
             <Clock className="w-4 h-4 text-green-700" />
             <span className="text-green-800">
               Tutup hari ini jam <b>{scheduleStatus.closes_at} WIB</b>
             </span>
+            {lastOrderAt && !notAcceptingOrders && (
+              <span className="text-green-700 ml-2" data-testid="storefront-last-order-hint">
+                · Last order <b>{lastOrderAt} WIB</b>
+              </span>
+            )}
           </div>
         )}
 

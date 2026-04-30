@@ -26,6 +26,24 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 - Storefront publik mobile-first di `/toko/{slug}` dengan checkout WhatsApp
 - Bahasa Indonesia di seluruh UI
 
+### F&B Enhancements + Subdomain Live Email (✅ 2026-04-30)
+
+#### F&B Enhancements (`schedule_utils.py` rewrite + new endpoint)
+- **Snooze Buka 30 menit**: new field `shop.snooze_until` (ISO datetime). New endpoint `POST /api/shops/me/snooze {minutes}` — sets snooze for N minutes (0=cancel, max 480). Snooze overrides any open-state, including auto-schedule and `sells_by="always"`. Auto-expires when timestamp passes.
+- **Pre-order cutoff**: new field `shop.last_order_minutes_before_close` (int). When current time within active shift but past `(close - cutoff)`, `accepting_orders=false` is set. Storefront shows yellow banner "Pesanan hari ini sudah ditutup. Last order tadi pukul HH:MM WIB". Add-to-cart disabled.
+- **Multi-shift schedules**: schedule entry now supports `{shifts: [{open, close}, ...]}` format (max 2 shifts/day in UI). Backward-compatible with legacy `{open, close}` single-shift entries — old shops Just Work. Storefront's `closes_at` and `opens_at` correctly reflect the active or next shift.
+- **Frontend**:
+  - `Dashboard.jsx`: new amber Snooze card with 15/30/60 min buttons + "Buka lagi N menit lagi" + Batalkan. Snooze state shown above stats grid.
+  - `Storefront.jsx`: snooze banner (amber ☕), pre-order cutoff banner (yellow), last-order hint inline with closes-at chip.
+  - `ShopSettings.jsx`: schedule editor refactored to support per-day "+ Tambah shift kedua (mis. dinner)" with remove button. New "Last Order Sebelum Tutup" pill picker (0/15/30/45/60 menit).
+- **Tests**: `tests/test_fb_enhancements.py` — 10 unit tests covering snooze active/expired/override, multi-shift open/closed/between, legacy single-shift compat, cutoff reached/not-reached/disabled. All passing.
+
+#### Subdomain Live Email (one-shot delight)
+- New email template `email_templates.subdomain_live(name, shop_name, subdomain_url)` — terracotta dashed-border CTA card with the subdomain URL, IG bio tip.
+- `share-health` endpoint now fires this email **once** when `dns_resolves=True` AND `og_valid=True` AND `user.subdomain_live_notified_at` is unset. Sets the timestamp atomically so no duplicate sends.
+- Returns `subdomain.just_notified=True` in the response so frontend could optionally show toast (not wired yet — kept email-only for first version).
+
+
 ### Share Health Widget + Cloudflare SSL Auto-Renew Guide (✅ 2026-04-30)
 - **Backend**: new `GET /api/shops/me/share-health` (in `routes/shops.py`). Returns:
   - `apex`: `/toko/<slug>` URL on current host

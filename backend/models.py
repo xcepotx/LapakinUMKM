@@ -63,9 +63,14 @@ class ShopIn(BaseModel):
     sells_by: Optional[str] = "stock"         # "stock" | "hours" | "always"
     is_open: Optional[bool] = True            # only relevant when sells_by == "hours"
     # Auto-schedule — 7 entries idx 0=Senin..6=Minggu.
-    # Each entry: {"open": "HH:MM", "close": "HH:MM"} or None/empty = tutup hari itu.
+    # Each entry: {"open": "HH:MM", "close": "HH:MM"} (single shift, legacy) OR
+    #             {"shifts": [{"open": "HH:MM", "close": "HH:MM"}, ...]} (multi-shift, F&B Pro).
+    # None/empty dict = tutup hari itu.
     auto_schedule_enabled: Optional[bool] = False
     schedule: List[Optional[dict]] = []
+    # F&B enhancements
+    snooze_until: Optional[str] = None                     # ISO datetime; effective close until this moment
+    last_order_minutes_before_close: Optional[int] = 0     # e.g., 30 = last order 30 min before close
 
 
 class ShopOut(ShopIn):
