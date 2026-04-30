@@ -35,7 +35,7 @@ def _public_base_url(request: Request) -> str:
 
 
 # ---------- Shop OG PNG ----------
-@router.get("/og/shop/{slug}.png")
+@router.api_route("/og/shop/{slug}.png", methods=["GET", "HEAD"])
 async def og_image(slug: str):
     """Serve a 1200x630 PNG suitable for OpenGraph preview (cached)."""
     shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
@@ -75,7 +75,7 @@ async def og_image(slug: str):
 
 
 # ---------- Shop OG HTML ----------
-@router.get("/og/shop/{slug}")
+@router.api_route("/og/shop/{slug}", methods=["GET", "HEAD"])
 async def og_html(slug: str, request: Request):
     """Return HTML page with full OpenGraph + Twitter Card meta tags."""
     shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
