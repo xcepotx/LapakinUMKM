@@ -8,6 +8,7 @@ import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy, Power, Powe
 import { rupiah } from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import ShareHealthCard from "@/components/ShareHealthCard";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -211,6 +212,9 @@ export default function Dashboard() {
               </Button>
             </div>
           </div>
+
+          {/* SHARE HEALTH — live DNS + OG status, subdomain for Pro+ */}
+          <ShareHealthCard shop={shop} />
 
           {/* SHARE PREVIEW — bagaimana link tampil di WhatsApp/IG/FB */}
           <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card" data-testid="share-preview-card">

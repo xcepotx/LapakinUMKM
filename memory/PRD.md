@@ -26,6 +26,17 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 - Storefront publik mobile-first di `/toko/{slug}` dengan checkout WhatsApp
 - Bahasa Indonesia di seluruh UI
 
+### Share Health Widget + Cloudflare SSL Auto-Renew Guide (✅ 2026-04-30)
+- **Backend**: new `GET /api/shops/me/share-health` (in `routes/shops.py`). Returns:
+  - `apex`: `/toko/<slug>` URL on current host
+  - `subdomain`: `<slug>.lapakin.my.id` URL + `dns_resolves` (via `socket.gethostbyname`) + `reachable` (via `httpx` with FB UA) + `og_valid` (checks `og:title` & `og:image` in body)
+  - `can_use_subdomain` (from `tiers.get_limits(tier).custom_subdomain`) — false for free, true for pro/business
+  - `og_image_url` for dashboard preview
+- **Tests**: `tests/test_share_health.py` — 4 cases (auth, no-shop, free upsell, pro DNS probe). All passing.
+- **Frontend**: new `src/components/ShareHealthCard.jsx` — dashboard widget with apex link + subdomain link + health badges (green/yellow/red) + FB Debugger / LinkedIn Post Inspector quick-links. Free tier shows upsell with Lock icon linking to `/pricing`. Inserted at top of Quick-Actions column in `Dashboard.jsx`.
+- **Docs**: `/app/docs/CLOUDFLARE_SSL_AUTORENEW.md` — comprehensive guide for Rumahweb users to transfer DNS management to Cloudflare (free) and enable Certbot `dns-cloudflare` plugin for auto-renewal every 60 days. Includes: nameserver change steps, API token creation, plugin install, dry-run verification, Cloudflare bonus features, troubleshooting.
+
+
 ## What's Been Implemented (✅ 2026-04-30)
 
 ### Wildcard Subdomain Routing for Pro/Bisnis Tiers (✅ 2026-04-30)

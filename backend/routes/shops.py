@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
-from deps import db, require_user, slugify
+from deps import db, require_user, slugify, logger
 from models import ShopIn, CustomDomainIn
 from tiers import get_limits, require_feature
 from schedule_utils import compute_schedule_status
@@ -182,3 +182,82 @@ async def remove_custom_domain(request: Request):
                     "custom_domain_requested_at": "", "custom_domain_verified_at": ""}}
     )
     return {"ok": True}
+
+
+
+# ----------- Share / OG Health Check -----------
+@router.get("/shops/me/share-health")
+async def share_health(request: Request):
+    """Quick diagnostic for owner dashboard:
+    - Resolves whether <slug>.lapakin.my.id DNS points to this server (Pro+)
+    - Reports OG HTML / OG image reachability on both /toko/<slug> and subdomain
+    - Tier gating: custom_subdomain feature must be enabled
+    Returns JSON used by the OG Health widget in Dashboard.
+    """
+    import socket
+    import httpx
+    user = await require_user(request)
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+    shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    slug = shop["slug"]
+    tier = user.get("tier") or "free"
+    can_subdomain = bool(get_limits(tier).get("custom_subdomain"))
+
+    # Base URL from the current request (so works on preview, prod, local)
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "https"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    apex_base = f"{proto}://{host}"
+    subdomain_host = f"{slug}.lapakin.my.id"
+    subdomain_base = f"https://{subdomain_host}"
+
+    result = {
+        "slug": slug,
+        "tier": tier,
+        "can_use_subdomain": can_subdomain,
+        "apex": {"host": host, "url": f"{apex_base}/toko/{slug}"},
+        "subdomain": {
+            "host": subdomain_host,
+            "url": subdomain_base,
+            "dns_resolves": None,        # True / False / None (unchecked)
+            "reachable": None,
+            "og_valid": None,
+        },
+        "og_image_url": f"{apex_base}/api/og/shop/{slug}.png",
+    }
+
+    if not can_subdomain:
+        return result
+
+    # 1) DNS resolve
+    try:
+        socket.setdefaulttimeout(2.5)
+        socket.gethostbyname(subdomain_host)
+        result["subdomain"]["dns_resolves"] = True
+    except Exception:
+        result["subdomain"]["dns_resolves"] = False
+        return result  # No point checking HTTP if DNS fails
+
+    # 2) HTTP reachability + og:title detection (use facebook UA to hit OG HTML path)
+    try:
+        async with httpx.AsyncClient(timeout=4.0, follow_redirects=True, verify=True) as client:
+            r = await client.get(
+                subdomain_base + "/",
+                headers={"User-Agent": "facebookexternalhit/1.1"},
+            )
+            result["subdomain"]["reachable"] = r.status_code == 200
+            body = (r.text or "").lower()
+            result["subdomain"]["og_valid"] = (
+                r.status_code == 200
+                and 'property="og:title"' in body
+                and 'property="og:image"' in body
+            )
+    except Exception as e:
+        logger.info(f"share-health subdomain check failed: {e}")
+        result["subdomain"]["reachable"] = False
+        result["subdomain"]["og_valid"] = False
+
+    return result
