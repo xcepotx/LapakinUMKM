@@ -47,6 +47,14 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
               </Link>
             );
           })}
+          {/* Mobile-only logout button (sidebar bottom block hidden on mobile) */}
+          <button
+            onClick={handleLogout}
+            className="lg:hidden flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap text-red-300 hover:text-white hover:bg-red-500/30 ml-auto"
+            data-testid="admin-logout-btn-mobile">
+            <LogOut className="w-4 h-4" />
+            <span>Keluar</span>
+          </button>
         </nav>
         <div className="lg:mt-auto px-3 pb-4 hidden lg:block">
           <Link to="/" className="flex items-center gap-2 text-xs text-white/60 hover:text-white px-3 py-2">

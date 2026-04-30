@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Save, Plus, X, ImagePlus } from "lucide-react";
+import { Save, Plus, X, ImagePlus, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 const MAX_IMAGES = 5;
@@ -31,8 +31,26 @@ export default function EditProductDialog({ product, shop, open, onOpenChange, o
   const [images, setImages] = useState([]); // data URLs
   const [availableDays, setAvailableDays] = useState([]); // 0..6, empty = setiap hari
   const [saving, setSaving] = useState(false);
+  const [enhancingIdx, setEnhancingIdx] = useState(null);
 
   const sellsBy = shop?.sells_by || "stock";
+
+  const enhanceImage = async (idx) => {
+    const dataUrl = images[idx];
+    if (!dataUrl) return;
+    setEnhancingIdx(idx);
+    try {
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+      const { data } = await api.post("/ai/enhance-image", { image_base64: base64, style: "clean" });
+      const enhancedUrl = `data:${data.mime_type || "image/png"};base64,${data.image_base64}`;
+      setImages((arr) => arr.map((v, i) => (i === idx ? enhancedUrl : v)));
+      toast.success("Foto berhasil di-enhance ✨");
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Gagal enhance foto");
+    } finally {
+      setEnhancingIdx(null);
+    }
+  };
 
   useEffect(() => {
     if (!product) return;
@@ -126,11 +144,25 @@ export default function EditProductDialog({ product, shop, open, onOpenChange, o
                         Jadikan Utama
                       </button>
                     )}
+                    <button onClick={() => enhanceImage(i)} type="button"
+                      disabled={enhancingIdx === i}
+                      title="AI enhance: bersihkan background, terangkan, profesional"
+                      className="text-white bg-brand rounded p-1.5 disabled:opacity-50"
+                      data-testid={`enhance-img-${i}`}>
+                      {enhancingIdx === i ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    </button>
                     <button onClick={() => removeImage(i)} type="button"
                       className="text-white bg-red-600 rounded p-1.5" data-testid={`remove-img-${i}`}>
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
+                  {/* Mobile-friendly: show enhance button always on small screens */}
+                  <button onClick={() => enhanceImage(i)} type="button"
+                    disabled={enhancingIdx === i}
+                    className="absolute bottom-1 right-1 sm:hidden text-white bg-brand rounded-full p-1.5 shadow-md disabled:opacity-50"
+                    data-testid={`enhance-img-mobile-${i}`}>
+                    {enhancingIdx === i ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  </button>
                 </div>
               ))}
               {images.length < MAX_IMAGES && (
