@@ -223,32 +223,49 @@ export default function Landing() {
       )}
 
       {/* HARGA */}
-      <section id="harga" className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      <section id="harga" className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
         <div className="text-center max-w-2xl mx-auto">
           <span className="text-xs font-bold tracking-[0.2em] uppercase text-brand">Harga</span>
           <h2 className="font-heading font-bold text-3xl sm:text-4xl mt-3">Mulai gratis, upgrade kalau butuh.</h2>
           <p className="mt-3 text-brand-mute">
-            MVP ini gratis untuk dicoba. Premium &amp; WhatsApp Bot menyusul.
+            Trial Pro 14 hari otomatis untuk semua user baru. Bayar pakai QRIS, GoPay, OVO, transfer bank, atau kartu kredit.
           </p>
         </div>
-        <div className="mt-12 grid md:grid-cols-2 gap-6">
+        <div className="mt-12 grid md:grid-cols-3 gap-6">
           <PriceCard
             name="Gratis"
             price="Rp 0"
-            features={["Toko online di subdomain Lapakin", "10 produk", "AI Studio (foto + caption)", "Branding 'Powered by Lapakin'"]}
-            cta="Mulai Sekarang"
+            features={["1 toko di subdomain Lapakin", "5 produk", "AI Studio basic (limit harian)", "Toko Cards basic", "Powered by Lapakin"]}
+            cta="Mulai Gratis"
             onClick={() => navigate(user ? "/dashboard" : "/register")}
             tid="price-free"
           />
           <PriceCard
-            name="Premium (segera)"
-            price="Rp 99rb/bln"
+            name="Pro"
+            price="Rp 49rb/bln"
             highlight
-            features={["Produk unlimited", "AI Studio prioritas", "Custom domain", "WhatsApp bot pengelolaan toko", "Tanpa branding"]}
-            cta="Daftar Waiting List"
-            onClick={() => navigate(user ? "/dashboard" : "/register")}
-            tid="price-premium"
+            badge="Paling Populer"
+            features={["100 produk", "AI Studio generous (foto + caption)", "Tanpa branding Lapakin", "Custom subdomain", "Analytics storefront", "Bulk Toko Cards Pack"]}
+            cta="Lihat Detail Paket"
+            onClick={() => navigate("/pricing")}
+            tid="price-pro"
           />
+          <PriceCard
+            name="Bisnis"
+            price="Rp 149rb/bln"
+            features={["Produk unlimited", "AI Studio unlimited", "Custom domain (.com)", "Multi-shift schedule F&B", "WhatsApp broadcast", "Priority support"]}
+            cta="Lihat Detail Paket"
+            onClick={() => navigate("/pricing")}
+            tid="price-business"
+          />
+        </div>
+        <div className="text-center mt-8">
+          <a
+            href="/pricing#comparison"
+            className="text-sm font-semibold text-brand hover:underline"
+            data-testid="see-full-comparison-link">
+            Bandingkan semua fitur per paket →
+          </a>
         </div>
       </section>
 
@@ -316,12 +333,17 @@ function Step({ n, t, d }) {
   );
 }
 
-function PriceCard({ name, price, features, cta, onClick, highlight, tid }) {
+function PriceCard({ name, price, features, cta, onClick, highlight, badge, tid }) {
   return (
     <div
-      className={`rounded-2xl p-7 border ${highlight ? "bg-brand text-white border-brand" : "bg-white border-brand-line"} shadow-card card-hover`}
+      className={`relative rounded-2xl p-7 border ${highlight ? "bg-brand text-white border-brand" : "bg-white border-brand-line"} shadow-card card-hover`}
       data-testid={tid}
     >
+      {badge && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-accent text-brand-ink text-[10px] font-bold uppercase tracking-[0.15em] px-3 py-1 rounded-full whitespace-nowrap">
+          {badge}
+        </div>
+      )}
       <div className={`text-xs font-bold uppercase tracking-[0.2em] ${highlight ? "text-white/80" : "text-brand"}`}>{name}</div>
       <div className="mt-3 font-heading font-extrabold text-3xl">{price}</div>
       <ul className={`mt-6 space-y-3 text-sm ${highlight ? "text-white/90" : "text-brand-ink"}`}>
