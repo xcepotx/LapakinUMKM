@@ -28,7 +28,8 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 
 ## What's Been Implemented (✅ 2026-04-29)
 
-### Iteration 15 (✅ 2026-04-29 — Midtrans Snap Payment Gateway)
+### Iteration 15 (✅ 2026-04-29 — Midtrans Snap Payment Gateway + Receipt Email)
+- **Receipt email (iter15b)**: New `payment_receipt(name, order_id, plan_label, amount_idr, cycle, payment_type, paid_at_iso, next_billing_iso)` template in `email_templates.py` — invoice-style HTML with order_id, plan, cycle, payment method, paid date, active-until date, total amount (terracotta emphasis). `_activate_subscription` now accepts `payment_type` + `amount_idr` params and fires receipt email best-effort after successful activation. Wired through webhook: Midtrans payment_type flows → receipt email → user's inbox.
 - **New modules**:
   - `payment_service.py` — Midtrans Snap wrapper using `midtransclient` SDK, PLANS catalog (pro_monthly/pro_yearly/business_monthly/business_yearly matching tiers.py prices), `verify_webhook_signature` (SHA512), no-op 503 when keys empty.
   - `routes/payment.py` (5 endpoints): `GET /payment/config` (public — plans + snap_url + client_key for frontend loader), `POST /payment/create-transaction` (auth — returns snap_token), `POST /payment/webhook` (public — SHA512 signature verification + idempotent tier activation), `GET /payment/status/{order_id}` (auth), `GET /payment/history` (auth — user's paid orders).

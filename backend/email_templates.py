@@ -165,6 +165,106 @@ def trial_expiring(name: str, days_left: int) -> tuple:
     return subject, html, text
 
 
+# ---------- Payment Receipt ----------
+def payment_receipt(name: str, order_id: str, plan_label: str,
+                    amount_idr: int, cycle: str, payment_type: str,
+                    paid_at_iso: str, next_billing_iso: str) -> tuple:
+    """Receipt sent immediately after a successful Midtrans payment."""
+    subject = f"Terima kasih! Pembayaran Rp {amount_idr:,} diterima · {plan_label}".replace(",", ".")
+    billing_url = f"{_public_app_url()}/dashboard/billing"
+    # Normalize dates: DD MMM YYYY HH:MM
+    from datetime import datetime as _dt
+    def _fmt(iso):
+        try:
+            dt = _dt.fromisoformat((iso or "").replace("Z", "+00:00"))
+            bulan = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"]
+            return f"{dt.day} {bulan[dt.month-1]} {dt.year} {dt.hour:02d}:{dt.minute:02d}"
+        except Exception:
+            return iso or "-"
+    paid_fmt = _fmt(paid_at_iso)
+    next_fmt = _fmt(next_billing_iso)
+    amount_fmt = f"Rp {int(amount_idr):,}".replace(",", ".")
+    cycle_label = "Bulanan" if cycle == "monthly" else ("Tahunan" if cycle == "yearly" else cycle)
+    ptype = (payment_type or "").replace("_", " ").title() or "Online"
+
+    # Invoice table
+    body = f"""
+      <p>Halo {name or 'teman'},</p>
+      <p>Pembayaran kamu <strong>berhasil diterima</strong>. Tier Lapakin udah aktif sekarang.
+         Simpan email ini sebagai bukti transaksi.</p>
+
+      <table role="presentation" cellpadding="0" cellspacing="0"
+             style="width:100%;border:1px solid {LINE};border-radius:12px;
+                    margin:16px 0;background:{SAND};">
+        <tr><td style="padding:14px 16px 6px;font-size:13px;color:{MUTED};">
+          Invoice
+        </td></tr>
+        <tr><td style="padding:0 16px 14px;font-family:ui-monospace,Consolas,monospace;
+                       font-size:12px;color:{INK};word-break:break-all;">
+          {order_id}
+        </td></tr>
+        <tr><td style="border-top:1px solid {LINE};padding:12px 16px 4px;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:14px;color:{MUTED};">Paket</td>
+            <td align="right" style="font-size:14px;color:{INK};font-weight:700;">{plan_label}</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:4px 16px;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:14px;color:{MUTED};">Siklus</td>
+            <td align="right" style="font-size:14px;color:{INK};">{cycle_label}</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:4px 16px;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:14px;color:{MUTED};">Metode Pembayaran</td>
+            <td align="right" style="font-size:14px;color:{INK};">{ptype}</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:4px 16px;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:14px;color:{MUTED};">Tanggal Bayar</td>
+            <td align="right" style="font-size:14px;color:{INK};">{paid_fmt}</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="padding:4px 16px 12px;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:14px;color:{MUTED};">Aktif Hingga</td>
+            <td align="right" style="font-size:14px;color:{INK};font-weight:700;">{next_fmt}</td>
+          </tr></table>
+        </td></tr>
+        <tr><td style="border-top:1px solid {LINE};padding:14px 16px;background:#fff;
+                       border-bottom-left-radius:12px;border-bottom-right-radius:12px;">
+          <table role="presentation" width="100%"><tr>
+            <td style="font-size:16px;color:{INK};font-weight:800;">Total Dibayar</td>
+            <td align="right" style="font-size:20px;color:{BRAND};font-weight:800;">{amount_fmt}</td>
+          </tr></table>
+        </td></tr>
+      </table>
+
+      <p style="font-size:13px;color:{MUTED};">
+        Butuh bantuan? Balas email ini, kami respons langsung dalam 24 jam.<br/>
+        Lapakin bukan lembaga keuangan — pembayaran diproses aman via Midtrans.
+      </p>"""
+    html = _base_layout(
+        "Pembayaran berhasil 🎉",
+        body,
+        cta_label="Buka Dashboard",
+        cta_url=billing_url,
+    )
+    text = (
+        f"Halo {name or 'teman'},\n\n"
+        f"Pembayaran Rp {int(amount_idr):,} untuk {plan_label} berhasil diterima.\n"
+        f"Tier aktif sampai {next_fmt}.\n\n"
+        f"Invoice: {order_id}\n"
+        f"Metode: {ptype}\n"
+        f"Bayar: {paid_fmt}\n\n"
+        f"Buka dashboard: {billing_url}\n\n"
+        f"— Tim Lapakin"
+    ).replace(",", ".")
+    return subject, html, text
+
+
 # ---------- Product via WA ----------
 def product_created_via_wa(name: str, product_name: str, price: int,
                            stock: int, shop_slug: str) -> tuple:

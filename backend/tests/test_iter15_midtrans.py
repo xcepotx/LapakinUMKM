@@ -157,7 +157,8 @@ class TestSubscriptionActivation:
                 "created_at": datetime.now(timezone.utc).isoformat(),
             })
             try:
-                await _activate_subscription(uid, "pro_monthly", f"order_{_uuid.uuid4().hex[:6]}")
+                await _activate_subscription(uid, "pro_monthly", f"order_{_uuid.uuid4().hex[:6]}",
+                                              payment_type="qris", amount_idr=49000)
                 u = await db.users.find_one({"user_id": uid}, {"_id": 0})
                 assert u["tier"] == "pro"
                 assert u.get("trial") is False
@@ -168,3 +169,65 @@ class TestSubscriptionActivation:
                 await db.users.delete_one({"user_id": uid})
 
         asyncio.run(_run())
+
+    def test_activate_sends_receipt_email(self, monkeypatch):
+        """_activate_subscription should invoke email_service.send_email
+        with the receipt template once activation succeeds."""
+        import asyncio
+        import os
+        import pymongo
+        from motor.motor_asyncio import AsyncIOMotorClient
+        import uuid as _uuid
+        from datetime import datetime, timezone
+
+        uid = f"rcpt_{_uuid.uuid4().hex[:8]}"
+        captured = {}
+
+        async def fake_send_email(to, subject, html, text=None, reply_to=None):
+            captured["to"] = to
+            captured["subject"] = subject
+            captured["html"] = html
+            captured["text"] = text
+            return "fake_id_123"
+
+        import email_service
+        monkeypatch.setattr(email_service, "send_email", fake_send_email)
+
+        # Seed user synchronously
+        mc = pymongo.MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+        db_name = os.environ.get("DB_NAME", "lapakin_db")
+        mdb = mc[db_name]
+        mdb.users.insert_one({
+            "user_id": uid, "email": f"{uid}@test.local", "name": "Receipt User",
+            "auth_provider": "email", "tier": "free",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # Re-bind the global motor client to a fresh loop for this test
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        import deps
+        new_client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+        monkeypatch.setattr(deps, "client", new_client)
+        monkeypatch.setattr(deps, "db", new_client[db_name])
+        # routes/payment.py imports `db` at module load — patch its ref too
+        from routes import payment as payment_module
+        monkeypatch.setattr(payment_module, "db", new_client[db_name])
+        try:
+            loop.run_until_complete(
+                payment_module._activate_subscription(
+                    uid, "pro_yearly", "order_rcpt_test",
+                    payment_type="gopay", amount_idr=490000
+                )
+            )
+        finally:
+            new_client.close()
+            loop.close()
+            mdb.users.delete_one({"user_id": uid})
+            mc.close()
+
+        assert captured.get("to") == f"{uid}@test.local"
+        assert "Pembayaran" in captured.get("subject", "") or "Rp" in captured.get("subject", "")
+        assert "order_rcpt_test" in captured.get("html", "")
+        assert "Pro" in captured.get("html", "") and "Tahun" in captured.get("html", "")
+        assert "490.000" in captured.get("html", "") or "490,000" in captured.get("html", "")

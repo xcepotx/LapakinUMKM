@@ -73,13 +73,19 @@ class TestTemplatesRenderCleanly:
 
     def test_all_templates(self):
         from email_templates import (
-            password_reset, welcome, trial_expiring, product_created_via_wa,
+            password_reset, welcome, trial_expiring,
+            product_created_via_wa, payment_receipt,
         )
         for fn, args in [
             (password_reset, ("Budi", "https://lapakin.my.id/reset-password?token=abc")),
             (welcome, ("Sari",)),
             (trial_expiring, ("Andi", 2)),
             (product_created_via_wa, ("Rina", "Kopi Susu Aren", 25000, 20, "warung-sari")),
+            (payment_receipt, (
+                "Dimas", "lapakin-pro_monthly-abc123", "Lapakin Pro — 1 Bulan",
+                49000, "monthly", "qris",
+                "2026-04-29T10:30:00+00:00", "2026-05-29T10:30:00+00:00"
+            )),
         ]:
             subj, html, text = fn(*args)
             assert isinstance(subj, str) and len(subj) > 5

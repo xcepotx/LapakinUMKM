@@ -22,8 +22,10 @@ class CreateTransactionIn(BaseModel):
 
 
 # ---- Helpers ----
-async def _activate_subscription(user_id: str, plan_id: str, order_id: str):
-    """Upgrade user tier + extend expiry. Idempotent per (user_id, order_id)."""
+async def _activate_subscription(user_id: str, plan_id: str, order_id: str,
+                                  payment_type: str = "", amount_idr: Optional[int] = None):
+    """Upgrade user tier + extend expiry. Idempotent per (user_id, order_id).
+    Sends receipt email on successful activation (best-effort, no raise)."""
     plan = PLANS.get(plan_id)
     if not plan:
         logger.warning("activate_subscription: unknown plan_id=%s", plan_id)
@@ -61,6 +63,25 @@ async def _activate_subscription(user_id: str, plan_id: str, order_id: str):
     )
     logger.info("Activated %s (%s) for user %s until %s",
                 plan["tier"], plan["cycle"], user_id, new_exp.isoformat())
+
+    # Receipt email (best-effort; no-op when Resend not configured)
+    try:
+        if user.get("email"):
+            from email_service import send_email
+            from email_templates import payment_receipt
+            subj, html, text = payment_receipt(
+                name=user.get("name") or "",
+                order_id=order_id,
+                plan_label=plan["label"],
+                amount_idr=amount_idr if amount_idr is not None else plan["price_idr"],
+                cycle=plan["cycle"],
+                payment_type=payment_type,
+                paid_at_iso=now.isoformat(),
+                next_billing_iso=new_exp.isoformat(),
+            )
+            await send_email(user["email"], subj, html, text)
+    except Exception:
+        logger.exception("payment receipt email failed")
 
 
 # ---- Public config endpoint (for frontend Snap loader) ----
@@ -231,6 +252,8 @@ async def payment_webhook(request: Request):
             user_id=payment["user_id"],
             plan_id=payment["plan_id"],
             order_id=order_id,
+            payment_type=payment_type,
+            amount_idr=payment.get("amount"),
         )
 
     logger.info("Midtrans webhook processed: %s → %s (%s)", order_id, new_status, transaction_status)
