@@ -16,6 +16,23 @@ from routes.whatsapp import _wa_send
 router = APIRouter()
 
 
+@router.get("/admin/llm/status")
+async def admin_llm_status(request: Request):
+    """Return which LLM provider(s) are configured + priority order.
+    Useful for ops dashboard to verify AI setup after VPS deploy.
+    """
+    await require_admin(request)
+    from llm_service import available_providers, active_provider
+    chain = available_providers()
+    return {
+        "active": active_provider(),
+        "chain": chain,
+        "count": len(chain),
+        "ok": len(chain) > 0,
+    }
+
+
+
 # 1. Dashboard Overview
 @router.get("/admin/stats")
 async def admin_stats(request: Request):

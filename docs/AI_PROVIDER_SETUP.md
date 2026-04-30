@@ -103,7 +103,7 @@ pm2 restart lapakin-backend
 
 ---
 
-## 💡 Provider Alternatif
+## 💡 Provider Alternatif + Failover
 
 Kalau gak suka Gemini, bisa pakai OpenAI:
 
@@ -115,10 +115,44 @@ Kalau gak suka Gemini, bisa pakai OpenAI:
 OPENAI_API_KEY="sk-proj-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 ```
 
-Backend akan **otomatis** detect OPENAI_API_KEY dan pakai itu. Priority:
-1. `GEMINI_API_KEY` (kalau ada)
-2. `OPENAI_API_KEY` (fallback)
+### 🔁 Automatic Failover Chain (NEW)
+
+Backend **secara otomatis** try provider chain berurutan saat error (quota, rate limit, network):
+
+1. `GEMINI_API_KEY` (primary)
+2. `OPENAI_API_KEY` (kalau Gemini fail → auto switch)
 3. `EMERGENT_LLM_KEY` (preview env only)
+
+**Cara pakai**: set **2 keys sekaligus** di `.env` untuk resilience maksimal:
+```bash
+GEMINI_API_KEY="AIzaSy..."        # Primary (gratis, 1500 req/hari)
+OPENAI_API_KEY="sk-proj-..."      # Fallback (kena charge $0.001/req kalau kena)
+```
+
+Kalau Gemini quota habis di tengah jam sibuk, user kamu gak notice apa-apa — OpenAI otomatis take over. Log tercatat di backend:
+```
+llm.chat_text — fell back to 'openai' after 'gemini' failed (attempt #2)
+```
+
+### 🔍 Cek Status Provider dari Admin Panel
+
+Login admin, lalu:
+```bash
+curl -s https://lapakin.my.id/api/admin/llm/status \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+```
+
+Output:
+```json
+{
+  "active": "gemini",
+  "chain": ["gemini", "openai"],
+  "count": 2,
+  "ok": true
+}
+```
+
+Kalau `count: 0` atau `ok: false` → belum ada API key yang ke-set, AI features bakal gagal.
 
 ---
 
