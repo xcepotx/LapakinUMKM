@@ -1,6 +1,21 @@
 import axios from "axios";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// When user is on a tenant subdomain (<slug>.lapakin.my.id), keep API calls
+// same-origin so the session cookie + nginx subdomain block is used. Falls
+// back to REACT_APP_BACKEND_URL (main domain or preview) otherwise.
+function resolveBackendUrl() {
+  const envUrl = process.env.REACT_APP_BACKEND_URL || "";
+  if (typeof window === "undefined") return envUrl;
+  const host = window.location.hostname || "";
+  // Tenant subdomain heuristic: ends with .lapakin.my.id and not www/admin/etc.
+  // Using same-origin avoids CORS + wrong-host cookie scope.
+  if (/\.lapakin\.my\.id$/i.test(host) && !/^(www|admin|api|cdn|static)\./i.test(host)) {
+    return window.location.origin;
+  }
+  return envUrl;
+}
+
+const BACKEND_URL = resolveBackendUrl();
 export const API_BASE = `${BACKEND_URL}/api`;
 
 const api = axios.create({
