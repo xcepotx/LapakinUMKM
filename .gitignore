@@ -211,3 +211,7 @@ credentials.json
 *.key
 .credentials
 frontend/node_modules/.cache/default-development/18.pack
+
+# Allow example env templates to be committed
+!.env.example
+!*.env.example
