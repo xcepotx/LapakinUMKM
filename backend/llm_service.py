@@ -55,6 +55,22 @@ def available_providers() -> list:
     return _providers_in_order()
 
 
+async def _log_event(kind: str, provider: str, detail: str = "") -> None:
+    """Persist an LLM event (success / fallback / total_fail) for admin observability.
+    Best-effort — never raises."""
+    try:
+        from deps import db  # lazy import to avoid circular
+        from datetime import datetime, timezone
+        await db.llm_events.insert_one({
+            "kind": kind,            # success | fallback | total_fail
+            "provider": provider,    # gemini | openai | emergent | <none>
+            "detail": detail[:200],
+            "at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass  # observability is never worth breaking the request over
+
+
 async def chat_text(
     system: str,
     user: str,
@@ -90,6 +106,9 @@ async def chat_text(
                     f"llm.chat_text — fell back to '{provider}' "
                     f"after '{chain[0]}' failed (attempt #{idx + 1})"
                 )
+                await _log_event("fallback", provider,
+                                 f"primary={chain[0]} failed; used={provider}")
+            await _log_event("success", provider)
             return text
         except Exception as e:
             last_err = e
@@ -102,6 +121,7 @@ async def chat_text(
 
     # All providers exhausted
     assert last_err is not None
+    await _log_event("total_fail", "none", str(last_err)[:200])
     raise RuntimeError(
         f"Semua provider LLM gagal. Terakhir: {type(last_err).__name__}: {last_err}"
     )

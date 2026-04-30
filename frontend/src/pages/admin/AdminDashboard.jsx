@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import AdminLayout from "@/components/AdminLayout";
+import AdminLLMStatusCard from "@/components/AdminLLMStatusCard";
 import { Users, Store, Package, Sparkles } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
@@ -27,7 +28,7 @@ export default function AdminDashboard() {
         <Stat label="AI Calls" value={stats.ai_usage.total} delta={`+${stats.ai_usage.last_7d} minggu ini`} icon={<Sparkles className="w-5 h-5" />} tid="stat-ai" />
       </div>
 
-      <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card">
+      <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card mb-6">
         <h3 className="font-heading font-bold text-lg">Pertumbuhan 14 Hari Terakhir</h3>
         <p className="text-sm text-brand-mute mt-1">User baru, toko baru, produk baru, dan AI calls per hari.</p>
         <div className="mt-5 h-72" data-testid="admin-growth-chart">
@@ -46,6 +47,9 @@ export default function AdminDashboard() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* AI provider health */}
+      <AdminLLMStatusCard />
     </AdminLayout>
   );
 }

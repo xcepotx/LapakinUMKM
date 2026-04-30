@@ -18,17 +18,47 @@ router = APIRouter()
 
 @router.get("/admin/llm/status")
 async def admin_llm_status(request: Request):
-    """Return which LLM provider(s) are configured + priority order.
+    """Return which LLM provider(s) are configured + priority order + recent activity.
     Useful for ops dashboard to verify AI setup after VPS deploy.
     """
     await require_admin(request)
     from llm_service import available_providers, active_provider
     chain = available_providers()
+
+    # Recent fallback events (last 7 days) — populated by llm_service.chat_text
+    now = datetime.now(timezone.utc)
+    seven = (now - timedelta(days=7)).isoformat()
+    recent_fallbacks = await db.llm_events.find(
+        {"kind": "fallback", "at": {"$gte": seven}},
+        {"_id": 0},
+    ).sort("at", -1).limit(5).to_list(5)
+    last_success_by_provider = {}
+    for p in chain:
+        doc = await db.llm_events.find_one(
+            {"kind": "success", "provider": p},
+            {"_id": 0, "at": 1},
+            sort=[("at", -1)],
+        )
+        if doc:
+            last_success_by_provider[p] = doc["at"]
+
+    # Usage counts last 30 days by provider
+    thirty = (now - timedelta(days=30)).isoformat()
+    usage_pipeline = [
+        {"$match": {"kind": "success", "at": {"$gte": thirty}}},
+        {"$group": {"_id": "$provider", "count": {"$sum": 1}}},
+    ]
+    usage_docs = await db.llm_events.aggregate(usage_pipeline).to_list(20)
+    usage_30d = {d["_id"]: d["count"] for d in usage_docs}
+
     return {
         "active": active_provider(),
         "chain": chain,
         "count": len(chain),
         "ok": len(chain) > 0,
+        "usage_30d": usage_30d,
+        "recent_fallbacks": recent_fallbacks,
+        "last_success": last_success_by_provider,
     }
 
 
