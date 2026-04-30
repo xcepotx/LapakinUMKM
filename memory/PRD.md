@@ -26,6 +26,19 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 - Storefront publik mobile-first di `/toko/{slug}` dengan checkout WhatsApp
 - Bahasa Indonesia di seluruh UI
 
+## What's Been Implemented (✅ 2026-04-30)
+
+### Wildcard Subdomain Routing for Pro/Bisnis Tiers (✅ 2026-04-30)
+- **Frontend**:
+  - `src/lib/tenant.js` — `detectTenantSlug()` parses `window.location.hostname` and returns slug when host matches `<slug>.lapakin.my.id`. Reserved prefixes (`www`, `admin`, `api`, `cdn`, `static`, `assets`) and multi-level / apex domains return `null`. Slug is validated against `^[a-z0-9][a-z0-9-]{0,40}$`.
+  - `src/App.js` — `AppRouter` calls `detectTenantSlug()` once; when truthy, the `/` route renders `<Storefront tenantSlug={slug} />` instead of `<Landing />`. All other routes (login, dashboard, admin, `/toko/:slug`) remain intact.
+  - `src/pages/Storefront.jsx` — now accepts `tenantSlug` prop and resolves effective slug as `useParams().slug || tenantSlug`. No other code path changes.
+  - `src/lib/__tests__/tenant.test.js` — 11 regression cases (tenant hosts, reserved prefixes, apex, localhost, IP, preview domain). All pass.
+- **NGINX** (`deploy/nginx-lapakin.conf`): second `server` block with regex `server_name ~^(?<tenant_slug>(?!www|admin|api|cdn|static)[a-z0-9-]+)\.lapakin\.my\.id$`. At `location = /` with bot UA, rewrites to internal `/_og_proxy` → `http://127.0.0.1:8001/api/og/shop/$tenant_slug` so IG/FB/WA previews show the dynamic OG card even on subdomains. Human traffic falls through to SPA (`/index.html`) which boots React → `detectTenantSlug()` → storefront.
+- **DNS/SSL requirement** (user-side): wildcard `*.lapakin.my.id` A-record + Certbot DNS-01 challenge for wildcard cert. Documented earlier in `/app/docs/VPS_REINSTALL_GUIDE.md`.
+- **Verified**: `/toko/warung-bu-sari` (regression — still renders) + `/` with spoofed hostname `warung-bu-sari.lapakin.my.id` (shows storefront, not landing).
+
+
 ## What's Been Implemented (✅ 2026-04-29)
 
 ### Iteration 15 (✅ 2026-04-29 — Midtrans Snap Payment Gateway + Receipt Email)

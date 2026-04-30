@@ -8,8 +8,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export default function Storefront() {
-  const { slug } = useParams();
+export default function Storefront({ tenantSlug = null }) {
+  // Slug resolution priority:
+  // 1) URL param /toko/:slug (main-domain route)
+  // 2) tenantSlug prop injected by AppRouter when visiting <slug>.lapakin.my.id
+  const { slug: paramSlug } = useParams();
+  const slug = paramSlug || tenantSlug;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
