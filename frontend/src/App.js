@@ -22,6 +22,7 @@ import Billing from "@/pages/Billing";
 import Analytics from "@/pages/Analytics";
 import Cerita from "@/pages/Cerita";
 import CeritaDetail from "@/pages/CeritaDetail";
+import ContentStudio from "@/pages/ContentStudio";
 
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminShops from "@/pages/admin/AdminShops";
@@ -85,6 +86,7 @@ function AppRouter() {
       <Route path="/dashboard/qr" element={<ProtectedRoute><ShopQR /></ProtectedRoute>} />
       <Route path="/dashboard/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
       <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+      <Route path="/dashboard/content-studio" element={<ProtectedRoute><ContentStudio /></ProtectedRoute>} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/cerita" element={<Cerita />} />
       <Route path="/cerita/:slug" element={<CeritaDetail />} />

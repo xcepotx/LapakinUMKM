@@ -30,6 +30,7 @@ TIER_LIMITS = {
         "ai_cover_per_month": 2,
         "toko_card_per_month": 5,
         "broadcast_per_month": 0,            # WhatsApp broadcast
+        "content_studio_per_month": 0,        # Content Studio carousel generations
         "remove_branding": False,             # "Powered by Lapakin"
         "custom_subdomain": False,            # nama.lapakin.my.id
         "custom_domain": False,               # tokokamu.com
@@ -52,6 +53,7 @@ TIER_LIMITS = {
         "ai_cover_per_month": 20,
         "toko_card_per_month": UNLIMITED,
         "broadcast_per_month": 4,
+        "content_studio_per_month": 10,
         "remove_branding": True,
         "custom_subdomain": True,
         "custom_domain": False,
@@ -74,6 +76,7 @@ TIER_LIMITS = {
         "ai_cover_per_month": UNLIMITED,
         "toko_card_per_month": UNLIMITED,
         "broadcast_per_month": UNLIMITED,
+        "content_studio_per_month": UNLIMITED,
         "remove_branding": True,
         "custom_subdomain": True,
         "custom_domain": True,

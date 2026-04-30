@@ -10,6 +10,7 @@ from .admin import router as admin_router
 from .payment import router as payment_router
 from .tips import router as tips_router
 from .stories import router as stories_router
+from .content_studio import router as content_studio_router
 
 ALL_ROUTERS = [
     auth_router,
@@ -23,4 +24,5 @@ ALL_ROUTERS = [
     payment_router,
     tips_router,
     stories_router,
+    content_studio_router,
 ]

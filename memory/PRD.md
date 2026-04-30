@@ -26,6 +26,33 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 - Storefront publik mobile-first di `/toko/{slug}` dengan checkout WhatsApp
 - Bahasa Indonesia di seluruh UI
 
+### Content Studio — Carousel Generator (✅ 2026-04-30, Pro/Bisnis only)
+
+**Backend** (`routes/content_studio.py` + `content_studio_render.py`):
+- `POST /api/content-studio/generate` — body `{product_ids[], style}` → returns `{slides[], captions{ig, tiktok, whatsapp}, quota, shop_name}`. Slides = base64 PNG data (1080×1080).
+- `GET /api/content-studio/styles` — return 3 visual presets metadata (label + description).
+- `GET /api/content-studio/quota` — current month usage (Pro: 10/month, Bisnis: unlimited).
+- **Tier gating**: returns 402 for free users, 429 when Pro hits limit.
+- **Pillow renderer** (`content_studio_render.py`): generates 3-7 slides (cover + N products + CTA) with 3 styles:
+  - **Minimal**: white bg, type-driven, accent zinc-900
+  - **Hangat**: warm cream bg, terracotta brand accent, cocok kuliner/fashion
+  - **Bold**: black bg, yellow accent, eye-catching untuk promo besar
+- **AI captions** via `llm_service`: generates 3 platform-specific texts in 1 LLM call (IG with hashtags, TikTok hook, WhatsApp broadcast).
+- **Tier limits** added to `tiers.py`: `content_studio_per_month` (free=0, pro=10, bisnis=UNLIMITED).
+
+**Frontend** (`pages/ContentStudio.jsx` + Dashboard CTA button):
+- Route `/dashboard/content-studio` (auth required).
+- 2-step flow: pick products (multi-select 1-8, max indicator) → pick style (3 preset cards with mini-preview) → Generate button.
+- Result page: slide carousel with prev/next + thumbnail strip, 3 caption cards (IG/TikTok/WA) with Copy buttons, "Download ZIP" (uses jszip — bundles PNGs + `captions.txt`) + per-slide download.
+- Free tier sees branded upsell card with "Upgrade ke Pro Rp 49rb/bulan" CTA → `/pricing`.
+- Quota chip shown top-right (e.g., "8 dari 10 tersisa").
+- Dashboard now has "Content Studio" outline button next to "Buka AI Studio" header CTA.
+
+**Tested**: 7/7 pytest pass (auth, tier gating free/pro/bisnis, input validation, render module smoke). Live screenshot confirms UI renders perfectly with style preset cards + quota chip + 2-step flow.
+
+**Dependency added**: `jszip@3.10.1` in frontend (zip download in browser without backend storage).
+
+
 ### Tips Hari Ini + Cerita UMKM Sukses (✅ 2026-04-30)
 
 #### Tips Hari Ini (`routes/tips.py` + `DailyTipCard.jsx`)
