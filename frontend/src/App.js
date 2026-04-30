@@ -20,6 +20,8 @@ import Storefront from "@/pages/Storefront";
 import Pricing from "@/pages/Pricing";
 import Billing from "@/pages/Billing";
 import Analytics from "@/pages/Analytics";
+import Cerita from "@/pages/Cerita";
+import CeritaDetail from "@/pages/CeritaDetail";
 
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminShops from "@/pages/admin/AdminShops";
@@ -28,6 +30,7 @@ import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminBroadcasts from "@/pages/admin/AdminBroadcasts";
 import AdminAIUsage from "@/pages/admin/AdminAIUsage";
 import AdminAudit from "@/pages/admin/AdminAudit";
+import AdminStories from "@/pages/admin/AdminStories";
 
 import { detectTenantSlug } from "@/lib/tenant";
 
@@ -83,6 +86,8 @@ function AppRouter() {
       <Route path="/dashboard/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
       <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
       <Route path="/pricing" element={<Pricing />} />
+      <Route path="/cerita" element={<Cerita />} />
+      <Route path="/cerita/:slug" element={<CeritaDetail />} />
       <Route path="/toko/:slug" element={<Storefront />} />
       <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
       <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />
@@ -91,6 +96,7 @@ function AppRouter() {
       <Route path="/admin/broadcasts" element={<AdminRoute><AdminBroadcasts /></AdminRoute>} />
       <Route path="/admin/ai-usage" element={<AdminRoute><AdminAIUsage /></AdminRoute>} />
       <Route path="/admin/audit" element={<AdminRoute><AdminAudit /></AdminRoute>} />
+      <Route path="/admin/stories" element={<AdminRoute><AdminStories /></AdminRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

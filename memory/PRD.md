@@ -26,6 +26,29 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 - Storefront publik mobile-first di `/toko/{slug}` dengan checkout WhatsApp
 - Bahasa Indonesia di seluruh UI
 
+### Tips Hari Ini + Cerita UMKM Sukses (✅ 2026-04-30)
+
+#### Tips Hari Ini (`routes/tips.py` + `DailyTipCard.jsx`)
+- **Strategy**: rule-based first (instant, free), AI fallback (Gemini 2.5 Flash via Emergent LLM Key). 9 rules covering: no_products, stale_catalog (>14d), traffic_drop/growing, kuliner_lunch_peak / kuliner_dinner_peak, monday_morning, friday_eve, no_cover, no_promo. AI prompt seeded with shop context (name, business_type, tagline, products_count, weekday, hour, visits_7d).
+- **Endpoints**:
+  - `GET /api/tips/today` — returns cached or freshly-computed tip for current shop. One per (shop, date).
+  - `POST /api/tips/today/dismiss` — marks today's as dismissed (frontend hides).
+  - `POST /api/tips/today/refresh` — force AI regeneration (rate-limited 3x/day).
+- **Frontend**: terracotta gradient card with blob effects on Dashboard. Header "TIP HARI INI" + AI badge if AI-sourced. Shows emoji + title + body + optional CTA button (e.g., "Buka AI Studio" linking to `/dashboard/ai-studio`). Refresh button (sparkles cycle) + dismiss (X) in top-right.
+- **Tests**: `tests/test_tips.py` — 7 tests (auth, no-shop, e2e tip return, 4 rule unit tests). All passing.
+- **EMERGENT_LLM_KEY**: refreshed in `backend/.env` to `sk-emergent-eB67b7934E06c67AaE` (previous key returned 401).
+
+#### Cerita UMKM Sukses (`routes/stories.py` + 3 frontend pages)
+- **Public pages**: `/cerita` (listing with cards) + `/cerita/<slug>` (full story with gradient shop CTA + Lapakin signup CTA at bottom). Markdown rendered via simple paragraph splitter (supports `## headings`).
+- **Admin page**: `/admin/stories` — generates AI draft from `shop_slug` (uses shop name, business_type, tagline, about, products list as context), edit modal with markdown textarea, publish/unpublish/delete. Story view_count auto-increments on each public read.
+- **Endpoints**:
+  - Public: `GET /api/stories`, `GET /api/stories/<slug>`
+  - Admin: `POST /api/admin/stories/draft`, `GET /api/admin/stories`, `PATCH /api/admin/stories/<id>`, `POST /api/admin/stories/<id>/publish`, `POST /api/admin/stories/<id>/unpublish`, `DELETE /api/admin/stories/<id>`
+- **AI prompt**: 4-paragraph structure (hook, backstory, challenge+solution, lessons). 350-500 words. Bahasa Indonesia santai, hindari korporat tone.
+- **Tests**: `tests/test_stories.py` — 6 tests (public list/detail/404, admin auth gate, full lifecycle draft→publish→public→unpublish→delete, patch). All passing.
+- **Navigation**: Added "Cerita" link in Landing nav header + Admin sidebar item with `BookOpen` icon.
+
+
 ### F&B Enhancements + Subdomain Live Email (✅ 2026-04-30)
 
 #### F&B Enhancements (`schedule_utils.py` rewrite + new endpoint)

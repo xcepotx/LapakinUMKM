@@ -8,6 +8,8 @@ from .whatsapp import router as whatsapp_router
 from .public import router as public_router
 from .admin import router as admin_router
 from .payment import router as payment_router
+from .tips import router as tips_router
+from .stories import router as stories_router
 
 ALL_ROUTERS = [
     auth_router,
@@ -19,4 +21,6 @@ ALL_ROUTERS = [
     public_router,
     admin_router,
     payment_router,
+    tips_router,
+    stories_router,
 ]

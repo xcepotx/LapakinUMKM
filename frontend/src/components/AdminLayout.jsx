@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
   Sparkles, ShieldCheck, Store, Users, Trash2, Megaphone, ScrollText,
-  Activity, LogOut, ExternalLink,
+  Activity, LogOut, ExternalLink, BookOpen,
 } from "lucide-react";
 
 export default function AdminLayout({ children, title, subtitle, actions }) {
@@ -18,6 +18,7 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
     { to: "/admin/products", icon: Trash2, label: "Moderasi Produk", tid: "admin-nav-products" },
     { to: "/admin/broadcasts", icon: Megaphone, label: "Broadcast", tid: "admin-nav-broadcasts" },
     { to: "/admin/ai-usage", icon: Activity, label: "AI Usage", tid: "admin-nav-ai" },
+    { to: "/admin/stories", icon: BookOpen, label: "Cerita UMKM", tid: "admin-nav-stories" },
     { to: "/admin/audit", icon: ScrollText, label: "Audit Log", tid: "admin-nav-audit" },
   ];
 

@@ -9,6 +9,7 @@ import { rupiah } from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import ShareHealthCard from "@/components/ShareHealthCard";
+import DailyTipCard from "@/components/DailyTipCard";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -283,6 +284,9 @@ export default function Dashboard() {
               </Button>
             </div>
           </div>
+
+          {/* DAILY TIP — personalized AI/rule-based motivation */}
+          <DailyTipCard />
 
           {/* SHARE HEALTH — live DNS + OG status, subdomain for Pro+ */}
           <ShareHealthCard shop={shop} />
