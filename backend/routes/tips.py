@@ -26,8 +26,9 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from deps import db, logger, require_user, EMERGENT_LLM_KEY
+from deps import db, logger, require_user
 from schedule_utils import _now_jakarta, compute_schedule_status
+from llm_service import chat_text as llm_chat_text
 
 router = APIRouter()
 
@@ -250,9 +251,8 @@ def _pick_rule_tip(signals: dict, shop: dict) -> Optional[dict]:
 
 # ------------- AI fallback -------------
 async def _ai_tip(shop: dict, signals: dict) -> Optional[dict]:
-    """Generate a tip via Gemini Flash. Best-effort; returns None on failure."""
+    """Generate a tip via configured LLM provider. Best-effort; returns None on failure."""
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
         system = (
             "Kamu adalah mentor UMKM Indonesia yang hangat, praktis, dan memotivasi. "
             "Bahasamu santai (kayak ngobrol di warung), pakai 'kamu', tidak menggurui. "
@@ -276,22 +276,22 @@ async def _ai_tip(shop: dict, signals: dict) -> Optional[dict]:
             f"}}\n"
             f"Kembalikan HANYA JSON valid."
         )
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+        text = await llm_chat_text(
+            system=system,
+            user=prompt,
+            model_hint="gemini-2.5-flash",
             session_id=f"tip_{uuid.uuid4().hex[:8]}",
-            system_message=system,
-        ).with_model("gemini", "gemini-2.5-flash")
-        text = await chat.send_message(UserMessage(text=prompt))
+        )
         raw = text.strip()
         if raw.startswith("```"):
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.MULTILINE).strip()
         try:
             parsed = _json.loads(raw)
         except Exception:
-            m = re.search(r"\{[\s\S]*\}", raw)
-            if not m:
+            match = re.search(r"\{[\s\S]*\}", raw)
+            if not match:
                 return None
-            parsed = _json.loads(m.group(0))
+            parsed = _json.loads(match.group(0))
         if not parsed.get("title") or not parsed.get("body"):
             return None
         return {

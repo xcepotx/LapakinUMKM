@@ -24,7 +24,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
-from deps import db, logger, require_admin, EMERGENT_LLM_KEY, slugify
+from deps import db, logger, require_admin, slugify
+from llm_service import chat_text as llm_chat_text
 
 router = APIRouter()
 
@@ -74,10 +75,8 @@ async def get_story_by_slug(slug: str):
 
 # ---------------- Admin endpoints ----------------
 async def _generate_story_draft(shop: dict) -> dict:
-    """Use Gemini Flash to generate a story draft from shop context."""
+    """Use configured LLM provider to generate a story draft from shop context."""
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-
         # Gather a few products as flavor
         products = await db.products.find(
             {"shop_id": shop["shop_id"]},
@@ -114,22 +113,22 @@ async def _generate_story_draft(shop: dict) -> dict:
             f"}}\n"
             f"Bahasa Indonesia santai, hindari bahasa korporat. Kembalikan HANYA JSON valid."
         )
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+        text = await llm_chat_text(
+            system=system,
+            user=prompt,
+            model_hint="gemini-2.5-flash",
             session_id=f"story_{uuid.uuid4().hex[:8]}",
-            system_message=system,
-        ).with_model("gemini", "gemini-2.5-flash")
-        text = await chat.send_message(UserMessage(text=prompt))
+        )
         raw = text.strip()
         if raw.startswith("```"):
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.MULTILINE).strip()
         try:
             parsed = _json.loads(raw)
         except Exception:
-            m = re.search(r"\{[\s\S]*\}", raw)
-            if not m:
+            match = re.search(r"\{[\s\S]*\}", raw)
+            if not match:
                 raise ValueError("AI returned non-JSON")
-            parsed = _json.loads(m.group(0))
+            parsed = _json.loads(match.group(0))
         if not parsed.get("title") or not parsed.get("content_md"):
             raise ValueError("Missing required fields")
         return parsed
