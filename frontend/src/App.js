@@ -29,6 +29,8 @@ import AdminBroadcasts from "@/pages/admin/AdminBroadcasts";
 import AdminAIUsage from "@/pages/admin/AdminAIUsage";
 import AdminAudit from "@/pages/admin/AdminAudit";
 
+import { detectTenantSlug } from "@/lib/tenant";
+
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -54,13 +56,19 @@ function ProtectedRoute({ children }) {
 
 function AppRouter() {
   const location = useLocation();
+  const tenantSlug = detectTenantSlug();
   // Synchronous check for OAuth session_id BEFORE rendering routes
   if (location.hash?.includes("session_id=")) {
     return <AuthCallback />;
   }
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      {/* Tenant subdomain root: <slug>.lapakin.my.id/ → load that shop's storefront */}
+      {tenantSlug ? (
+        <Route path="/" element={<Storefront tenantSlug={tenantSlug} />} />
+      ) : (
+        <Route path="/" element={<Landing />} />
+      )}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
