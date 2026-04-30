@@ -22,7 +22,9 @@ def session():
 
 
 class TestEmailNoopMode:
-    """RESEND_API_KEY is empty in dev → simple-mode fallback should kick in."""
+    """When RESEND_API_KEY is empty → simple-mode fallback.
+    When RESEND_API_KEY is set → email dispatched (no token in response).
+    Tests adapt to whichever mode is active."""
 
     def test_register_and_forgot_flow(self, session):
         suffix = uuid.uuid4().hex[:6]
@@ -33,18 +35,24 @@ class TestEmailNoopMode:
             timeout=20,
         )
         assert r.status_code == 200, r.text
-        # Welcome email fired but we can't verify inbox — just ensure register succeeded.
         assert r.json()["email"] == email
 
-        # Forgot password should return simple_mode=True with reset_token (no Resend).
+        # Forgot password should always 200.
         r2 = session.post(f"{API}/auth/forgot-password", json={"email": email}, timeout=20)
         assert r2.status_code == 200
         d = r2.json()
         assert d.get("ok") is True
-        assert d.get("simple_mode") is True
-        assert isinstance(d.get("reset_token"), str) and len(d["reset_token"]) > 10
-        # reset_link should contain PUBLIC_APP_URL + token
-        assert d.get("reset_link", "").endswith(f"token={d['reset_token']}")
+
+        # Detect mode from response shape (test process may not share env with backend).
+        if "reset_token" in d:
+            # simple-mode: RESEND_API_KEY empty on backend
+            assert d.get("simple_mode") is True
+            assert isinstance(d["reset_token"], str) and len(d["reset_token"]) > 10
+            assert d.get("reset_link", "").endswith(f"token={d['reset_token']}")
+        else:
+            # email-mode: Resend configured → no token leak, no simple_mode flag
+            assert "simple_mode" not in d or d["simple_mode"] is False
+            assert "reset_link" not in d
 
     def test_forgot_unknown_email_privacy(self, session):
         r = session.post(

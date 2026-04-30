@@ -66,14 +66,22 @@ class TestCreateTransaction:
         assert r.status_code == 400
 
     def test_not_configured_503(self, session, user_token):
-        """When MIDTRANS_SERVER_KEY is empty (dev default), should return 503."""
+        """Adapts to whether backend has Midtrans keys set."""
         tok, _, _ = user_token
+        # Ask backend itself whether it's configured
+        cfg = session.get(f"{API}/payment/config").json()
         r = session.post(f"{API}/payment/create-transaction",
                          json={"plan_id": "pro_monthly"},
                          headers={"Authorization": f"Bearer {tok}"})
-        # In dev: configured=false → 503. In configured env: 200 with snap_token.
-        assert r.status_code in (200, 503)
-        if r.status_code == 503:
+        if cfg.get("configured"):
+            # 200 with snap_token, OR 502 if keys are invalid/expired (Midtrans rejects).
+            assert r.status_code in (200, 502), r.text
+            if r.status_code == 200:
+                d = r.json()
+                assert d.get("snap_token")
+                assert d.get("order_id", "").startswith("lapakin-pro_monthly-")
+        else:
+            assert r.status_code == 503
             assert "Midtrans" in r.json()["detail"] or "Pembayaran" in r.json()["detail"]
 
     def test_requires_auth(self):

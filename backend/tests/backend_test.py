@@ -326,10 +326,23 @@ class TestForgotPassword:
         assert r.status_code == 200
         d = r.json()
         assert d.get("ok") is True
-        assert d.get("simple_mode") is True
-        assert isinstance(d.get("reset_token"), str)
-        assert len(d["reset_token"]) > 10
-        TestForgotPassword.token = d["reset_token"]
+        # When Resend configured, token isn't returned (email-mode). Fetch from DB.
+        if d.get("simple_mode"):
+            assert isinstance(d.get("reset_token"), str)
+            assert len(d["reset_token"]) > 10
+            TestForgotPassword.token = d["reset_token"]
+        else:
+            # email-mode: privacy, no token leaked → fetch directly from Mongo
+            import pymongo, os
+            mongo = pymongo.MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+            db_name = os.environ.get("DB_NAME", "lapakin_db")
+            rec = mongo[db_name].password_reset_tokens.find_one(
+                {"email": new_user["email"], "used": False},
+                sort=[("created_at", -1)],
+            )
+            mongo.close()
+            assert rec and rec.get("token"), "reset token not persisted in Mongo"
+            TestForgotPassword.token = rec["token"]
 
     def test_reset_with_short_password(self, session):
         r = session.post(f"{API}/auth/reset-password",
