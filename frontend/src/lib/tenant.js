@@ -4,7 +4,7 @@
  * Returns the slug if user visits `<slug>.lapakin.my.id`, else null.
  * Reserved subdomains (www, admin, api, cdn, static) are ignored.
  */
-const RESERVED = new Set(["www", "admin", "api", "cdn", "static", "assets", "localhost"]);
+const RESERVED = new Set(["www", "admin", "api", "cdn", "static", "assets", "localhost", "dev", "staging", "preview"]);
 const ROOT_DOMAIN = "lapakin.my.id";
 
 export function detectTenantSlug() {

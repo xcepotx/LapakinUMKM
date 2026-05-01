@@ -9,7 +9,7 @@ function resolveBackendUrl() {
   const host = window.location.hostname || "";
   // Tenant subdomain heuristic: ends with .lapakin.my.id and not www/admin/etc.
   // Using same-origin avoids CORS + wrong-host cookie scope.
-  if (/\.lapakin\.my\.id$/i.test(host) && !/^(www|admin|api|cdn|static)\./i.test(host)) {
+  if (/\.lapakin\.my\.id$/i.test(host) && !/^(www|admin|api|cdn|static|dev|staging|preview)\./i.test(host)) {
     return window.location.origin;
   }
   return envUrl;
