@@ -4,11 +4,14 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Request
 
 from deps import db, require_user
+from llm_service import active_provider
 from models import AnalyticsTrackIn
 from tiers import (
     TIER_LIMITS, VALID_TIERS, get_tier, get_limits,
     current_month_bucket, get_usage, is_unlimited, require_feature,
 )
+
+APP_VERSION = "1.0.0"
 
 router = APIRouter()
 
@@ -17,6 +20,22 @@ router = APIRouter()
 @router.get("/")
 async def root():
     return {"app": "Lapakin", "status": "ok"}
+
+
+@router.get("/health")
+async def health():
+    db_ok = True
+    try:
+        await db.command("ping")
+    except Exception:
+        db_ok = False
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "mongodb": "connected" if db_ok else "disconnected",
+        "llm_provider_active": active_provider(),
+        "version": APP_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 # ---------- Featured shops (for landing) ----------
