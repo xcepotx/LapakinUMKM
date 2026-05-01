@@ -1,27 +1,39 @@
-"""AI endpoints: photo enhance, content generation, theme suggestion, about, cover."""
+"""AI endpoints: photo enhance, content generation, theme suggestion, about, cover.
+
+All endpoints route through llm_service for provider fallback (Gemini → OpenAI → Emergent).
+"""
 import re
-import uuid
 import json as _json
 
 from fastapi import APIRouter, HTTPException, Request
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
-
-from deps import db, logger, require_user, track_ai_usage, EMERGENT_LLM_KEY
+from deps import db, logger, require_user, track_ai_usage
 from models import AIContentIn, AIThemeIn, AIAboutIn, AICoverIn, AIEnhanceIn
 from tiers import check_quota
+from llm_service import chat_text, chat_image_text2img, chat_image_edit
 
 router = APIRouter()
 
 
-def _new_chat(session_id: str, system_message: str) -> LlmChat:
-    return LlmChat(api_key=EMERGENT_LLM_KEY, session_id=session_id, system_message=system_message)
+def _parse_json_response(raw: str) -> dict:
+    """Strip markdown fences and parse JSON. Raises HTTPException 502 if invalid."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.MULTILINE).strip()
+    try:
+        return _json.loads(raw)
+    except Exception:
+        m = re.search(r"\{[\s\S]*\}", raw)
+        if not m:
+            raise HTTPException(status_code=502, detail="AI tidak mengembalikan JSON valid")
+        return _json.loads(m.group(0))
 
 
 @router.post("/ai/enhance-image")
 async def ai_enhance_image(data: AIEnhanceIn, request: Request):
     user = await require_user(request)
     await check_quota(db.monthly_usage, user, "ai_photo", "ai_photo_per_month")
+
     img_b64 = data.image_base64
     if img_b64.startswith("data:"):
         img_b64 = img_b64.split(",", 1)[-1]
@@ -40,14 +52,7 @@ async def ai_enhance_image(data: AIEnhanceIn, request: Request):
         f"Output a single high-quality image only."
     )
     try:
-        chat = _new_chat(f"img_{uuid.uuid4().hex[:8]}",
-                         "You are a world-class product photo retoucher.")
-        chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
-        msg = UserMessage(text=prompt, file_contents=[ImageContent(img_b64)])
-        text, images = await chat.send_message_multimodal_response(msg)
-        if not images:
-            raise HTTPException(status_code=502, detail="AI tidak menghasilkan gambar")
-        out = images[0]
+        out = await chat_image_edit(prompt, img_b64)
         await track_ai_usage(user["user_id"], "enhance")
         return {"image_base64": out["data"], "mime_type": out.get("mime_type", "image/png")}
     except HTTPException:
@@ -61,6 +66,7 @@ async def ai_enhance_image(data: AIEnhanceIn, request: Request):
 async def ai_generate_content(data: AIContentIn, request: Request):
     user = await require_user(request)
     await check_quota(db.monthly_usage, user, "ai_copy", "ai_copy_per_month")
+
     system = (
         "Kamu adalah copywriter ahli produk UMKM Indonesia. "
         "Selalu balas dalam Bahasa Indonesia santai, hangat, persuasif, gaya warung modern. "
@@ -82,19 +88,8 @@ async def ai_generate_content(data: AIContentIn, request: Request):
         f"Kembalikan HANYA JSON valid, jangan tulis apapun di luar JSON."
     )
     try:
-        chat = _new_chat(f"cnt_{uuid.uuid4().hex[:8]}", system)
-        chat.with_model("gemini", "gemini-2.5-flash")
-        text = await chat.send_message(UserMessage(text=prompt))
-        raw = text.strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.MULTILINE).strip()
-        try:
-            parsed = _json.loads(raw)
-        except Exception:
-            m = re.search(r"\{[\s\S]*\}", raw)
-            if not m:
-                raise HTTPException(status_code=502, detail="AI tidak mengembalikan JSON valid")
-            parsed = _json.loads(m.group(0))
+        text = await chat_text(system, prompt, model_hint="gemini-2.5-flash")
+        parsed = _parse_json_response(text)
         await track_ai_usage(user["user_id"], "content")
         return {
             "description": parsed.get("description", "").strip(),
@@ -121,17 +116,8 @@ async def ai_suggest_theme(data: AIThemeIn, request: Request):
         f"Hindari ungu/violet generik, pilih warna hangat membumi (terracotta, hijau lumut, oker, kayu, dsb)."
     )
     try:
-        chat = _new_chat(f"thm_{uuid.uuid4().hex[:8]}", system)
-        chat.with_model("gemini", "gemini-2.5-flash")
-        text = await chat.send_message(UserMessage(text=prompt))
-        raw = text.strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.MULTILINE).strip()
-        try:
-            parsed = _json.loads(raw)
-        except Exception:
-            m = re.search(r"\{[\s\S]*\}", raw)
-            parsed = _json.loads(m.group(0)) if m else {}
+        text = await chat_text(system, prompt, model_hint="gemini-2.5-flash")
+        parsed = _parse_json_response(text)
         color = parsed.get("brand_color", "#C04A3B")
         if not re.match(r"^#[0-9A-Fa-f]{6}$", color or ""):
             color = "#C04A3B"
@@ -146,6 +132,7 @@ async def ai_suggest_theme(data: AIThemeIn, request: Request):
 async def ai_generate_about(data: AIAboutIn, request: Request):
     user = await require_user(request)
     await check_quota(db.monthly_usage, user, "ai_copy", "ai_copy_per_month")
+
     system = (
         "Kamu adalah copywriter brand UMKM Indonesia. "
         "Tulis cerita singkat dan hangat tentang toko (3-4 kalimat) dalam Bahasa Indonesia. "
@@ -161,17 +148,11 @@ async def ai_generate_about(data: AIAboutIn, request: Request):
         f"Hindari klaim berlebihan. Fokus ke kepercayaan & cerita."
     )
     try:
-        chat = _new_chat(f"abt_{uuid.uuid4().hex[:8]}", system)
-        chat.with_model("gemini", "gemini-2.5-flash")
-        text = await chat.send_message(UserMessage(text=prompt))
-        raw = text.strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.MULTILINE).strip()
+        text = await chat_text(system, prompt, model_hint="gemini-2.5-flash")
         try:
-            parsed = _json.loads(raw)
-        except Exception:
-            m = re.search(r"\{[\s\S]*\}", raw)
-            parsed = _json.loads(m.group(0)) if m else {"about": raw[:400]}
+            parsed = _parse_json_response(text)
+        except HTTPException:
+            parsed = {"about": text.strip()[:400]}
         await track_ai_usage(user["user_id"], "content")
         return {"about": (parsed.get("about") or "").strip()}
     except Exception as e:
@@ -183,6 +164,7 @@ async def ai_generate_about(data: AIAboutIn, request: Request):
 async def ai_generate_cover(data: AICoverIn, request: Request):
     user = await require_user(request)
     await check_quota(db.monthly_usage, user, "ai_cover", "ai_cover_per_month")
+
     style_hint = {
         "warm": "warm earthy tones, terracotta and cream, hand-crafted feeling, soft natural light, Indonesian aesthetic",
         "minimal": "minimal off-white background, modern sans serif vibe, single product hero composition",
@@ -204,14 +186,7 @@ async def ai_generate_cover(data: AICoverIn, request: Request):
         f"Shallow depth of field, magazine quality."
     )
     try:
-        chat = _new_chat(f"cov_{uuid.uuid4().hex[:8]}",
-                         "You are a master commercial photographer.")
-        chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
-        msg = UserMessage(text=prompt)
-        text, images = await chat.send_message_multimodal_response(msg)
-        if not images:
-            raise HTTPException(status_code=502, detail="AI tidak menghasilkan gambar")
-        out = images[0]
+        out = await chat_image_text2img(prompt)
         await track_ai_usage(user["user_id"], "cover")
         return {"image_base64": out["data"], "mime_type": out.get("mime_type", "image/png")}
     except HTTPException:
