@@ -33,6 +33,7 @@ import AdminBroadcasts from "@/pages/admin/AdminBroadcasts";
 import AdminAIUsage from "@/pages/admin/AdminAIUsage";
 import AdminAudit from "@/pages/admin/AdminAudit";
 import AdminStories from "@/pages/admin/AdminStories";
+import AdminHealth from "@/pages/admin/AdminHealth";
 
 import { detectTenantSlug } from "@/lib/tenant";
 
@@ -101,6 +102,7 @@ function AppRouter() {
       <Route path="/admin/ai-usage" element={<AdminRoute><AdminAIUsage /></AdminRoute>} />
       <Route path="/admin/audit" element={<AdminRoute><AdminAudit /></AdminRoute>} />
       <Route path="/admin/stories" element={<AdminRoute><AdminStories /></AdminRoute>} />
+      <Route path="/admin/health" element={<AdminRoute><AdminHealth /></AdminRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
