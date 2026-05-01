@@ -338,6 +338,21 @@ User confirmed concept: **WhatsApp/Web-first AI CMS** for UMKM where AI handles 
 - Nano Banana actually returned an enhanced image
 - AI generate-content returns proper JSON with Indonesian description, IG caption, TikTok caption, and 8 hashtags
 
+### Daily Menu Bulk Planner (✅ 2026-05-01, Pro/Bisnis only)
+
+**Backend** (`routes/products.py`):
+- `PUT /api/products/daily-menu` — body `{updates: [{product_id, available_days[]}]}` → returns `{ok, updated, total}`. Tier gated (Pro/Bisnis), filters invalid weekday indices (0–6), rejects empty updates.
+- **CRITICAL**: route placed *above* `PUT /products/{product_id}` to prevent FastAPI dynamic-segment capture (was returning 422).
+
+**Frontend** (`pages/DailyMenu.jsx`, route `/dashboard/daily-menu`):
+- Bulk grid: rows = products, columns = Sen…Min. Click cell → toggle weekday. Today's column highlighted.
+- Quick actions per row: "Semua" (reset to every day) / "Hari ini" (today only).
+- Sticky save bar shows changed count; toast on success.
+- Empty `available_days` = "tampil setiap hari".
+- Free tier sees branded upsell card with "Upgrade ke Pro Rp 49rb/bulan" CTA.
+
+**Tested**: 6/6 pytest pass (auth, free-block, pro-update, business-unlimited, invalid-day filter, empty-update reject). Live curl verified end-to-end on external preview URL. Screenshot confirmed grid + save bar + 4 products + Friday highlight render correctly.
+
 ## Backlog (Prioritized)
 
 ### P0 — Next sprint
