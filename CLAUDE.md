@@ -101,3 +101,12 @@ Defined in `design_guidelines.json`. Key rules:
 - Backend tests use `pytest-asyncio` with `asyncio_mode = auto` (set in `pytest.ini`)
 - Test fixtures for authenticated sessions are in `tests/backend_test.py`
 - Integration tests named `test_iter*.py` cover end-to-end feature flows
+
+## Git Workflow
+
+- **NEVER commit directly to main** — main is protected
+- For new features, ALWAYS create a `feature/<name>` branch
+- For refactors, use `refactor/<name>` branch
+- For bug fixes, use `fix/<name>` branch
+- Before creating new branch, ASK whether to use existing branch or create new
+- Default to staying on current branch unless explicitly told otherwise
