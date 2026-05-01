@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import BroadcastBanner from "@/components/BroadcastBanner";
 import { Button } from "@/components/ui/button";
-import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy, Power, PowerOff, Coffee, X } from "lucide-react";
+import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy, Power, PowerOff, Coffee, X, Calendar } from "lucide-react";
 import { rupiah } from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -379,9 +379,16 @@ export default function Dashboard() {
 
           {/* Products preview */}
           <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="font-heading font-bold text-xl">Produk Terbaru</h2>
-              <Link to="/dashboard/products" className="text-sm font-semibold text-brand hover:underline">Lihat semua</Link>
+              <div className="flex items-center gap-3">
+                <Link to="/dashboard/daily-menu"
+                  className="text-sm font-semibold text-brand-mute hover:text-brand-ink inline-flex items-center gap-1"
+                  data-testid="dashboard-daily-menu-link">
+                  <Calendar className="w-3.5 h-3.5" /> Menu Per-Hari
+                </Link>
+                <Link to="/dashboard/products" className="text-sm font-semibold text-brand hover:underline">Lihat semua</Link>
+              </div>
             </div>
             {products.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-brand-line rounded-xl bg-brand-off/40">
