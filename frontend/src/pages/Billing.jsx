@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Zap, Rocket, Check, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
-import { openSnapCheckout, pollPaymentStatus } from "@/lib/midtransSnap";
 
 const TIER_ICON = { free: Sparkles, pro: Zap, business: Rocket };
 const TIER_COLOR = {
@@ -46,14 +45,35 @@ export default function Billing() {
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState([]);
   const [paying, setPaying] = useState(null);
+  const [me, setMe] = useState(null);
+  const navigate = useNavigate();
 
   const refresh = async () => {
-    const r = await api.get("/billing/me");
-    setData(r.data);
+    try {
+      const r = await api.get("/billing/me");
+      setData(r.data);
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.detail ||
+          "Gagal memuat data billing. Coba login ulang."
+      );
+      setData(null);
+      return;
+    }
+
+    try {
+      const meRes = await api.get("/auth/me");
+      setMe(meRes.data);
+    } catch {
+      setMe(null);
+    }
+
     try {
       const h = await api.get("/payment/history");
       setHistory(h.data || []);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
@@ -61,28 +81,103 @@ export default function Billing() {
   }, []);
 
   const handleUpgrade = async (plan_id) => {
-    setPaying(plan_id);
-    try {
-      await openSnapCheckout(plan_id, {
-        onSuccess: async (_r, order_id) => {
-          toast.success("Pembayaran sukses! Mengaktifkan tier...");
-          await pollPaymentStatus(order_id, { maxAttempts: 15, interval: 2000 });
-          await refresh();
-        },
-        onPending: () => toast("Menunggu konfirmasi pembayaran..."),
-        onError:   () => toast.error("Pembayaran gagal."),
-        onClose:   () => refresh(),
-      });
-    } catch (err) {
-      toast.error(err?.response?.data?.detail || err.message || "Gagal mulai pembayaran");
-    } finally {
-      setPaying(null);
+    const currentTier = me?.tier || data?.tier || "free";
+    const isProPlan = plan_id.startsWith("pro_");
+    const canStartProTrial =
+      isProPlan &&
+      currentTier === "free" &&
+      !me?.trial_used;
+
+    if (canStartProTrial) {
+      setPaying("pro_trial");
+
+      try {
+        await api.post("/payment/start-pro-trial");
+        toast.success("Trial Pro aktif 10 hari. Selamat mencoba fitur Pro!");
+        await refresh();
+        setTimeout(() => navigate("/dashboard?trial=pro"), 500);
+      } catch (err) {
+        toast.error(
+          err?.response?.data?.detail ||
+            "Gagal memulai trial Pro. Coba lagi sebentar."
+        );
+      } finally {
+        setPaying(null);
+      }
+
+      return;
     }
+
+    const message =
+      plan_id.startsWith("business_")
+        ? "Halo Lapakin, saya mau aktivasi paket Bisnis."
+        : "Halo Lapakin, saya mau aktivasi paket Pro.";
+
+    toast("Pembayaran online sedang disiapkan. Untuk sementara aktivasi dilakukan manual.");
+
+    window.open(
+      `https://wa.me/628123456789?text=${encodeURIComponent(message)}`,
+      "_blank"
+    );
   };
+
+  const getUpgradeButtonLabel = (plan_id) => {
+    const currentTier = me?.tier || data?.tier || "free";
+    const isProPlan = plan_id.startsWith("pro_");
+
+    if (paying === "pro_trial" && isProPlan) {
+      return (
+        <span className="inline-flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Mengaktifkan Trial…
+        </span>
+      );
+    }
+
+    if (canUseTrialForPlan(plan_id)) {
+      return "Mulai Trial Pro";
+    }
+
+    if (isProPlan && currentTier === "pro" && me?.trial) {
+      return "Aktivasi Pro Manual";
+    }
+
+    if (plan_id.startsWith("business_")) {
+      return "Hubungi Admin";
+    }
+
+    return "Upgrade Manual";
+  };
+
+const canUseTrialForPlan = (plan_id) => {
+  const currentTier = me?.tier || data?.tier || "free";
+  return plan_id.startsWith("pro_") && currentTier === "free" && !me?.trial_used;
+};
 
   if (loading) return (
     <DashboardLayout>
-      <div className="text-brand-mute" data-testid="billing-loading">Memuat data tier…</div>
+      <div className="text-brand-mute" data-testid="billing-loading">
+        Memuat data tier…
+      </div>
+    </DashboardLayout>
+  );
+
+  if (!data) return (
+    <DashboardLayout>
+      <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card">
+        <h1 className="font-heading font-extrabold text-2xl">
+          Gagal memuat Akun & Tier
+        </h1>
+        <p className="text-brand-mute mt-2">
+          Data billing belum berhasil dimuat. Coba refresh halaman atau login ulang.
+        </p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="mt-4 bg-brand text-white font-bold rounded-xl"
+        >
+          Refresh
+        </Button>
+      </div>
     </DashboardLayout>
   );
 
@@ -124,12 +219,19 @@ export default function Billing() {
               )}
             </div>
             {data.tier !== "business" && (
-              <Link to="/pricing">
-                <Button className="bg-brand text-white font-bold rounded-xl h-12 px-6"
-                  data-testid="upgrade-cta">
-                  Upgrade →
-                </Button>
-              </Link>
+              <Button
+                onClick={() =>
+                  data.tier === "free" && !me?.trial_used
+                  ? handleUpgrade("pro_monthly")
+                  : navigate("/pricing")
+                }
+                className="bg-brand text-white font-bold rounded-xl h-12 px-6"
+                data-testid="upgrade-cta"
+              >
+                {data.tier === "free" && !me?.trial_used
+                ? "Mulai Trial Pro"
+                : "Upgrade →"}
+              </Button>
             )}
           </div>
         </div>
@@ -182,15 +284,39 @@ export default function Billing() {
         <div className="mt-8 bg-white rounded-2xl border border-brand-line p-6 shadow-card">
           <h2 className="font-heading font-bold text-xl">Upgrade Tier</h2>
           <p className="text-brand-mute text-sm mt-1">
-            Pilih paket yang pas buat tokomu. Bayar pakai QRIS, GoPay, OVO, DANA, ShopeePay, transfer bank, atau kartu kredit.
+            Pilih paket yang pas buat tokomu. Untuk sementara, pembayaran online sedang disiapkan. Kamu bisa mulai trial Pro atau aktivasi manual via WhatsApp.
           </p>
           <div className="grid sm:grid-cols-2 gap-3 mt-4">
             {[
-              { plan_id: "pro_monthly",      label: "Pro — Bulanan",     price: 49000,   suffix: "/bulan", show: data.tier === "free" },
-              { plan_id: "pro_yearly",       label: "Pro — Tahunan 🎁",  price: 490000,  suffix: "/tahun (hemat 2 bln)", show: data.tier === "free" },
-              { plan_id: "business_monthly", label: "Bisnis — Bulanan",  price: 149000,  suffix: "/bulan", show: data.tier !== "business" },
-              { plan_id: "business_yearly",  label: "Bisnis — Tahunan 🎁", price: 1490000, suffix: "/tahun (hemat 2 bln)", show: data.tier !== "business" },
-            ].filter((p) => p.show).map((p) => (
+              {
+                plan_id: "pro_monthly",
+                label: "Pro — Bulanan",
+                price: 49000,
+                suffix: "/bulan",
+                show: data.tier === "free" || (data.tier === "pro" && data.trial),
+              },
+              {
+                plan_id: "pro_yearly",
+                label: "Pro — Tahunan 🎁",
+                price: 490000,
+                suffix: "/tahun (hemat 2 bln)",
+                show: data.tier === "free" || (data.tier === "pro" && data.trial),
+              },
+              {
+                plan_id: "business_monthly",
+                label: "Bisnis — Bulanan",
+                price: 149000,
+                suffix: "/bulan",
+                show: data.tier !== "business",
+              },
+              {
+                plan_id: "business_yearly",
+                label: "Bisnis — Tahunan 🎁",
+                price: 1490000,
+                suffix: "/tahun (hemat 2 bln)",
+                show: data.tier !== "business",
+              },
+             ].filter((p) => p.show).map((p) => (
               <div key={p.plan_id} className="rounded-xl border border-brand-line bg-brand-off/40 p-4 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="font-bold">{p.label}</div>
@@ -198,18 +324,17 @@ export default function Billing() {
                 </div>
                 <Button
                   onClick={() => handleUpgrade(p.plan_id)}
-                  disabled={paying === p.plan_id}
+                  disabled={paying === "pro_trial"}
                   className="bg-brand text-white font-bold rounded-xl h-11 px-5 shrink-0"
-                  data-testid={`upgrade-btn-${p.plan_id}`}>
-                  {paying === p.plan_id ? (
-                    <span className="inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Proses…</span>
-                  ) : "Upgrade"}
+                  data-testid={`upgrade-btn-${p.plan_id}`}
+                >
+                  {getUpgradeButtonLabel(p.plan_id)}
                 </Button>
               </div>
             ))}
           </div>
           <div className="text-xs text-brand-mute mt-3">
-            Pembayaran diproses aman via <b>Midtrans</b>. Tier aktif otomatis segera setelah pembayaran terkonfirmasi.
+            Pembayaran online via <b>Midtrans</b> sedang disiapkan. Sementara ini aktivasi paket dilakukan manual oleh tim Lapakin.
           </div>
         </div>
 
