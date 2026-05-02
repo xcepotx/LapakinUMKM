@@ -3,6 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import {
   Plus,
   Trash2,
+  Pencil,
   RefreshCw,
   Wallet,
   ShoppingBag,
@@ -58,6 +59,7 @@ export default function SalesBook() {
   const [summary, setSummary] = useState(null);
   const [products, setProducts] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [editingSaleId, setEditingSaleId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -161,6 +163,7 @@ export default function SalesBook() {
   }
 
   function resetForm() {
+    setEditingSaleId(null);
     setForm({
       customer_name: "",
       customer_phone: "",
@@ -172,6 +175,33 @@ export default function SalesBook() {
       items: [emptyItem()],
     });
   }
+
+function startEdit(sale) {
+  setEditingSaleId(sale.sale_id);
+  setShowForm(true);
+
+  setForm({
+    customer_name: sale.customer_name || "",
+    customer_phone: sale.customer_phone || "",
+    channel: sale.channel || "whatsapp",
+    payment_status: sale.payment_status || "paid",
+    paid_amount: sale.paid_amount || "",
+    notes: sale.notes || "",
+    update_stock: false,
+    items:
+      sale.items && sale.items.length
+        ? sale.items.map((item) => ({
+            product_id: item.product_id || "",
+            name: item.name || "",
+            qty: item.qty || 1,
+            unit: item.unit || "pcs",
+            unit_price: item.unit_price || 0,
+          }))
+        : [emptyItem()],
+  });
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
 
   async function submitSale(event) {
     event.preventDefault();
@@ -205,7 +235,22 @@ export default function SalesBook() {
     }
 
     try {
-      await api.post("/sales", payload);
+      if (editingSaleId) {
+        const editPayload = {
+          customer_name: payload.customer_name,
+          customer_phone: payload.customer_phone,
+          channel: payload.channel,
+          payment_status: payload.payment_status,
+          paid_amount: payload.paid_amount,
+          notes: payload.notes,
+          items: payload.items,
+        };
+
+        await api.put(`/sales/${editingSaleId}`, editPayload);
+      } else {
+        await api.post("/sales", payload);
+      }
+
       resetForm();
       setShowForm(false);
       await loadData();
@@ -320,10 +365,12 @@ const pageActions = (
         >
           <div className="mb-5">
             <h2 className="text-lg font-bold text-slate-900">
-              Catat Penjualan Baru
+              {editingSaleId ? "Edit Penjualan" : "Catat Penjualan Baru"}
             </h2>
             <p className="text-sm text-slate-500">
-              Bisa pilih produk dari katalog atau isi manual.
+              {editingSaleId
+                ? "Perbarui detail transaksi yang sudah dicatat."
+                : "Bisa pilih produk dari katalog atau isi manual."}
             </p>
           </div>
 
@@ -521,17 +568,18 @@ const pageActions = (
           </div>
 
           <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                checked={form.update_stock}
-                onChange={(event) =>
-                  updateForm("update_stock", event.target.checked)
-                }
-              />
-              Kurangi stok produk otomatis
-            </label>
-
+            {!editingSaleId && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={form.update_stock}
+                  onChange={(event) =>
+                    updateForm("update_stock", event.target.checked)
+                  }
+                />
+                Kurangi stok produk otomatis
+              </label>
+            )}
             <div className="text-right">
               <p className="text-sm text-slate-500">Total</p>
               <p className="text-2xl font-bold text-slate-900">
@@ -569,7 +617,11 @@ const pageActions = (
               disabled={saving}
               className="rounded-xl bg-[#C04A3B] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60"
             >
-              {saving ? "Menyimpan..." : "Simpan Penjualan"}
+              {saving
+                ? "Menyimpan..."
+                : editingSaleId
+                ? "Simpan Perubahan"
+                : "Simpan Penjualan"}
             </button>
           </div>
         </form>
@@ -678,14 +730,27 @@ const pageActions = (
                       </span>
                     </td>
                     <td className="py-3 pr-4">
-                      <button
-                        type="button"
-                        onClick={() => deleteSale(sale.sale_id)}
-                        className="rounded-xl border border-red-100 p-2 text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(sale)}
+                          className="rounded-xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                          title="Edit transaksi"
+                        >
+                          <Pencil size={16} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteSale(sale.sale_id)}
+                          className="rounded-xl border border-red-100 p-2 text-red-600 hover:bg-red-50"
+                          title="Hapus transaksi"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
+
                   </tr>
                 ))}
               </tbody>
