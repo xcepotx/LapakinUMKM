@@ -4,7 +4,6 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Check, X, Sparkles, Zap, Rocket, ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { openSnapCheckout, pollPaymentStatus } from "@/lib/midtransSnap";
 
 const ICONS = { free: Sparkles, pro: Zap, business: Rocket };
 
@@ -52,28 +51,82 @@ export default function Pricing() {
       navigate(me ? "/dashboard" : "/register");
       return;
     }
+
     if (!me) {
       navigate(`/login?next=/pricing`);
       return;
     }
-    const plan_id = `${tierKey}_${annual ? "yearly" : "monthly"}`;
-    setPayingPlan(plan_id);
-    try {
-      await openSnapCheckout(plan_id, {
-        onSuccess: async (_r, order_id) => {
-          toast.success("Pembayaran sukses, mengaktifkan tier...");
-          await pollPaymentStatus(order_id, { maxAttempts: 15, interval: 2000 });
-          setTimeout(() => navigate("/dashboard/billing"), 500);
-        },
-        onPending: () => toast("Menunggu pembayaran. Cek email/app pembayaranmu."),
-        onError:   () => toast.error("Pembayaran gagal. Coba lagi."),
-        onClose:   () => toast("Popup ditutup. Transaksi pending, cek di Akun & Tier."),
-      });
-    } catch (err) {
-      toast.error(err?.response?.data?.detail || err.message || "Gagal mulai pembayaran");
-    } finally {
-      setPayingPlan(null);
+
+    const currentTier = me?.tier || "free";
+    const isTrialActive = currentTier === "pro" && me?.trial;
+    const canStartProTrial = tierKey === "pro" && currentTier === "free" && !me?.trial_used;
+
+    if (canStartProTrial) {
+      setPayingPlan("pro_trial");
+
+      try {
+        await api.post("/payment/start-pro-trial");
+        toast.success("Trial Pro aktif 10 hari. Selamat mencoba fitur Pro!");
+        setTimeout(() => navigate("/dashboard?trial=pro"), 500);
+      } catch (err) {
+        toast.error(
+          err?.response?.data?.detail ||
+            "Gagal memulai trial Pro. Coba lagi sebentar."
+        );
+      } finally {
+        setPayingPlan(null);
+      }
+
+      return;
     }
+
+    if (tierKey === "pro" && isTrialActive) {
+      navigate("/dashboard/analytics");
+      return;
+    }
+
+    if (currentTier === tierKey && !me?.trial) {
+      toast("Paket ini sudah aktif di akun kamu.");
+      navigate("/dashboard/billing");
+      return;
+    }
+
+    toast(
+      "Pembayaran online sedang disiapkan. Untuk sementara, aktivasi paket bisa dilakukan manual."
+    );
+    navigate("/dashboard/billing");
+  };
+
+  const getButtonLabel = (key, tier) => {
+    const currentTier = me?.tier || "free";
+    const isLoading = payingPlan === `${key}_${annual ? "yearly" : "monthly"}` || payingPlan === "pro_trial";
+
+    if (isLoading && key === "pro") {
+      return (
+        <span className="inline-flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Mengaktifkan Trial…
+        </span>
+      );
+    }
+
+    if (key === "free") {
+      return me ? "Buka Dashboard" : "Mulai Gratis";
+    }
+
+    if (key === "pro" && currentTier === "free" && !me?.trial_used) {
+      return "Coba Pro Gratis 10 Hari";
+    }
+
+    if (key === "pro" && currentTier === "pro" && me?.trial) {
+      return "Trial Pro Aktif";
+    }
+
+    if (currentTier === key && !me?.trial) {
+      return "Paket Aktif";
+    }
+
+    return "Upgrade ke " + tier.label;
   };
 
   if (loading) return <div className="min-h-screen grid place-items-center text-brand-mute">Memuat tier…</div>;
@@ -163,14 +216,34 @@ export default function Pricing() {
                   )}
                 </div>
                 <Button
-                  className={`w-full rounded-xl mt-5 h-12 font-bold ${isPro ? "bg-brand text-white" : key === "free" ? "bg-brand-off border border-brand-line text-brand-ink" : "bg-brand-ink text-white"}`}
+                  className={`w-full rounded-xl mt-5 h-12 font-bold ${
+                    isPro
+                    ? "bg-brand text-white"
+                    : key === "free"
+                    ? "bg-brand-off border border-brand-line text-brand-ink"
+                    : "bg-brand-ink text-white"
+                  }`}
                   onClick={() => handleUpgrade(key)}
-                  disabled={payingPlan === `${key}_${annual ? "yearly" : "monthly"}`}
-                  data-testid={`select-tier-${key}`}>
-                  {payingPlan === `${key}_${annual ? "yearly" : "monthly"}` ? (
-                    <span className="inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Mempersiapkan…</span>
-                  ) : key === "free" ? "Mulai Gratis" : "Upgrade ke " + t.label}
+                  disabled={payingPlan === "pro_trial"}
+                  data-testid={`select-tier-${key}`}
+                >
+                  {getButtonLabel(key, t)}
                 </Button>
+
+                {key === "pro" && (me?.tier || "free") === "free" && !me?.trial_used && (
+                  <p className="mt-2 text-center text-xs text-brand-mute">
+                    Trial 10 hari, tidak perlu pembayaran dulu.
+                  </p>
+                )}
+
+                {key === "pro" && me?.tier === "pro" && me?.trial && me?.trial_expires_at && (
+                  <p className="mt-2 text-center text-xs text-green-700 font-semibold">
+                    Trial aktif sampai{" "}
+                    {new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(
+                      new Date(me.trial_expires_at)
+                    )}
+                  </p>
+                )}
 
                 {/* Quick feature bullets */}
                 <ul className="mt-6 space-y-2 text-sm">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api, { rupiah } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
@@ -201,7 +201,7 @@ function formatTrialDate(value) {
 async function startProTrial() {
   try {
     await api.post("/payment/start-pro-trial");
-    window.location.reload();
+    navigate("/dashboard?trial=pro");
   } catch (err) {
     alert(
       err?.response?.data?.detail ||
