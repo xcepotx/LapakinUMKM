@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api, { rupiah } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, Eye, MessageCircle, Share2, Lock, BarChart3 } from "lucide-react";
@@ -16,9 +17,11 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
   const [locked, setLocked] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     setLoading(true);
+    setLocked(false);
     api.get("/analytics/shop", { params: { days } })
       .then((r) => setData(r.data))
       .catch((e) => {
@@ -28,21 +31,63 @@ export default function Analytics() {
   }, [days]);
 
   if (locked) {
+    const canStartTrial = !user?.trial_used;
+
     return (
-      <DashboardLayout>
-        <div className="max-w-xl mx-auto mt-10 bg-white border border-brand-line rounded-2xl p-10 text-center shadow-card"
-          data-testid="analytics-locked">
+      <DashboardLayout
+        title="Analitik"
+        subtitle="Pantau performa toko dan interaksi pelanggan."
+      >
+        <div
+          className="max-w-xl mx-auto mt-10 bg-white border border-brand-line rounded-2xl p-10 text-center shadow-card"
+          data-testid="analytics-locked"
+        >
           <Lock className="w-12 h-12 mx-auto text-brand-mute" />
-          <h1 className="font-heading font-extrabold text-2xl mt-4">Analitik Premium</h1>
+
+          <div className="mt-4 inline-flex rounded-full bg-brand-off px-3 py-1 text-xs font-bold text-brand">
+            Fitur Pro
+          </div>
+
+          <h1 className="font-heading font-extrabold text-2xl mt-4">
+            Analitik tersedia di Pro
+          </h1>
+
           <p className="text-brand-mute mt-2">
             Pantau pengunjung storefront, klik pesanan, konversi, dan produk paling dilihat.
             Tersedia di tier <b>Pro</b> dan <b>Bisnis</b>.
           </p>
-          <Link to="/pricing">
-            <Button className="mt-6 bg-brand text-white font-bold rounded-xl h-12 px-8" data-testid="analytics-upgrade">
-              Upgrade ke Pro →
-            </Button>
-          </Link>
+
+          {canStartTrial ? (
+            <>
+              <div className="mt-6 rounded-2xl bg-brand-sand p-4 text-sm text-brand-ink">
+                Coba Pro gratis selama <b>10 hari</b>. Tidak perlu pembayaran dulu.
+              </div>
+
+              <Button
+                onClick={startProTrial}
+                className="mt-6 bg-brand text-white font-bold rounded-xl h-12 px-8"
+                data-testid="analytics-start-trial"
+              >
+                Mulai Trial Pro 10 Hari
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="mt-6 rounded-2xl bg-brand-sand p-4 text-sm text-brand-ink">
+                Trial Pro kamu sudah pernah digunakan. Untuk membuka Analitik lagi,
+                lanjutkan ke paket Pro.
+              </div>
+
+              <Link to="/dashboard/billing">
+                <Button
+                  className="mt-6 bg-brand text-white font-bold rounded-xl h-12 px-8"
+                  data-testid="analytics-upgrade"
+                >
+                  Lihat Paket Pro
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
       </DashboardLayout>
     );
@@ -58,6 +103,13 @@ export default function Analytics() {
 
   return (
     <DashboardLayout>
+      {user?.trial && user?.trial_expires_at && (
+        <div className="mb-5 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
+          Trial Pro aktif sampai{" "}
+          <b>{formatTrialDate(user.trial_expires_at)}</b>.
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="font-heading font-extrabold text-3xl flex items-center gap-2">
@@ -136,4 +188,24 @@ function StatCard({ icon, label, value, tid }) {
       <div className="font-heading font-extrabold text-3xl mt-2">{value}</div>
     </div>
   );
+}
+
+function formatTrialDate(value) {
+  if (!value) return "-";
+
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "long",
+  }).format(new Date(value));
+}
+
+async function startProTrial() {
+  try {
+    await api.post("/payment/start-pro-trial");
+    window.location.reload();
+  } catch (err) {
+    alert(
+      err?.response?.data?.detail ||
+        "Gagal memulai trial Pro. Coba lagi sebentar."
+    );
+  }
 }
