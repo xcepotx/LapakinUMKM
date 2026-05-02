@@ -430,8 +430,13 @@ async def update_sale(sale_id: str, data: SaleUpdateIn, request: Request):
         update["total"] = total
 
     payment_status = update.get("payment_status", existing.get("payment_status", "paid"))
-    paid_amount_input = data.paid_amount if data.paid_amount is not None else existing.get("paid_amount")
-    paid_amount = _payment_amount(payment_status, paid_amount_input, total)
+
+    if payment_status == "paid":
+        paid_amount = total
+    elif payment_status == "unpaid":
+        paid_amount = 0
+    else:
+        paid_amount = max(0, min(int(data.paid_amount or existing.get("paid_amount") or 0), total))
 
     update["paid_amount"] = paid_amount
     update["unpaid_amount"] = max(0, total - paid_amount)
