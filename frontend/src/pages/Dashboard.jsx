@@ -11,6 +11,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import ShareHealthCard from "@/components/ShareHealthCard";
 import DailyTipCard from "@/components/DailyTipCard";
 
+function formatTrialDate(value) {
+  if (!value) return "-";
+
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "long",
+  }).format(new Date(value));
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -101,6 +109,30 @@ export default function Dashboard() {
         </div>
       }
     >
+    {user?.trial && user?.trial_expires_at && (
+      <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 p-5 text-yellow-950 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-bold uppercase tracking-wide text-yellow-800">
+              Trial Pro Aktif 🎉
+            </div>
+            <div className="mt-1 text-lg font-extrabold">
+              Nikmati fitur Pro sampai {formatTrialDate(user.trial_expires_at)}
+            </div>
+            <p className="mt-1 text-sm text-yellow-800">
+              Selama trial, kamu bisa mencoba analitik, custom subdomain, fitur AI, dan fitur Pro lainnya.
+            </p>
+          </div>
+
+          <a
+            href="/dashboard/billing"
+            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-yellow-900 px-4 py-2 text-sm font-bold text-white hover:opacity-90"
+          >
+            Kelola Paket
+          </a>
+        </div>
+      </div>
+    )}
       <BroadcastBanner />
 
       {/* TRIAL PRO BANNER */}
