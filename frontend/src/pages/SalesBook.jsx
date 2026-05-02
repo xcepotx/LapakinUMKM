@@ -42,6 +42,38 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function addOneDay(dateString) {
+  if (!dateString) return "";
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setDate(date.getDate() + 1);
+  return date.toISOString();
+}
+
+function dateToStartIso(dateString) {
+  if (!dateString) return "";
+  return new Date(`${dateString}T00:00:00`).toISOString();
+}
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename, rows) {
+  const blob = new Blob([rows.join("\n")], {
+    type: "text/csv;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function emptyItem() {
   return {
     product_id: "",
@@ -61,6 +93,9 @@ export default function SalesBook() {
   const [showForm, setShowForm] = useState(false);
   const [editingSaleId, setEditingSaleId] = useState(null);
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterChannel, setFilterChannel] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [error, setError] = useState("");
 
   const [form, setForm] = useState({
@@ -74,10 +109,7 @@ export default function SalesBook() {
     items: [emptyItem()],
   });
 
-  const filteredSales = useMemo(() => {
-    if (!filterStatus) return sales;
-    return sales.filter((sale) => sale.payment_status === filterStatus);
-  }, [sales, filterStatus]);
+  const filteredSales = useMemo(() => sales, [sales]);
 
   const formTotal = useMemo(() => {
     return form.items.reduce((sum, item) => {
@@ -92,8 +124,15 @@ export default function SalesBook() {
     setError("");
 
     try {
+      const params = {};
+
+      if (filterStatus) params.status = filterStatus;
+      if (filterChannel) params.channel = filterChannel;
+      if (startDate) params.start = dateToStartIso(startDate);
+      if (endDate) params.end = addOneDay(endDate);
+
       const [salesRes, summaryRes, productsRes] = await Promise.all([
-        api.get("/sales"),
+        api.get("/sales", { params }),
         api.get("/sales/summary"),
         api.get("/products"),
       ]);
@@ -111,8 +150,58 @@ export default function SalesBook() {
     }
   }
 
+  function resetFilters() {
+    setFilterStatus("");
+    setFilterChannel("");
+    setStartDate("");
+    setEndDate("");
+
+    setTimeout(() => {
+      loadData();
+    }, 0);
+  }
+
+  function exportSalesCsv() {
+    const header = [
+      "Tanggal",
+      "Pelanggan",
+      "No HP",
+      "Channel",
+      "Status Pembayaran",
+      "Item",
+      "Total",
+      "Dibayar",
+      "Belum Dibayar",
+      "Catatan",
+    ];
+
+    const rows = filteredSales.map((sale) => {
+      const items = (sale.items || [])
+        .map((item) => `${item.name} x${item.qty} ${item.unit || ""}`)
+        .join("; ");
+
+      return [
+        formatDate(sale.sale_date),
+        sale.customer_name || "",
+        sale.customer_phone || "",
+        sale.channel || "",
+        sale.payment_status || "",
+        items,
+        sale.total || 0,
+        sale.paid_amount || 0,
+        sale.unpaid_amount || 0,
+        sale.notes || "",
+      ].map(csvEscape).join(",");
+    });
+
+    const filename = `buku-jualan-${startDate || "awal"}-${endDate || "akhir"}.csv`;
+
+    downloadCsv(filename, [header.map(csvEscape).join(","), ...rows]);
+  }
+
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function updateForm(field, value) {
@@ -312,6 +401,17 @@ const pageActions = (
       <RefreshCw size={16} />
       Refresh
     </button>
+
+
+    <button
+      type="button"
+      onClick={exportSalesCsv}
+      disabled={!filteredSales.length}
+      className="inline-flex items-center gap-2 rounded-xl border border-brand-line bg-white px-4 py-2 text-sm font-semibold text-brand-ink shadow-sm hover:bg-brand-off disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      Export CSV
+    </button>
+
     <button
       type="button"
       onClick={() => setShowForm((value) => !value)}
@@ -638,6 +738,21 @@ const pageActions = (
             </p>
           </div>
 
+          <div className="grid gap-2 md:grid-cols-5">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#C04A3B]"
+            />
+
+            <input
+            type="date"
+            value={endDate}
+            onChange={(event) => setEndDate(event.target.value)}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#C04A3B]"
+          />
+
           <select
             value={filterStatus}
             onChange={(event) => setFilterStatus(event.target.value)}
@@ -648,8 +763,38 @@ const pageActions = (
             <option value="partial">DP / Sebagian</option>
             <option value="unpaid">Belum Bayar</option>
           </select>
-        </div>
 
+          <select
+            value={filterChannel}
+            onChange={(event) => setFilterChannel(event.target.value)}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#C04A3B]"
+          >
+            <option value="">Semua channel</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="instagram">Instagram</option>
+            <option value="offline">Offline</option>
+            <option value="other">Lainnya</option>
+          </select>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={loadData}
+              className="rounded-xl bg-[#C04A3B] px-3 py-2 text-sm font-semibold text-white hover:opacity-90"
+            >
+              Terapkan
+            </button>
+
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+        </div>
         {loading ? (
           <div className="py-10 text-center text-sm text-slate-500">
             Memuat Buku Jualan...
