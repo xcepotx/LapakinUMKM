@@ -10,9 +10,11 @@ const mockHost = (h) => {
 };
 
 const cases = [
+  ["dev.lapakin.my.id", null],
   ["warung-bu-sari.lapakin.my.id", "warung-bu-sari"],
   ["my-shop.lapakin.my.id", "my-shop"],
   ["lapakin.my.id", null],
+  ["www.dev.lapakin.my.id", null]
   ["www.lapakin.my.id", null],
   ["admin.lapakin.my.id", null],
   ["api.lapakin.my.id", null],

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-route
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
 
+import SalesBook from "./pages/SalesBook";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -90,6 +91,7 @@ function AppRouter() {
       <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
       <Route path="/dashboard/content-studio" element={<ProtectedRoute><ContentStudio /></ProtectedRoute>} />
       <Route path="/dashboard/daily-menu" element={<ProtectedRoute><DailyMenu /></ProtectedRoute>} />
+      <Route path="/dashboard/sales" element={<SalesBook />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/cerita" element={<Cerita />} />
       <Route path="/cerita/:slug" element={<CeritaDetail />} />
