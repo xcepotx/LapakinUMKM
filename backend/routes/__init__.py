@@ -11,11 +11,14 @@ from .payment import router as payment_router
 from .tips import router as tips_router
 from .stories import router as stories_router
 from .content_studio import router as content_studio_router
+from .sales import router as sales_router
+
 
 ALL_ROUTERS = [
     auth_router,
     shops_router,
     products_router,
+    sales_router,
     ai_router,
     og_router,
     whatsapp_router,

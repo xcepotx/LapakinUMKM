@@ -40,6 +40,7 @@ TIER_LIMITS = {
         "api_access": False,
         "analytics": False,
         "priority_support": False,
+        "sales_entries_per_month": 30,
     },
     "pro": {
         "label": "Pro",
@@ -63,6 +64,7 @@ TIER_LIMITS = {
         "api_access": False,
         "analytics": True,
         "priority_support": True,
+        "sales_entries_per_month": UNLIMITED,
     },
     "business": {
         "label": "Bisnis",
@@ -86,6 +88,7 @@ TIER_LIMITS = {
         "api_access": True,
         "analytics": True,
         "priority_support": True,
+        "sales_entries_per_month": UNLIMITED,
     },
 }
 
