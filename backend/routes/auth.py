@@ -21,6 +21,39 @@ router = APIRouter()
 def _public_app_url() -> str:
     return os.environ.get("PUBLIC_APP_URL", "https://lapakin.my.id").rstrip("/")
 
+def _parse_iso_datetime(value):
+    if not value:
+        return None
+
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+async def _expire_trial_if_needed(user: dict) -> dict:
+    trial_expires_at = _parse_iso_datetime(user.get("trial_expires_at"))
+
+    if user.get("trial") and trial_expires_at and trial_expires_at < datetime.now(timezone.utc):
+        now = datetime.now(timezone.utc)
+
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {
+                "$set": {
+                    "tier": "free",
+                    "trial": False,
+                    "trial_used": True,
+                    "updated_at": now.isoformat(),
+                }
+            },
+        )
+
+        user["tier"] = "free"
+        user["trial"] = False
+        user["trial_used"] = True
+
+    return user
 
 @router.post("/auth/register")
 async def register(data: RegisterIn, response: Response):
@@ -40,9 +73,11 @@ async def register(data: RegisterIn, response: Response):
         "picture": "",
         "auth_provider": "email",
         "shop_id": None,
-        "tier": "pro",
-        "trial": True,
-        "trial_expires_at": trial_end,
+        "tier": "free",
+        "trial": False,
+        "trial_used": False,
+        "trial_started_at": None,
+        "trial_expires_at": None,
         "created_at": now.isoformat(),
     }
     await db.users.insert_one(user_doc)
@@ -55,10 +90,20 @@ async def register(data: RegisterIn, response: Response):
         await send_email(email, subj, html, text)
     except Exception:
         logger.exception("welcome email failed")
-    return {"user_id": user_id, "email": email, "name": data.name, "picture": "",
-            "auth_provider": "email", "shop_id": None, "tier": "pro",
-            "trial": True, "trial_expires_at": trial_end, "access_token": token}
-
+    return {
+        "user_id": user_id,
+        "email": email,
+        "name": data.name,
+        "picture": "",
+        "auth_provider": "email",
+        "shop_id": None,
+        "tier": "free",
+        "trial": False,
+        "trial_used": False,
+        "trial_started_at": None,
+        "trial_expires_at": None,
+        "access_token": token,
+    }
 
 @router.post("/auth/login")
 async def login(data: LoginIn, response: Response):
@@ -67,14 +112,27 @@ async def login(data: LoginIn, response: Response):
     if not user or not user.get("password_hash") or not verify_password(data.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Email atau password salah")
     token = create_access_token(user["user_id"], email)
+    user = await _expire_trial_if_needed(user)
     response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
                         max_age=7 * 24 * 3600, path="/")
-    return {"user_id": user["user_id"], "email": email, "name": user.get("name"),
-            "picture": user.get("picture", ""), "auth_provider": user.get("auth_provider", "email"),
-            "shop_id": user.get("shop_id"),
-            "role": user.get("role", "user"), "tier": user.get("tier", "free"),
-            "access_token": token}
-
+    return {
+        "user_id": user["user_id"],
+        "email": email,
+        "name": user.get("name"),
+        "picture": user.get("picture", ""),
+        "auth_provider": user.get("auth_provider", "email"),
+        "shop_id": user.get("shop_id"),
+        "role": user.get("role", "user"),
+        "tier": user.get("tier", "free"),
+        "trial": bool(user.get("trial")),
+        "trial_used": bool(user.get("trial_used")),
+        "trial_started_at": user.get("trial_started_at"),
+        "trial_expires_at": user.get("trial_expires_at"),
+        "subscription_expires_at": user.get("subscription_expires_at"),
+        "subscription_plan_id": user.get("subscription_plan_id"),
+        "subscription_cycle": user.get("subscription_cycle"),
+        "access_token": token,
+    }
 
 @router.post("/auth/logout")
 async def logout(request: Request, response: Response):
@@ -89,16 +147,24 @@ async def logout(request: Request, response: Response):
 @router.get("/auth/me")
 async def get_me(request: Request):
     user = await require_user(request)
-    return {"user_id": user["user_id"], "email": user["email"], "name": user.get("name"),
-            "picture": user.get("picture", ""), "auth_provider": user.get("auth_provider", "email"),
-            "shop_id": user.get("shop_id"), "role": user.get("role", "user"),
-            "tier": user.get("tier", "free"),
-            "trial": bool(user.get("trial")),
-            "trial_expires_at": user.get("trial_expires_at"),
-            "subscription_expires_at": user.get("subscription_expires_at"),
-            "subscription_plan_id": user.get("subscription_plan_id"),
-            "subscription_cycle": user.get("subscription_cycle")}
-
+    user = await _expire_trial_if_needed(user)
+    return {
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "name": user.get("name"),
+        "picture": user.get("picture", ""),
+        "auth_provider": user.get("auth_provider", "email"),
+        "shop_id": user.get("shop_id"),
+        "role": user.get("role", "user"),
+        "tier": user.get("tier", "free"),
+        "trial": bool(user.get("trial")),
+        "trial_used": bool(user.get("trial_used")),
+        "trial_started_at": user.get("trial_started_at"),
+        "trial_expires_at": user.get("trial_expires_at"),
+        "subscription_expires_at": user.get("subscription_expires_at"),
+        "subscription_plan_id": user.get("subscription_plan_id"),
+        "subscription_cycle": user.get("subscription_cycle"),
+    }
 
 @router.post("/auth/google/session")
 async def google_session(data: GoogleSessionIn, response: Response):
@@ -118,20 +184,53 @@ async def google_session(data: GoogleSessionIn, response: Response):
     user = await db.users.find_one({"email": email})
     if user:
         update = {"picture": info.get("picture") or user.get("picture", "")}
+
         if user.get("auth_provider") == "email":
             update["auth_provider"] = "both"
         elif not user.get("auth_provider"):
             update["auth_provider"] = "google"
+
         if not user.get("name"):
             update["name"] = info.get("name") or email.split("@")[0]
+
+        # Normalize legacy Google users that were created before tier/trial fields existed.
+        if user.get("tier") is None:
+            update["tier"] = "free"
+        if user.get("trial") is None:
+            update["trial"] = False
+        if user.get("trial_used") is None:
+            update["trial_used"] = False
+        if "trial_started_at" not in user:
+            update["trial_started_at"] = None
+        if "trial_expires_at" not in user:
+            update["trial_expires_at"] = None
+        if "subscription_plan_id" not in user:
+            update["subscription_plan_id"] = None
+        if "subscription_cycle" not in user:
+            update["subscription_cycle"] = None
+        if "subscription_expires_at" not in user:
+            update["subscription_expires_at"] = None
+
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
         user_id = user["user_id"]
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         await db.users.insert_one({
-            "user_id": user_id, "email": email, "name": info.get("name") or email.split("@")[0],
-            "picture": info.get("picture") or "", "auth_provider": "google",
-            "shop_id": None, "created_at": datetime.now(timezone.utc).isoformat(),
+            "user_id": user_id,
+            "email": email,
+            "name": info.get("name") or email.split("@")[0],
+            "picture": info.get("picture") or "",
+            "auth_provider": "google",
+            "shop_id": None,
+            "tier": "free",
+            "trial": False,
+            "trial_used": False,
+            "trial_started_at": None,
+            "trial_expires_at": None,
+            "subscription_plan_id": None,
+            "subscription_cycle": None,
+            "subscription_expires_at": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
     sess_token = info.get("session_token") or secrets.token_urlsafe(32)
