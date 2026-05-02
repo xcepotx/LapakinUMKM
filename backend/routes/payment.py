@@ -83,6 +83,54 @@ async def _activate_subscription(user_id: str, plan_id: str, order_id: str,
     except Exception:
         logger.exception("payment receipt email failed")
 
+@router.post("/payment/start-pro-trial")
+async def start_pro_trial(request: Request):
+    user = await require_user(request)
+
+    current_tier = user.get("tier") or "free"
+    trial_used = bool(user.get("trial_used"))
+
+    if current_tier != "free":
+        raise HTTPException(
+            status_code=400,
+            detail="Trial Pro hanya tersedia untuk akun Gratis.",
+        )
+
+    if trial_used:
+        raise HTTPException(
+            status_code=400,
+            detail="Trial Pro sudah pernah digunakan.",
+        )
+
+    now = datetime.now(timezone.utc)
+    trial_expires_at = now + timedelta(days=10)
+
+    update = {
+        "tier": "pro",
+        "trial": True,
+        "trial_used": True,
+        "trial_started_at": now.isoformat(),
+        "trial_expires_at": trial_expires_at.isoformat(),
+        "subscription_plan_id": None,
+        "subscription_cycle": None,
+        "subscription_expires_at": None,
+        "updated_at": now.isoformat(),
+    }
+
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": update},
+    )
+
+    return {
+        "ok": True,
+        "tier": "pro",
+        "trial": True,
+        "trial_used": True,
+        "trial_started_at": now.isoformat(),
+        "trial_expires_at": trial_expires_at.isoformat(),
+        "message": "Trial Pro aktif selama 10 hari.",
+    }
 
 # ---- Public config endpoint (for frontend Snap loader) ----
 @router.get("/payment/config")
