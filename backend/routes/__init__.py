@@ -12,6 +12,7 @@ from .tips import router as tips_router
 from .stories import router as stories_router
 from .content_studio import router as content_studio_router
 from .sales import router as sales_router
+from .team import router as team_router
 from .instagram import router as instagram_router
 
 
@@ -20,6 +21,7 @@ ALL_ROUTERS = [
     shops_router,
     products_router,
     sales_router,
+    team_router,
     ai_router,
     og_router,
     whatsapp_router,

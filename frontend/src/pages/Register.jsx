@@ -25,8 +25,8 @@ export default function Register() {
     try {
       const { data } = await api.post("/auth/register", { name, email, password });
       setUser(data);
-      toast.success("Akun berhasil dibuat!");
-      navigate("/onboarding");
+      toast.success(data?.shop_id ? "Akun berhasil dibuat dan kamu masuk ke tim toko!" : "Akun berhasil dibuat!");
+      navigate(data?.shop_id ? "/dashboard" : "/onboarding");
     } catch (err) {
       toast.error(formatApiError(err.response?.data?.detail) || err.message);
     } finally {

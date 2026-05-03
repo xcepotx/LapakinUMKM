@@ -19,6 +19,10 @@ const TIER_BADGE = {
     label: "Gratis",
     cls: "bg-brand-off text-brand-mute border-brand-line",
   },
+  starter: {
+    label: "Starter",
+    cls: "bg-emerald-100 text-emerald-900 border-emerald-300",
+  },
   pro: {
     label: "Pro",
     cls: "bg-yellow-100 text-yellow-900 border-yellow-300",

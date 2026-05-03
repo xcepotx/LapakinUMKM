@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Save, Wand2, Upload, X, ImagePlus, Trash2, QrCode, RefreshCw } from "lucide-react";
+import { Save, Wand2, Upload, X, ImagePlus, Trash2, QrCode, RefreshCw, Users, UserPlus, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -32,6 +32,11 @@ export default function ShopSettings() {
   const [generatingAbout, setGeneratingAbout] = useState(false);
   const [generatingCover, setGeneratingCover] = useState(false);
   const [coverStyle, setCoverStyle] = useState("warm");
+  const [team, setTeam] = useState(null);
+  const [teamEmail, setTeamEmail] = useState("");
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamError, setTeamError] = useState("");
+  const [addingMember, setAddingMember] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -40,6 +45,70 @@ export default function ShopSettings() {
       setShop(data);
     })();
   }, [navigate]);
+
+  const loadTeam = async () => {
+    setTeamLoading(true);
+    setTeamError("");
+    try {
+      const { data } = await api.get("/team/members");
+      setTeam(data);
+    } catch (e) {
+      setTeam(null);
+      setTeamError(formatApiError(e.response?.data?.detail) || "Gagal memuat anggota tim");
+    } finally {
+      setTeamLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (shop?.shop_id) loadTeam();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shop?.shop_id]);
+
+  const addTeamMember = async () => {
+    const email = teamEmail.trim().toLowerCase();
+    if (!email) { toast.error("Isi email anggota dulu"); return; }
+
+    setAddingMember(true);
+    try {
+      const { data } = await api.post("/team/members", { email });
+      setTeamEmail("");
+      toast.success(
+        data?.status === "pending_invite"
+          ? "Undangan tersimpan. Minta anggota daftar dengan email itu."
+          : "Anggota tim ditambahkan"
+      );
+      await loadTeam();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Gagal tambah anggota");
+    } finally {
+      setAddingMember(false);
+    }
+  };
+
+  const removeTeamMember = async (member) => {
+    if (!window.confirm(`Hapus ${member.name || member.email} dari tim?`)) return;
+
+    try {
+      await api.delete(`/team/members/${member.user_id}`);
+      toast.success("Anggota dihapus dari tim");
+      await loadTeam();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Gagal hapus anggota");
+    }
+  };
+
+  const revokeTeamInvite = async (invite) => {
+    if (!window.confirm(`Batalkan undangan untuk ${invite.email}?`)) return;
+
+    try {
+      await api.delete(`/team/invites/${invite.invite_id}`);
+      toast.success("Undangan dibatalkan");
+      await loadTeam();
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Gagal batalkan undangan");
+    }
+  };
 
   if (!shop) {
     return <DashboardLayout title="Pengaturan Toko"><div className="text-brand-mute">Memuat…</div></DashboardLayout>;
@@ -422,6 +491,140 @@ export default function ShopSettings() {
                   <span className="text-xs mt-1">Tambah</span>
                   <input type="file" multiple accept="image/*" className="hidden" onChange={onStoryFile} data-testid="story-add-input" />
                 </label>
+              )}
+            </div>
+          </Section>
+          {/* Anggota Tim */}
+          <Section
+            title="Anggota Tim"
+            desc="Undang anggota untuk ikut mengelola toko. Kalau belum punya akun, mereka cukup daftar dengan email yang diundang."
+          >
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+              <div className="flex items-center gap-2 text-sm text-brand-mute">
+                <Users className="w-4 h-4 text-brand" />
+                {teamLoading ? (
+                  <span>Memuat anggota…</span>
+                ) : team ? (
+                  <span>
+                    {team.used} dari {team.limit === "unlimited" ? "∞" : team.limit} anggota terpakai
+                  </span>
+                ) : (
+                  <span>Belum ada data anggota</span>
+                )}
+              </div>
+              {team?.tier && (
+                <span className="text-xs font-bold uppercase rounded-full bg-brand-off border border-brand-line px-3 py-1 text-brand-mute">
+                  Paket {team.tier}
+                </span>
+              )}
+            </div>
+
+            {teamLoading ? (
+              <div className="mb-4 rounded-xl border border-brand-line bg-brand-off/50 p-3 text-sm text-brand-mute">
+                Memuat data anggota tim…
+              </div>
+            ) : teamError ? (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 flex items-center justify-between gap-3">
+                <span>{teamError}</span>
+                <Button type="button" variant="outline" size="sm" onClick={loadTeam} className="rounded-xl border-red-200">
+                  Coba lagi
+                </Button>
+              </div>
+            ) : team?.is_owner ? (
+              <div className="grid sm:grid-cols-[1fr_auto] gap-2 mb-4">
+                <Input
+                  type="email"
+                  value={teamEmail}
+                  onChange={(e) => setTeamEmail(e.target.value)}
+                  placeholder="email-anggota@contoh.com"
+                  className="rounded-xl border-brand-line h-12"
+                  data-testid="team-email-input"
+                />
+                <Button
+                  type="button"
+                  onClick={addTeamMember}
+                  disabled={addingMember || (team && team.remaining === 0)}
+                  className="bg-brand hover:bg-brand-hover text-white rounded-xl h-12 font-bold"
+                  data-testid="team-add-btn"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  {addingMember ? "Menambah…" : "Tambah"}
+                </Button>
+              </div>
+            ) : (
+              <div className="mb-4 rounded-xl border border-brand-line bg-brand-off/50 p-3 text-sm text-brand-mute">
+                Hanya owner toko yang bisa menambah atau menghapus anggota.
+              </div>
+            )}
+
+            {team && team.remaining === 0 && team.limit !== "unlimited" && team.is_owner && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Limit anggota tim paket ini sudah penuh. Upgrade paket untuk menambah anggota lagi.
+              </div>
+            )}
+
+            <div className="divide-y divide-brand-line rounded-xl border border-brand-line bg-white overflow-hidden">
+              {(team?.members || []).map((member) => (
+                <div key={member.user_id} className="flex items-center justify-between gap-3 p-4" data-testid={`team-member-${member.user_id}`}>
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">{member.name || member.email}</div>
+                    <div className="text-xs text-brand-mute truncate">{member.email}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`inline-flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 border ${
+                      member.role === "owner"
+                        ? "bg-brand-off text-brand border-brand-line"
+                        : "bg-white text-brand-mute border-brand-line"
+                    }`}>
+                      {member.role === "owner" && <ShieldCheck className="w-3 h-3" />}
+                      {member.role === "owner" ? "Owner" : "Staff"}
+                    </span>
+                    {team?.is_owner && member.role !== "owner" && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeTeamMember(member)}
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        data-testid={`team-remove-${member.user_id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {(team?.pending_invites || []).map((invite) => (
+                <div key={invite.invite_id} className="flex items-center justify-between gap-3 p-4 bg-amber-50/60" data-testid={`team-invite-${invite.invite_id}`}>
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">{invite.email}</div>
+                    <div className="text-xs text-amber-800 truncate">Menunggu daftar / login dengan email ini</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 border bg-amber-100 text-amber-900 border-amber-200">
+                      Pending
+                    </span>
+                    {team?.is_owner && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => revokeTeamInvite(invite)}
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        data-testid={`team-revoke-${invite.invite_id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {team && team.members.length === 0 && (team.pending_invites || []).length === 0 && (
+                <div className="p-6 text-center text-sm text-brand-mute">
+                  Belum ada anggota tim.
+                </div>
               )}
             </div>
           </Section>

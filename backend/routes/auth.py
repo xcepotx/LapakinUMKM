@@ -88,6 +88,72 @@ async def _upsert_google_user(email: str, name: str = "", picture: str = "") -> 
     await db.users.insert_one(doc)
     return doc
 
+
+async def _accept_pending_team_invite(user: dict) -> dict:
+    """Attach user to a shop when their email has a pending team invite."""
+    if not user or user.get("shop_id"):
+        return user
+
+    email = (user.get("email") or "").lower().strip()
+    if not email:
+        return user
+
+    invite = await db.team_invites.find_one(
+        {"email": email, "status": "pending"},
+        {"_id": 0},
+        sort=[("created_at", 1)],
+    )
+    if not invite:
+        return user
+
+    shop = await db.shops.find_one({"shop_id": invite.get("shop_id")}, {"_id": 0})
+    if not shop:
+        await db.team_invites.update_one(
+            {"invite_id": invite["invite_id"]},
+            {"$set": {
+                "status": "revoked",
+                "revoked_reason": "shop_not_found",
+                "revoked_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        return user
+
+    try:
+        from tiers import get_limits, get_tier, is_unlimited
+        owner = await db.users.find_one({"user_id": shop.get("owner_user_id")}, {"_id": 0}) or {}
+        tier = get_tier(owner)
+        limit = get_limits(tier).get("max_users_per_shop", 1)
+        current_count = await db.users.count_documents({"shop_id": shop["shop_id"]})
+        if not is_unlimited(limit) and current_count >= limit:
+            logger.warning("pending team invite blocked by tier limit: email=%s shop=%s", email, shop["shop_id"])
+            return user
+    except Exception:
+        logger.exception("team invite limit check failed")
+        return user
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "shop_id": shop["shop_id"],
+            "shop_role": invite.get("role") or "staff",
+            "team_joined_at": now,
+            "updated_at": now,
+        }},
+    )
+    await db.team_invites.update_one(
+        {"invite_id": invite["invite_id"]},
+        {"$set": {
+            "status": "accepted",
+            "accepted_at": now,
+            "accepted_user_id": user["user_id"],
+        }},
+    )
+
+    updated = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
+    return updated or user
+
+
 async def _expire_trial_if_needed(user: dict) -> dict:
     trial_expires_at = _parse_iso_datetime(user.get("trial_expires_at"))
     now = datetime.now(timezone.utc)
@@ -151,6 +217,7 @@ async def google_id_token_login(data: GoogleIdTokenIn, response: Response):
     )
 
     user = await _expire_trial_if_needed(user)
+    user = await _accept_pending_team_invite(user)
 
     token = create_access_token(user["user_id"], email)
     response.set_cookie(
@@ -210,6 +277,7 @@ async def register(data: RegisterIn, response: Response):
         "created_at": now.isoformat(),
     }
     await db.users.insert_one(user_doc)
+    user_doc = await _accept_pending_team_invite(user_doc)
     token = create_access_token(user_id, email)
     response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
                         max_age=7 * 24 * 3600, path="/")
@@ -225,7 +293,7 @@ async def register(data: RegisterIn, response: Response):
         "name": data.name,
         "picture": "",
         "auth_provider": "email",
-        "shop_id": None,
+        "shop_id": user_doc.get("shop_id"),
         "tier": "free",
         "trial": False,
         "trial_used": False,
@@ -242,6 +310,7 @@ async def login(data: LoginIn, response: Response):
         raise HTTPException(status_code=401, detail="Email atau password salah")
     token = create_access_token(user["user_id"], email)
     user = await _expire_trial_if_needed(user)
+    user = await _accept_pending_team_invite(user)
     response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
                         max_age=7 * 24 * 3600, path="/")
     return {
