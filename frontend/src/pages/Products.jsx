@@ -4,7 +4,7 @@ import api, { formatApiError, rupiah } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import EditProductDialog from "@/components/EditProductDialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Package, Pencil, Image as ImageIcon, Smartphone, Share2 } from "lucide-react";
+import { Plus, Trash2, Package, Pencil, Image as ImageIcon, Smartphone, Share2, Instagram, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -45,6 +45,7 @@ export default function Products() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
+  const [publishingIG, setPublishingIG] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -89,6 +90,28 @@ export default function Products() {
     });
     if (res === "shared") toast.success("Dibagikan!");
     else if (res === "downloaded") toast.success("Gambar diunduh — buka WhatsApp & pilih dari galeri");
+  };
+
+  const handlePostIG = async (p) => {
+    if (!window.confirm(`Post "${p.name}" ke Instagram sekarang?`)) return;
+
+    setPublishingIG(p.product_id);
+    try {
+      const { data } = await api.post(`/instagram/products/${p.product_id}/publish`);
+      toast.success("Produk berhasil diposting ke Instagram");
+      if (data?.media_id) {
+        console.log("Instagram media id:", data.media_id);
+      }
+    } catch (e) {
+      const detail = formatApiError(e.response?.data?.detail) || "Gagal post ke Instagram";
+      toast.error(detail);
+
+      if (e.response?.status === 402) {
+        navigate("/pricing#comparison");
+      }
+    } finally {
+      setPublishingIG(null);
+    }
   };
 
   const primaryImg = (p) => {
@@ -206,6 +229,18 @@ export default function Products() {
                       data-testid={`share-wa-${p.product_id}`}
                       title="Bagikan ke WhatsApp Status / kontak">
                       <Share2 className="w-3.5 h-3.5" /> WA
+                    </button>
+                    <button onClick={() => handlePostIG(p)}
+                      disabled={publishingIG === p.product_id}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg px-2 py-2 bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-60"
+                      data-testid={`post-ig-${p.product_id}`}
+                      title="Post langsung ke Instagram">
+                      {publishingIG === p.product_id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Instagram className="w-3.5 h-3.5" />
+                      )}
+                      IG
                     </button>
                   </div>
 
