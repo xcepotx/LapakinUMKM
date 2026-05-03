@@ -7,12 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sparkles, Mail, Lock, User } from "lucide-react";
 import { toast } from "sonner";
+import { GoogleLogin } from "@react-oauth/google";
 
-// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-function startGoogleLogin() {
-  const redirectUrl = window.location.origin + "/dashboard";
-  window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-}
 
 export default function Register() {
   const navigate = useNavigate();
@@ -37,6 +33,26 @@ export default function Register() {
       setLoading(false);
     }
   };
+
+  async function handleGoogleSuccess(credentialResponse) {
+    if (!credentialResponse?.credential) {
+      toast.error("Daftar dengan Google gagal. Token tidak ditemukan.");
+      return;
+    }
+
+    try {
+      const { data } = await api.post("/auth/google/id-token", {
+        credential: credentialResponse.credential,
+      });
+
+      window.location.href = data?.shop_id ? "/dashboard" : "/onboarding";
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.detail ||
+          "Daftar dengan Google gagal. Coba lagi atau pakai email/password."
+      );
+    }
+  }
 
   return (
     <div className="min-h-screen flex bg-brand-sand">
@@ -70,13 +86,18 @@ export default function Register() {
             <Link to="/login" className="text-brand font-semibold hover:underline" data-testid="goto-login-link">Masuk</Link>
           </p>
 
-          <Button
-            type="button" variant="outline" onClick={startGoogleLogin}
-            className="mt-6 w-full rounded-xl py-6 border-brand-line bg-white hover:bg-brand-off btn-press"
-            data-testid="google-register-btn"
-          >
-            <span className="font-semibold">Daftar dengan Google</span>
-          </Button>
+          <div className="mt-4 flex justify-center" data-testid="google-register-btn">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() =>
+                toast.error("Daftar dengan Google gagal. Coba lagi atau pakai email/password.")
+              }
+              useOneTap={false}
+              text="signup_with"
+              shape="pill"
+              width="320"
+            />
+          </div>
 
           <div className="my-6 flex items-center gap-3 text-xs text-brand-mute">
             <div className="flex-1 h-px bg-brand-line" /> atau email <div className="flex-1 h-px bg-brand-line" />

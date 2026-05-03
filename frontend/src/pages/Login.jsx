@@ -7,12 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sparkles, Mail, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { GoogleLogin } from "@react-oauth/google";
 
-// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-function startGoogleLogin() {
-  const redirectUrl = window.location.origin + "/dashboard";
-  window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-}
 
 export default function Login() {
   const navigate = useNavigate();
@@ -39,6 +35,39 @@ export default function Login() {
       setLoading(false);
     }
   };
+
+  async function handleGoogleSuccess(credentialResponse) {
+    if (!credentialResponse?.credential) {
+      toast.error("Login Google gagal. Token tidak ditemukan.");
+      return;
+    }
+
+    try {
+      const { data } = await api.post("/auth/google/id-token", {
+        credential: credentialResponse.credential,
+      });
+
+      setUser(data);
+
+      const params = new URLSearchParams(location.search);
+      const next = params.get("next");
+
+      const dest =
+        next ||
+        (data?.role === "admin"
+          ? "/admin"
+          : data?.shop_id
+          ? "/dashboard"
+          : "/onboarding");
+
+      navigate(dest, { replace: true, state: { user: data } });
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.detail ||
+          "Login Google gagal. Coba lagi atau pakai email/password."
+      );
+    }
+  }
 
   return (
     <div className="min-h-screen flex bg-brand-sand">
@@ -78,15 +107,18 @@ export default function Login() {
             </div>
           )}
 
-          <Button
-            type="button"
-            variant="outline"
-            onClick={startGoogleLogin}
-            className="mt-6 w-full rounded-xl py-6 border-brand-line bg-white hover:bg-brand-off btn-press"
-            data-testid="google-login-btn"
-          >
-            <GoogleIcon /> <span className="ml-2 font-semibold">Lanjut dengan Google</span>
-          </Button>
+          <div className="mt-4 flex justify-center" data-testid="google-login-btn">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() =>
+                toast.error("Login Google gagal. Coba lagi atau pakai email/password.")
+              }
+              useOneTap={false}
+              text="continue_with"
+              shape="pill"
+              width="320"
+            />
+          </div>
 
           <div className="my-6 flex items-center gap-3 text-xs text-brand-mute">
             <div className="flex-1 h-px bg-brand-line" /> atau email <div className="flex-1 h-px bg-brand-line" />
@@ -138,13 +170,3 @@ export default function Login() {
   );
 }
 
-function GoogleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-      <path d="M17.6 9.2c0-.6-.1-1.2-.2-1.7H9v3.3h4.8c-.2 1.1-.8 2-1.7 2.6v2.2h2.8c1.6-1.5 2.7-3.7 2.7-6.4z" fill="#4285F4" />
-      <path d="M9 18c2.4 0 4.4-.8 5.9-2.2l-2.8-2.2c-.8.5-1.8.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8H1v2.3C2.5 15.9 5.5 18 9 18z" fill="#34A853" />
-      <path d="M3.9 10.7C3.7 10.1 3.6 9.5 3.6 9s.1-1.1.3-1.7V5H1C.4 6.2 0 7.5 0 9s.4 2.8 1 4l2.9-2.3z" fill="#FBBC05" />
-      <path d="M9 3.6c1.4 0 2.6.5 3.5 1.4l2.6-2.6C13.4.9 11.4 0 9 0 5.5 0 2.5 2.1 1 5l2.9 2.3C4.6 5.2 6.6 3.6 9 3.6z" fill="#EA4335" />
-    </svg>
-  );
-}

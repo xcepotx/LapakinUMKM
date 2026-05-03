@@ -11,12 +11,17 @@ from deps import (
     db, logger, hash_password, verify_password, create_access_token
 )
 from deps import require_user
-from models import RegisterIn, LoginIn, GoogleSessionIn, ForgotIn, ResetIn
+from models import RegisterIn, LoginIn, ForgotIn, ResetIn
 from email_service import send_email
 from email_templates import welcome as welcome_email, password_reset as reset_email
+from pydantic import BaseModel
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 router = APIRouter()
 
+class GoogleIdTokenIn(BaseModel):
+    credential: str
 
 def _public_app_url() -> str:
     return os.environ.get("PUBLIC_APP_URL", "https://lapakin.my.id").rstrip("/")
@@ -30,6 +35,58 @@ def _parse_iso_datetime(value):
     except Exception:
         return None
 
+async def _upsert_google_user(email: str, name: str = "", picture: str = "") -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    user = await db.users.find_one({"email": email})
+
+    defaults = {
+        "tier": "free",
+        "trial": False,
+        "trial_used": False,
+        "trial_started_at": None,
+        "trial_expires_at": None,
+        "trial_expired": False,
+        "trial_expired_at": None,
+        "subscription_plan_id": None,
+        "subscription_cycle": None,
+        "subscription_expires_at": None,
+    }
+
+    if user:
+        update = {
+            "picture": picture or user.get("picture", ""),
+            "updated_at": now,
+        }
+
+        if user.get("auth_provider") == "email":
+            update["auth_provider"] = "both"
+        elif not user.get("auth_provider"):
+            update["auth_provider"] = "google"
+
+        if not user.get("name"):
+            update["name"] = name or email.split("@")[0]
+
+        for key, value in defaults.items():
+            if key not in user or user.get(key) is None:
+                update[key] = value
+
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+        return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    doc = {
+        "user_id": user_id,
+        "email": email,
+        "name": name or email.split("@")[0],
+        "picture": picture or "",
+        "auth_provider": "google",
+        "shop_id": None,
+        "created_at": now,
+        **defaults,
+    }
+
+    await db.users.insert_one(doc)
+    return doc
 
 async def _expire_trial_if_needed(user: dict) -> dict:
     trial_expires_at = _parse_iso_datetime(user.get("trial_expires_at"))
@@ -63,6 +120,69 @@ async def _expire_trial_if_needed(user: dict) -> dict:
         user.update(update)
 
     return user
+
+@router.post("/auth/google/id-token")
+async def google_id_token_login(data: GoogleIdTokenIn, response: Response):
+    google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+
+    if not google_client_id:
+        raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID belum dikonfigurasi")
+
+    try:
+        info = google_id_token.verify_oauth2_token(
+            data.credential,
+            google_requests.Request(),
+            google_client_id,
+        )
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token Google tidak valid")
+
+    email = (info.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email Google tidak ditemukan")
+
+    if info.get("email_verified") is False:
+        raise HTTPException(status_code=400, detail="Email Google belum terverifikasi")
+
+    user = await _upsert_google_user(
+        email=email,
+        name=info.get("name") or "",
+        picture=info.get("picture") or "",
+    )
+
+    user = await _expire_trial_if_needed(user)
+
+    token = create_access_token(user["user_id"], email)
+    response.set_cookie(
+        "access_token",
+        token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=7 * 24 * 3600,
+        path="/",
+    )
+
+    return {
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "name": user.get("name"),
+        "picture": user.get("picture", ""),
+        "auth_provider": user.get("auth_provider", "google"),
+        "shop_id": user.get("shop_id"),
+        "role": user.get("role", "user"),
+        "tier": user.get("tier", "free"),
+        "trial": bool(user.get("trial")),
+        "trial_used": bool(user.get("trial_used")),
+        "trial_started_at": user.get("trial_started_at"),
+        "trial_expires_at": user.get("trial_expires_at"),
+        "trial_expired": bool(user.get("trial_expired")),
+        "trial_expired_at": user.get("trial_expired_at"),
+        "subscription_expires_at": user.get("subscription_expires_at"),
+        "subscription_plan_id": user.get("subscription_plan_id"),
+        "subscription_cycle": user.get("subscription_cycle"),
+        "access_token": token,
+    }
 
 @router.post("/auth/register")
 async def register(data: RegisterIn, response: Response):
@@ -178,87 +298,6 @@ async def get_me(request: Request):
         "subscription_plan_id": user.get("subscription_plan_id"),
         "subscription_cycle": user.get("subscription_cycle"),
     }
-
-@router.post("/auth/google/session")
-async def google_session(data: GoogleSessionIn, response: Response):
-    """Exchange Emergent OAuth session_id for our session_token cookie."""
-    async with httpx.AsyncClient(timeout=15) as cx:
-        r = await cx.get(
-            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": data.session_id},
-        )
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Sesi Google tidak valid")
-    info = r.json()
-    email = (info.get("email") or "").lower().strip()
-    if not email:
-        raise HTTPException(status_code=400, detail="Email Google tidak ditemukan")
-
-    user = await db.users.find_one({"email": email})
-    if user:
-        update = {"picture": info.get("picture") or user.get("picture", "")}
-
-        if user.get("auth_provider") == "email":
-            update["auth_provider"] = "both"
-        elif not user.get("auth_provider"):
-            update["auth_provider"] = "google"
-
-        if not user.get("name"):
-            update["name"] = info.get("name") or email.split("@")[0]
-
-        # Normalize legacy Google users that were created before tier/trial fields existed.
-        if user.get("tier") is None:
-            update["tier"] = "free"
-        if user.get("trial") is None:
-            update["trial"] = False
-        if user.get("trial_used") is None:
-            update["trial_used"] = False
-        if "trial_started_at" not in user:
-            update["trial_started_at"] = None
-        if "trial_expires_at" not in user:
-            update["trial_expires_at"] = None
-        if "subscription_plan_id" not in user:
-            update["subscription_plan_id"] = None
-        if "subscription_cycle" not in user:
-            update["subscription_cycle"] = None
-        if "subscription_expires_at" not in user:
-            update["subscription_expires_at"] = None
-
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
-        user_id = user["user_id"]
-    else:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        await db.users.insert_one({
-            "user_id": user_id,
-            "email": email,
-            "name": info.get("name") or email.split("@")[0],
-            "picture": info.get("picture") or "",
-            "auth_provider": "google",
-            "shop_id": None,
-            "tier": "free",
-            "trial": False,
-            "trial_used": False,
-            "trial_started_at": None,
-            "trial_expires_at": None,
-            "subscription_plan_id": None,
-            "subscription_cycle": None,
-            "subscription_expires_at": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-
-    sess_token = info.get("session_token") or secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-    await db.user_sessions.insert_one({
-        "user_id": user_id, "session_token": sess_token, "expires_at": expires_at,
-        "created_at": datetime.now(timezone.utc),
-    })
-    response.set_cookie("session_token", sess_token, httponly=True, secure=True, samesite="none",
-                        max_age=7 * 24 * 3600, path="/")
-    user_doc = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
-    return {"user_id": user_doc["user_id"], "email": user_doc["email"], "name": user_doc.get("name"),
-            "picture": user_doc.get("picture", ""), "auth_provider": user_doc.get("auth_provider"),
-            "shop_id": user_doc.get("shop_id")}
-
 
 @router.post("/auth/forgot-password")
 async def forgot_password(data: ForgotIn):
