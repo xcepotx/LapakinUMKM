@@ -33,25 +33,34 @@ def _parse_iso_datetime(value):
 
 async def _expire_trial_if_needed(user: dict) -> dict:
     trial_expires_at = _parse_iso_datetime(user.get("trial_expires_at"))
+    now = datetime.now(timezone.utc)
 
-    if user.get("trial") and trial_expires_at and trial_expires_at < datetime.now(timezone.utc):
-        now = datetime.now(timezone.utc)
+    has_expired_trial_date = trial_expires_at and trial_expires_at < now
+    is_current_trial = bool(user.get("trial"))
+    is_legacy_expired_trial = (
+        not user.get("trial")
+        and bool(user.get("trial_used"))
+        and not bool(user.get("trial_expired"))
+        and has_expired_trial_date
+        and not user.get("subscription_plan_id")
+    )
+
+    if has_expired_trial_date and (is_current_trial or is_legacy_expired_trial):
+        update = {
+            "tier": "free",
+            "trial": False,
+            "trial_used": True,
+            "trial_expired": True,
+            "trial_expired_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }
 
         await db.users.update_one(
             {"user_id": user["user_id"]},
-            {
-                "$set": {
-                    "tier": "free",
-                    "trial": False,
-                    "trial_used": True,
-                    "updated_at": now.isoformat(),
-                }
-            },
+            {"$set": update},
         )
 
-        user["tier"] = "free"
-        user["trial"] = False
-        user["trial_used"] = True
+        user.update(update)
 
     return user
 
@@ -128,6 +137,8 @@ async def login(data: LoginIn, response: Response):
         "trial_used": bool(user.get("trial_used")),
         "trial_started_at": user.get("trial_started_at"),
         "trial_expires_at": user.get("trial_expires_at"),
+        "trial_expired": bool(user.get("trial_expired")),
+        "trial_expired_at": user.get("trial_expired_at"),
         "subscription_expires_at": user.get("subscription_expires_at"),
         "subscription_plan_id": user.get("subscription_plan_id"),
         "subscription_cycle": user.get("subscription_cycle"),
@@ -161,6 +172,8 @@ async def get_me(request: Request):
         "trial_used": bool(user.get("trial_used")),
         "trial_started_at": user.get("trial_started_at"),
         "trial_expires_at": user.get("trial_expires_at"),
+        "trial_expired": bool(user.get("trial_expired")),
+        "trial_expired_at": user.get("trial_expired_at"),
         "subscription_expires_at": user.get("subscription_expires_at"),
         "subscription_plan_id": user.get("subscription_plan_id"),
         "subscription_cycle": user.get("subscription_cycle"),
