@@ -3,12 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Zap, Rocket, Check, Loader2, ArrowRight } from "lucide-react";
+import { Sparkles, Store, Zap, Rocket, Check, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
-const TIER_ICON = { free: Sparkles, pro: Zap, business: Rocket };
+const TIER_ICON = { free: Sparkles, starter: Store, pro: Zap, business: Rocket };
 const TIER_COLOR = {
   free: "bg-brand-off text-brand-ink border-brand-line",
+  starter: "bg-emerald-50 text-emerald-900 border-emerald-300",
   pro: "bg-yellow-50 text-yellow-900 border-yellow-300",
   business: "bg-purple-50 text-purple-900 border-purple-300",
 };
@@ -111,6 +112,8 @@ export default function Billing() {
     const message =
       plan_id.startsWith("business_")
         ? "Halo Lapakin, saya mau aktivasi paket Bisnis."
+        : plan_id.startsWith("starter_")
+        ? "Halo Lapakin, saya mau aktivasi paket Starter."
         : "Halo Lapakin, saya mau aktivasi paket Pro.";
 
     toast("Pembayaran online sedang disiapkan. Untuk sementara aktivasi dilakukan manual.");
@@ -314,18 +317,32 @@ const canUseTrialForPlan = (plan_id) => {
           <div className="grid sm:grid-cols-2 gap-3 mt-4">
             {[
               {
+                plan_id: "starter_monthly",
+                label: "Starter — Bulanan",
+                price: 19000,
+                suffix: "/bulan",
+                show: data.tier === "free",
+              },
+              {
+                plan_id: "starter_yearly",
+                label: "Starter — Tahunan 🎁",
+                price: 190000,
+                suffix: "/tahun (hemat 2 bln)",
+                show: data.tier === "free",
+              },
+              {
                 plan_id: "pro_monthly",
                 label: "Pro — Bulanan",
                 price: 49000,
                 suffix: "/bulan",
-                show: data.tier === "free" || (data.tier === "pro" && data.trial),
+                show: data.tier === "free" || data.tier === "starter" || (data.tier === "pro" && data.trial),
               },
               {
                 plan_id: "pro_yearly",
                 label: "Pro — Tahunan 🎁",
                 price: 490000,
                 suffix: "/tahun (hemat 2 bln)",
-                show: data.tier === "free" || (data.tier === "pro" && data.trial),
+                show: data.tier === "free" || data.tier === "starter" || (data.tier === "pro" && data.trial),
               },
               {
                 plan_id: "business_monthly",
