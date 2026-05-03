@@ -8,7 +8,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request, Response
 
 from deps import (
-    db, logger, hash_password, verify_password, create_access_token
+    db, logger, hash_password, verify_password, create_access_token, suspend_subscription_if_needed
 )
 from deps import require_user
 from models import RegisterIn, LoginIn, ForgotIn, ResetIn
@@ -218,6 +218,7 @@ async def google_id_token_login(data: GoogleIdTokenIn, response: Response):
 
     user = await _expire_trial_if_needed(user)
     user = await _accept_pending_team_invite(user)
+    user = await suspend_subscription_if_needed(user)
 
     token = create_access_token(user["user_id"], email)
     response.set_cookie(
@@ -248,6 +249,9 @@ async def google_id_token_login(data: GoogleIdTokenIn, response: Response):
         "subscription_expires_at": user.get("subscription_expires_at"),
         "subscription_plan_id": user.get("subscription_plan_id"),
         "subscription_cycle": user.get("subscription_cycle"),
+        "subscription_status": user.get("subscription_status", "active"),
+        "subscription_suspended_at": user.get("subscription_suspended_at"),
+        "subscription_suspend_reason": user.get("subscription_suspend_reason"),
         "access_token": token,
     }
 
@@ -299,6 +303,9 @@ async def register(data: RegisterIn, response: Response):
         "trial_used": False,
         "trial_started_at": None,
         "trial_expires_at": None,
+        "subscription_status": user_doc.get("subscription_status", "active"),
+        "subscription_suspended_at": user_doc.get("subscription_suspended_at"),
+        "subscription_suspend_reason": user_doc.get("subscription_suspend_reason"),
         "access_token": token,
     }
 
@@ -311,6 +318,7 @@ async def login(data: LoginIn, response: Response):
     token = create_access_token(user["user_id"], email)
     user = await _expire_trial_if_needed(user)
     user = await _accept_pending_team_invite(user)
+    user = await suspend_subscription_if_needed(user)
     response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none",
                         max_age=7 * 24 * 3600, path="/")
     return {
@@ -331,6 +339,9 @@ async def login(data: LoginIn, response: Response):
         "subscription_expires_at": user.get("subscription_expires_at"),
         "subscription_plan_id": user.get("subscription_plan_id"),
         "subscription_cycle": user.get("subscription_cycle"),
+        "subscription_status": user.get("subscription_status", "active"),
+        "subscription_suspended_at": user.get("subscription_suspended_at"),
+        "subscription_suspend_reason": user.get("subscription_suspend_reason"),
         "access_token": token,
     }
 
@@ -366,6 +377,9 @@ async def get_me(request: Request):
         "subscription_expires_at": user.get("subscription_expires_at"),
         "subscription_plan_id": user.get("subscription_plan_id"),
         "subscription_cycle": user.get("subscription_cycle"),
+        "subscription_status": user.get("subscription_status", "active"),
+        "subscription_suspended_at": user.get("subscription_suspended_at"),
+        "subscription_suspend_reason": user.get("subscription_suspend_reason"),
     }
 
 @router.post("/auth/forgot-password")

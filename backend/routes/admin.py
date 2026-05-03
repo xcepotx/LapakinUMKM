@@ -383,9 +383,43 @@ async def admin_set_user_tier(user_id: str, data: TierIn, request: Request):
     if not user:
         raise HTTPException(status_code=404, detail="User tidak ditemukan")
     old_tier = get_tier(user)
+    now = datetime.now(timezone.utc)
+
+    set_fields = {
+        "tier": data.tier,
+        "tier_updated_at": now.isoformat(),
+        "subscription_status": "active",
+        "subscription_unsuspended_at": now.isoformat(),
+        "subscription_suspended_at": None,
+        "subscription_suspend_reason": None,
+    }
+
+    if data.tier == "free":
+        set_fields.update({
+            "subscription_plan_id": None,
+            "subscription_cycle": None,
+            "subscription_expires_at": None,
+        })
+    else:
+        exp_raw = user.get("subscription_expires_at")
+        exp = None
+        if exp_raw:
+            try:
+                exp = datetime.fromisoformat(str(exp_raw).replace("Z", "+00:00"))
+                if exp.tzinfo is None:
+                    exp = exp.replace(tzinfo=timezone.utc)
+            except Exception:
+                exp = None
+
+        if not exp or exp < now:
+            set_fields["subscription_expires_at"] = (now + timedelta(days=30)).isoformat()
+
+        set_fields["subscription_plan_id"] = user.get("subscription_plan_id") or f"{data.tier}_manual"
+        set_fields["subscription_cycle"] = user.get("subscription_cycle") or "manual"
+
     await db.users.update_one(
         {"user_id": user_id},
-        {"$set": {"tier": data.tier, "tier_updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": set_fields}
     )
     await log_admin_action(admin, "user_tier_change", "user", user_id,
                            {"from": old_tier, "to": data.tier})

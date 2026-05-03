@@ -194,6 +194,21 @@ const canUseTrialForPlan = (plan_id) => {
           Lihat tier kamu sekarang & penggunaan kuota bulan ini.
         </p>
 
+        {me?.subscription_status === "suspended" && (
+          <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-red-900" data-testid="subscription-suspended-card">
+            <div className="font-heading font-extrabold text-xl">Paket kamu sudah berakhir</div>
+            <p className="text-sm mt-2 leading-relaxed">
+              Akun toko sementara ditangguhkan. Data toko, produk, penjualan, cabang, dan anggota tim tetap aman.
+              Hubungi admin Lapakin untuk aktivasi ulang.
+            </p>
+            {me?.subscription_suspended_at && (
+              <p className="text-xs mt-2">
+                Ditangguhkan sejak {new Date(me.subscription_suspended_at).toLocaleString("id-ID")}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Current tier card */}
         <div className={`mt-6 rounded-2xl border-2 p-6 ${TIER_COLOR[data.tier] || TIER_COLOR.free}`}
           data-testid="current-tier-card">
@@ -224,10 +239,7 @@ const canUseTrialForPlan = (plan_id) => {
               ) : (
                 <div className="text-sm mt-0.5">Gratis selamanya</div>
               )}
-                <div className="text-sm mt-0.5">Rp {data.limits.price_idr_month.toLocaleString("id-ID")}/bulan</div>
-              ) : (
-                <div className="text-sm mt-0.5">Gratis selamanya</div>
-              )}
+
             </div>
             {data.tier !== "business" && (
               <Button

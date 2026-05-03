@@ -103,25 +103,89 @@ async def get_user_from_token(request: Request) -> Optional[dict]:
     return None
 
 
+PAID_TIERS = ("starter", "pro", "business")
+SUSPENDED_ALLOWED_PATH_PREFIXES = (
+    "/api/auth",
+    "/api/billing",
+    "/api/payment",
+    "/api/payments",
+    "/api/admin",
+)
+
+
+def _parse_subscription_datetime(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+async def suspend_subscription_if_needed(user: dict) -> dict:
+    """Mark expired paid subscription as suspended without downgrading tier."""
+    if not user:
+        return user
+
+    if user.get("role") == "admin":
+        return user
+
+    tier = user.get("tier") or "free"
+    if tier not in PAID_TIERS:
+        return user
+
+    exp = _parse_subscription_datetime(user.get("subscription_expires_at"))
+    if not exp:
+        return user
+
+    now = datetime.now(timezone.utc)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+
+    if exp >= now:
+        if user.get("subscription_status") == "suspended":
+            update = {
+                "subscription_status": "active",
+                "subscription_unsuspended_at": now.isoformat(),
+            }
+            await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+            user.update(update)
+        return user
+
+    if user.get("subscription_status") != "suspended":
+        update = {
+            "subscription_status": "suspended",
+            "subscription_suspended_at": now.isoformat(),
+            "subscription_suspend_reason": "subscription_expired",
+        }
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+        user.update(update)
+
+    return user
+
+
+def _is_suspended_request_allowed(request: Request, user: dict) -> bool:
+    if user.get("role") == "admin":
+        return True
+
+    path = request.url.path or ""
+    return any(path.startswith(prefix) for prefix in SUSPENDED_ALLOWED_PATH_PREFIXES)
+
+
+
 async def require_user(request: Request) -> dict:
     user = await get_user_from_token(request)
     if not user:
         raise HTTPException(status_code=401, detail="Tidak terautentikasi")
     now = datetime.now(timezone.utc)
-    # Auto-downgrade expired paid subscription: tier != free + subscription_expires_at < now → free
-    exp_sub = user.get("subscription_expires_at")
-    if exp_sub and user.get("tier") in ("starter", "pro", "business"):
-        try:
-            exp_dt = datetime.fromisoformat(exp_sub.replace("Z", "+00:00"))
-            if exp_dt < now:
-                await db.users.update_one(
-                    {"user_id": user["user_id"]},
-                    {"$set": {"tier": "free",
-                              "subscription_expired_at": now.isoformat()}}
-                )
-                user["tier"] = "free"
-        except Exception:
-            pass
+
+    user = await suspend_subscription_if_needed(user)
+    if user.get("subscription_status") == "suspended" and not _is_suspended_request_allowed(request, user):
+        raise HTTPException(
+            status_code=402,
+            detail="Paket kamu sudah berakhir. Akun toko sementara ditangguhkan. Hubungi admin Lapakin untuk aktivasi ulang.",
+        )
+
     # Auto-downgrade expired trial: pro + trial=true + trial_expires_at < now → free
     if user.get("trial") and user.get("trial_expires_at"):
         try:

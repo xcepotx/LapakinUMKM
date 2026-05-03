@@ -61,6 +61,10 @@ async def _activate_subscription(user_id: str, plan_id: str, order_id: str,
             "subscription_started_at": now.isoformat(),
             "subscription_expires_at": new_exp.isoformat(),
             "subscription_last_order_id": order_id,
+            "subscription_status": "active",
+            "subscription_unsuspended_at": now.isoformat(),
+            "subscription_suspended_at": None,
+            "subscription_suspend_reason": None,
             "tier_updated_at": now.isoformat(),
         }}
     )

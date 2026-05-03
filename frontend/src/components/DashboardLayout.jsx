@@ -158,6 +158,20 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
             </Button>
           </div>
         </div>
+        {user?.subscription_status === "suspended" && (
+          <div className="bg-red-700 text-white text-sm" data-testid="subscription-suspended-banner">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <b>Akun toko sementara ditangguhkan.</b>{" "}
+                Paket kamu sudah berakhir. Data toko tetap aman, hubungi admin Lapakin untuk aktivasi ulang.
+              </div>
+              <a href="/dashboard/billing" className="font-extrabold underline">
+                Lihat status paket
+              </a>
+            </div>
+          </div>
+        )}
+
         {user?.role === "admin" && (
           <div className="bg-brand-ink text-white text-xs">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1.5 flex items-center justify-between">
