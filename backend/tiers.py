@@ -1,7 +1,7 @@
 """
 Lapakin tier / subscription configuration.
 
-3 tiers: free, pro, business.
+4 tiers: free, starter, pro, business.
 Each tier has limits on: max_products, monthly AI photo enhancer,
 monthly AI copywriting, monthly Toko Card downloads, branding, etc.
 
@@ -41,6 +41,30 @@ TIER_LIMITS = {
         "analytics": False,
         "priority_support": False,
         "sales_entries_per_month": 30,
+    },
+    "starter": {
+        "label": "Starter",
+        "price_idr_month": 19000,
+        "price_idr_year": 190000,
+        "max_products": 30,
+        "max_users_per_shop": 1,
+        "max_shops_per_user": 1,
+        "ai_photo_per_month": 30,
+        "ai_copy_per_month": 50,
+        "ai_cover_per_month": 5,
+        "toko_card_per_month": 30,
+        "broadcast_per_month": 1,
+        "content_studio_per_month": 2,
+        "remove_branding": False,
+        "custom_subdomain": True,
+        "custom_domain": False,
+        "multi_shift_schedule": False,
+        "instagram_autopost": False,
+        "csv_export": True,
+        "api_access": False,
+        "analytics": False,
+        "priority_support": False,
+        "sales_entries_per_month": 500,
     },
     "pro": {
         "label": "Pro",

@@ -110,7 +110,7 @@ async def require_user(request: Request) -> dict:
     now = datetime.now(timezone.utc)
     # Auto-downgrade expired paid subscription: tier != free + subscription_expires_at < now → free
     exp_sub = user.get("subscription_expires_at")
-    if exp_sub and user.get("tier") in ("pro", "business"):
+    if exp_sub and user.get("tier") in ("starter", "pro", "business"):
         try:
             exp_dt = datetime.fromisoformat(exp_sub.replace("Z", "+00:00"))
             if exp_dt < now:

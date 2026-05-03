@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Check, X, Sparkles, Zap, Rocket, ArrowLeft, Loader2 } from "lucide-react";
+import { Check, X, Sparkles, Store, Zap, Rocket, ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-const ICONS = { free: Sparkles, pro: Zap, business: Rocket };
+const ICONS = { free: Sparkles, starter: Store, pro: Zap, business: Rocket };
 
 const FEATURE_ROWS = [
   { key: "max_products", label: "Maksimal produk", format: "count" },
+  { key: "sales_entries_per_month", label: "Buku Jualan / bulan", format: "count" },
   { key: "ai_photo_per_month", label: "AI Photo Enhancer (per bulan)", format: "count" },
   { key: "ai_copy_per_month", label: "AI Copywriting (per bulan)", format: "count" },
   { key: "ai_cover_per_month", label: "AI Cover Toko (per bulan)", format: "count" },
@@ -177,7 +178,7 @@ export default function Pricing() {
         </div>
 
         {/* Pricing cards */}
-        <div className="grid md:grid-cols-3 gap-5 mb-12">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5 mb-12">
           {Object.entries(tiers).map(([key, t]) => {
             const Icon = ICONS[key] || Sparkles;
             const isPro = key === "pro";

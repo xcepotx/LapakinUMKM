@@ -17,6 +17,14 @@ MIDTRANS_IS_PRODUCTION = os.environ.get("MIDTRANS_IS_PRODUCTION", "false").lower
 
 # Plan catalog — maps plan_id → {tier, cycle, price_idr, duration_days, label}
 PLANS = {
+    "starter_monthly": {
+        "tier": "starter", "cycle": "monthly", "price_idr": 19000,
+        "duration_days": 30, "label": "Lapakin Starter Bulanan",
+    },
+    "starter_yearly": {
+        "tier": "starter", "cycle": "yearly", "price_idr": 190000,
+        "duration_days": 365, "label": "Lapakin Starter Tahunan",
+    },
     "pro_monthly": {
         "tier": "pro", "cycle": "monthly", "price_idr": 49000,
         "duration_days": 30, "label": "Lapakin Pro — 1 Bulan",

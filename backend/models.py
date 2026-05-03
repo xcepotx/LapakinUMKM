@@ -139,7 +139,7 @@ class AIEnhanceIn(BaseModel):
 
 # ---- Admin ----
 class TierIn(BaseModel):
-    tier: str  # "free" | "pro" | "business"
+    tier: str  # "free" | "starter" | "pro" | "business"
 
 
 class StatusIn(BaseModel):
