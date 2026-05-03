@@ -48,7 +48,10 @@ export default function ContentStudio() {
         }
       });
     api.get("/products?limit=200")
-      .then((r) => setProducts(r.data.items || []))
+      .then((r) => {
+        const rows = Array.isArray(r.data) ? r.data : (r.data.items || []);
+        setProducts(rows);
+      })
       .catch(() => {})
       .finally(() => setLoadingProducts(false));
   }, []);
