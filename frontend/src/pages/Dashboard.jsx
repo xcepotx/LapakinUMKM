@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import BroadcastBanner from "@/components/BroadcastBanner";
 import { Button } from "@/components/ui/button";
-import { Wand2, Package, ExternalLink, Plus, Sparkles, Share2, Copy, Power, PowerOff, Coffee, X, Calendar } from "lucide-react";
+import {Wand2, Package, ExternalLink, ChevronDown, ChevronUp, Plus, Sparkles, Share2, Copy, Power, PowerOff, Coffee, X, Calendar, Wallet, ShoppingBag, AlertCircle, TrendingUp, } from "lucide-react";
 import { rupiah } from "@/lib/api";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,20 +19,127 @@ function formatTrialDate(value) {
   }).format(new Date(value));
 }
 
+function getTrialDaysLeft(value) {
+  if (!value) return null;
+
+  const expiresAt = new Date(value).getTime();
+  const now = Date.now();
+  const diffMs = expiresAt - now;
+
+  return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+}
+
+function formatRupiah(value) {
+  const number = Number(value || 0);
+
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(number);
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [shop, setShop] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [salesSummary, setSalesSummary] = useState(null);
+
+  const salesSummaryKey = `lapakin_sales_summary_collapsed_${user?.user_id || "user"}`;
+
+  const [isSalesSummaryCollapsed, setIsSalesSummaryCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setIsSalesSummaryCollapsed(localStorage.getItem(salesSummaryKey) === "1");
+    } catch {
+      setIsSalesSummaryCollapsed(false);
+    }
+  }, [salesSummaryKey]);
+
+  function toggleSalesSummary() {
+    setIsSalesSummaryCollapsed((prev) => {
+      const next = !prev;
+
+      try {
+        localStorage.setItem(salesSummaryKey, next ? "1" : "0");
+      } catch {
+        // ignore
+      }
+
+      return next;
+    });
+  }
+
+  const trialDaysLeft = getTrialDaysLeft(user?.trial_expires_at);
+  const isTrialEndingSoon =
+    Boolean(user?.trial && user?.trial_expires_at) &&
+    trialDaysLeft !== null &&
+    trialDaysLeft <= 2;
+
+  const trialBannerPhase = isTrialEndingSoon ? "ending-soon" : "active";
+  const trialBannerKey = user?.trial_expires_at
+    ? `lapakin_trial_banner_${user?.user_id || "user"}_${trialBannerPhase}_${user.trial_expires_at}`
+    : "";
+
+  const [hideTrialBanner, setHideTrialBanner] = useState(false);
+
+  useEffect(() => {
+    if (!trialBannerKey) {
+      setHideTrialBanner(false);
+      return;
+    }
+
+    try {
+      setHideTrialBanner(localStorage.getItem(trialBannerKey) === "1");
+    } catch {
+      setHideTrialBanner(false);
+    }
+  }, [trialBannerKey]);
+
+  function closeTrialBanner() {
+    setHideTrialBanner(true);
+
+    try {
+      localStorage.setItem(trialBannerKey, "1");
+    } catch {
+      // ignore
+    }
+  }
+
+  function closeTrialBanner() {
+    setHideTrialBanner(true);
+    try {
+      localStorage.setItem(trialBannerKey, "1");
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     (async () => {
       try {
-        const [s, p] = await Promise.all([api.get("/shops/me"), api.get("/products")]);
-        if (!s.data) { navigate("/onboarding"); return; }
+        const [s, p] = await Promise.all([
+          api.get("/shops/me"),
+          api.get("/products"),
+        ]);
+
+        if (!s.data) {
+          navigate("/onboarding");
+          return;
+        }
+
         setShop(s.data);
         setProducts(p.data || []);
+
+        try {
+          const sales = await api.get("/sales/summary");
+          setSalesSummary(sales.data || null);
+        } catch {
+          setSalesSummary(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -84,6 +191,33 @@ export default function Dashboard() {
     ? Math.max(1, Math.ceil((snoozeUntil - new Date()) / 60000))
     : 0;
 
+  const salesCards = [
+    {
+      title: "Omzet Hari Ini",
+      value: formatRupiah(salesSummary?.omzet_today),
+      icon: Wallet,
+      tone: "bg-green-50 text-green-700",
+    },
+    {
+      title: "Transaksi Hari Ini",
+      value: salesSummary?.transaction_today || 0,
+      icon: ShoppingBag,
+      tone: "bg-blue-50 text-blue-700",
+    },
+    {
+      title: "Belum Dibayar",
+      value: formatRupiah(salesSummary?.unpaid_total),
+      icon: AlertCircle,
+      tone: "bg-orange-50 text-orange-700",
+    },
+    {
+      title: "Omzet Bulan Ini",
+      value: formatRupiah(salesSummary?.omzet_month),
+      icon: TrendingUp,
+      tone: "bg-brand-off text-brand",
+    },
+  ];
+
   return (
     <DashboardLayout
       shop={shop}
@@ -134,65 +268,184 @@ export default function Dashboard() {
       </div>
     )}
 
-    {user?.trial && user?.trial_expires_at && (
-      <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 p-5 text-yellow-950 shadow-sm">
+    <div className="mb-8 rounded-3xl border border-brand-line bg-white p-5 shadow-card">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-heading text-xl font-extrabold text-brand-ink">
+            Ringkasan Jualan
+          </h2>
+          <p className="text-sm text-brand-mute">
+            Pantau performa toko dari Buku Jualan.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <a
+            href="/dashboard/sales"
+            className="rounded-xl border border-brand-line px-3 py-2 text-sm font-bold text-brand hover:bg-brand-off"
+          >
+            Buka Buku Jualan
+          </a>
+
+          <button
+            type="button"
+            onClick={toggleSalesSummary}
+            className="inline-flex items-center gap-1 rounded-xl bg-brand-off px-3 py-2 text-sm font-bold text-brand hover:bg-brand-sand"
+          >
+            {isSalesSummaryCollapsed ? (
+              <>
+                Tampilkan <ChevronDown className="h-4 w-4" />
+              </>
+            ) : (
+              <>
+                Sembunyikan <ChevronUp className="h-4 w-4" />
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {isSalesSummaryCollapsed ? (
+        <div className="mt-4 flex flex-col gap-2 rounded-2xl bg-brand-sand px-4 py-3 text-sm text-brand-ink sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <span className="font-bold">Hari ini:</span>{" "}
+            {formatRupiah(salesSummary?.omzet_today)} dari{" "}
+            {salesSummary?.transaction_today || 0} transaksi
+          </div>
+
+          <div>
+            <span className="font-bold">Belum dibayar:</span>{" "}
+            {formatRupiah(salesSummary?.unpaid_total)}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {salesCards.map((card) => {
+              const Icon = card.icon;
+
+              return (
+                <div
+                  key={card.title}
+                  className="rounded-2xl border border-brand-line bg-white p-5 shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-brand-mute">
+                      {card.title}
+                    </p>
+                    <div className={`rounded-xl p-2 ${card.tone}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                  </div>
+
+                  <div className="mt-3 font-heading text-2xl font-extrabold text-brand-ink">
+                    {card.value}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {salesSummary?.top_products?.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-brand-line bg-brand-off/30 p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-heading font-bold text-brand-ink">
+                  Produk Terlaris Bulan Ini
+                </h3>
+                <span className="text-xs font-semibold text-brand-mute">
+                  Berdasarkan catatan penjualan
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {salesSummary.top_products.slice(0, 3).map((item, index) => (
+                  <div
+                    key={`${item.product_id || item.name}-${index}`}
+                    className="flex items-center justify-between rounded-xl bg-white px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-brand-ink">
+                        {index + 1}. {item.name}
+                      </div>
+                      <div className="text-xs text-brand-mute">
+                        Terjual {item.qty} item
+                      </div>
+                    </div>
+
+                    <div className="ml-3 font-bold text-brand-ink">
+                      {formatRupiah(item.revenue)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+
+    {user?.trial && user?.trial_expires_at && !hideTrialBanner && (
+      <div
+        className={`mb-6 rounded-2xl border p-5 shadow-sm ${
+          isTrialEndingSoon
+            ? "border-orange-200 bg-orange-50 text-orange-950"
+            : "border-yellow-200 bg-yellow-50 text-yellow-950"
+        }`}
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-sm font-bold uppercase tracking-wide text-yellow-800">
-              Trial Pro Aktif 🎉
+            <div
+              className={`text-xs font-bold uppercase tracking-wide ${
+                isTrialEndingSoon ? "text-orange-800" : "text-yellow-800"
+              }`}
+            >
+              {isTrialEndingSoon ? "Trial Pro Hampir Habis" : "Trial Pro Aktif 🎉"}
             </div>
-            <div className="mt-1 text-lg font-extrabold">
-              Nikmati fitur Pro sampai {formatTrialDate(user.trial_expires_at)}
+
+            <div className="mt-1 text-base font-extrabold">
+              {isTrialEndingSoon
+                ? `Tersisa ${trialDaysLeft} hari lagi`
+                : `Nikmati fitur Pro sampai ${formatTrialDate(user.trial_expires_at)}`}
             </div>
-            <p className="mt-1 text-sm text-yellow-800">
-              Selama trial, kamu bisa mencoba analitik, custom subdomain, fitur AI, dan fitur Pro lainnya.
+
+            <p
+              className={`mt-0.5 text-sm ${
+                isTrialEndingSoon ? "text-orange-800" : "text-yellow-800"
+              }`}
+            >
+              {isTrialEndingSoon
+                ? "Aktifkan Pro agar fitur premium seperti Analitik, AI, dan custom subdomain tetap berjalan."
+                : "Analitik, AI, dan fitur Pro lainnya aktif selama masa trial."}
             </p>
           </div>
 
-          <a
-            href="/dashboard/billing"
-            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-yellow-900 px-4 py-2 text-sm font-bold text-white hover:opacity-90"
-          >
-            Kelola Paket
-          </a>
+          <div className="flex shrink-0 items-center gap-2">
+            <a
+              href="/dashboard/billing"
+              className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-bold text-white hover:opacity-90 ${
+                isTrialEndingSoon ? "bg-orange-900" : "bg-yellow-900"
+              }`}
+            >
+              Kelola Paket
+            </a>
+
+            <button
+              type="button"
+              onClick={closeTrialBanner}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border bg-white/70 hover:bg-white ${
+                isTrialEndingSoon
+                  ? "border-orange-200 text-orange-900"
+                  : "border-yellow-200 text-yellow-900"
+              }`}
+              aria-label="Tutup banner trial"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     )}
       <BroadcastBanner />
-
-      {/* TRIAL PRO BANNER */}
-      {user && user.trial && user.trial_expires_at && (() => {
-        const expires = new Date(user.trial_expires_at);
-        if (isNaN(expires.getTime())) return null;
-        const daysLeft = Math.max(0, Math.ceil((expires - new Date()) / (1000 * 60 * 60 * 24)));
-        if (daysLeft <= 0) return null;
-        return (
-          <div className="mb-6 rounded-2xl p-5 border-2 border-yellow-300 bg-gradient-to-r from-yellow-50 to-amber-50 flex items-center justify-between gap-4 flex-wrap shadow-card"
-            data-testid="dashboard-trial-banner">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-yellow-400 text-yellow-900 grid place-items-center shrink-0 shadow-md">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-xs font-bold tracking-[0.2em] uppercase text-yellow-700">Trial Pro Aktif</div>
-                <div className="font-heading font-extrabold text-xl text-yellow-900">
-                  Tinggal {daysLeft} hari lagi
-                </div>
-                <div className="text-xs text-yellow-900/70 mt-0.5">
-                  Semua fitur Pro aktif gratis sampai {expires.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}.
-                </div>
-              </div>
-            </div>
-            <Link to="/pricing">
-              <Button className="bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold rounded-xl h-11 px-5"
-                data-testid="trial-upgrade-cta">
-                Upgrade Sekarang →
-              </Button>
-            </Link>
-          </div>
-        );
-      })()}
-
 
       {/* SHOP OPEN/CLOSED TOGGLE — only when sells_by='hours' */}
       {sellsByHours && (
