@@ -95,7 +95,7 @@ export default function AdminShops() {
                     <td className="px-5 py-3">
                       <div className="text-xs">{s.owner?.name || "-"}</div>
                       <div className="text-xs text-brand-mute">{s.owner?.email}</div>
-                      {s.owner?.tier === "premium" && <span className="text-[10px] font-bold rounded bg-brand-accent/20 text-brand px-1.5 py-0.5">PREMIUM</span>}
+                      {["starter", "pro", "business"].includes(s.owner?.tier) && <span className="text-[10px] font-bold rounded bg-brand-accent/20 text-brand px-1.5 py-0.5">{String(s.owner?.tier || "").toUpperCase()}</span>}
                     </td>
                     <td className="px-5 py-3 text-xs">{s.business_type}</td>
                     <td className="px-5 py-3 text-center">{s.product_count}</td>

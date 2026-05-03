@@ -1,6 +1,9 @@
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import {
   Sparkles,
   LayoutDashboard,
@@ -37,6 +40,9 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const isStaff = user?.shop_role === "staff";
+  const [shopSwitcher, setShopSwitcher] = useState(null);
+  const [switchingShop, setSwitchingShop] = useState(false);
 
   const mainItems = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Beranda", tid: "nav-home" },
@@ -46,7 +52,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     { to: "/dashboard/analytics", icon: BarChart3, label: "Analitik", tid: "nav-analytics" },
   ];
 
-  const secondaryItems = [
+  const secondaryItems = isStaff ? [] : [
     { to: "/dashboard/settings", icon: Settings, label: "Pengaturan", tid: "nav-settings" },
     { to: "/dashboard/billing", icon: CreditCard, label: "Akun", tid: "nav-billing" },
   ];
@@ -61,6 +67,27 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     user?.trial && tier === "pro"
       ? "bg-yellow-50 text-yellow-900 border-yellow-300"
       : badge.cls;
+
+  useEffect(() => {
+    if (!user?.shop_id) return;
+    api.get("/shops/mine")
+      .then((r) => setShopSwitcher(r.data))
+      .catch(() => {});
+  }, [user?.shop_id]);
+
+  const handleSwitchShop = async (shopId) => {
+    if (!shopId || shopId === (shopSwitcher?.active_shop_id || user?.shop_id)) return;
+
+    setSwitchingShop(true);
+    try {
+      await api.post(`/shops/switch/${shopId}`);
+      toast.success("Cabang aktif diganti");
+      window.location.href = "/dashboard";
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal ganti cabang");
+      setSwitchingShop(false);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -117,6 +144,23 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
             </nav>
           </div>
           <div className="flex items-center gap-2">
+            {!isStaff && (shopSwitcher?.shops || []).length > 1 && (
+              <select
+                value={shopSwitcher?.active_shop_id || shop?.shop_id || ""}
+                disabled={switchingShop}
+                onChange={(e) => handleSwitchShop(e.target.value)}
+                className="hidden sm:block h-9 max-w-[180px] rounded-2xl border border-brand-line bg-white px-3 text-xs font-bold text-brand-ink shadow-sm"
+                data-testid="shop-switcher"
+                title="Pilih cabang aktif"
+              >
+                {(shopSwitcher?.shops || []).map((s) => (
+                  <option key={s.shop_id} value={s.shop_id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
             {shop?.slug && (
               <Button
                 variant="outline"

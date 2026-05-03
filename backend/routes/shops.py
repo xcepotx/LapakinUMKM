@@ -8,11 +8,39 @@ from fastapi import APIRouter, HTTPException, Request
 
 from deps import db, require_user, slugify, logger
 from models import ShopIn, CustomDomainIn
-from tiers import get_limits, require_feature
+from tiers import get_limits, get_tier, is_unlimited, require_feature
 from schedule_utils import compute_schedule_status
 from og_render import OG_PNG_CACHE
 
 router = APIRouter()
+
+
+async def _unique_shop_slug(name: str) -> str:
+    base_slug = slugify(name)
+    slug = base_slug
+    n = 1
+    while await db.shops.find_one({"slug": slug}):
+        n += 1
+        slug = f"{base_slug}-{n}"
+    return slug
+
+
+def _is_staff(user: dict) -> bool:
+    return user.get("shop_role") == "staff"
+
+
+async def _owner_shop_limit(user: dict) -> dict:
+    tier = get_tier(user)
+    limit = get_limits(tier).get("max_shops_per_user", 1)
+    used = await db.shops.count_documents({"owner_user_id": user["user_id"]})
+    return {
+        "tier": tier,
+        "limit_raw": limit,
+        "limit": "unlimited" if is_unlimited(limit) else limit,
+        "used": used,
+        "remaining": "unlimited" if is_unlimited(limit) else max(0, limit - used),
+        "can_create": is_unlimited(limit) or used < limit,
+    }
 
 
 @router.get("/shops/me")
@@ -46,12 +74,7 @@ async def create_or_update_shop(data: ShopIn, request: Request):
             payload["sells_by"] = "hours"
             payload["is_open"] = True
     # create with unique slug
-    base_slug = slugify(data.name)
-    slug = base_slug
-    n = 1
-    while await db.shops.find_one({"slug": slug}):
-        n += 1
-        slug = f"{base_slug}-{n}"
+    slug = await _unique_shop_slug(data.name)
     shop_id = f"shop_{uuid.uuid4().hex[:12]}"
     doc = {
         "shop_id": shop_id, "slug": slug, "owner_user_id": user["user_id"],
@@ -109,6 +132,124 @@ async def snooze_shop(request: Request):
         {"$set": {"snooze_until": until, "updated_at": now.isoformat()}},
     )
     return {"snooze_until": until, "snoozed": True, "minutes": minutes}
+
+
+@router.get("/shops/mine")
+async def list_my_shops(request: Request):
+    """List shops/cabang owned by user and current active shop.
+
+    Staff only sees the active shop assigned to them.
+    """
+    user = await require_user(request)
+
+    if _is_staff(user):
+        shops = []
+        if user.get("shop_id"):
+            shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+            if shop:
+                shops = [shop]
+        return {
+            "active_shop_id": user.get("shop_id"),
+            "is_staff": True,
+            "can_create": False,
+            "tier": user.get("tier") or "free",
+            "limit": 1,
+            "used": len(shops),
+            "remaining": 0,
+            "shops": shops,
+        }
+
+    shops = await db.shops.find(
+        {"owner_user_id": user["user_id"]},
+        {"_id": 0},
+    ).sort("created_at", 1).to_list(50)
+
+    limit_state = await _owner_shop_limit(user)
+
+    return {
+        "active_shop_id": user.get("shop_id"),
+        "is_staff": False,
+        **limit_state,
+        "shops": shops,
+    }
+
+
+@router.post("/shops/switch/{shop_id}")
+async def switch_active_shop(shop_id: str, request: Request):
+    """Switch current active shop for owner.
+
+    Existing routes keep working because they read user.shop_id.
+    """
+    user = await require_user(request)
+
+    if _is_staff(user):
+        raise HTTPException(status_code=403, detail="Staff tidak bisa mengganti cabang aktif")
+
+    shop = await db.shops.find_one(
+        {"shop_id": shop_id, "owner_user_id": user["user_id"]},
+        {"_id": 0},
+    )
+    if not shop:
+        raise HTTPException(status_code=404, detail="Cabang tidak ditemukan")
+
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "shop_id": shop_id,
+            "active_shop_switched_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+
+    return {"ok": True, "active_shop_id": shop_id, "shop": shop}
+
+
+@router.post("/shops/branches")
+async def create_branch_shop(data: ShopIn, request: Request):
+    """Create a new shop/cabang for the current owner and switch to it."""
+    user = await require_user(request)
+
+    if _is_staff(user):
+        raise HTTPException(status_code=403, detail="Staff tidak bisa membuat cabang")
+
+    limit_state = await _owner_shop_limit(user)
+    if not limit_state["can_create"]:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Limit cabang paket {limit_state['tier']} sudah penuh ({limit_state['used']}/{limit_state['limit_raw']}). Upgrade untuk menambah cabang.",
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+    payload = data.model_dump()
+
+    if payload.get("sells_by") in (None, "", "stock"):
+        bt = (payload.get("business_type") or "").lower()
+        if bt in ("kuliner", "kopi"):
+            payload["sells_by"] = "hours"
+            payload["is_open"] = True
+
+    slug = await _unique_shop_slug(data.name)
+    shop_id = f"shop_{uuid.uuid4().hex[:12]}"
+
+    doc = {
+        "shop_id": shop_id,
+        "slug": slug,
+        "owner_user_id": user["user_id"],
+        "branch": True,
+        **payload,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    await db.shops.insert_one(doc)
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "shop_id": shop_id,
+            "active_shop_switched_at": now,
+        }},
+    )
+
+    return {k: v for k, v in doc.items() if k != "_id"}
 
 
 @router.get("/shops/by-slug/{slug}")
