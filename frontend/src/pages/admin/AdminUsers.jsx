@@ -3,7 +3,15 @@ import api, { formatApiError } from "@/lib/api";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Crown, KeyRound, Search, Save, ShieldCheck, Store, UserCog, Users } from "lucide-react";
+import {
+  KeyRound,
+  Search,
+  Save,
+  ShieldCheck,
+  Store,
+  UserCog,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 const TIER_OPTIONS = [
@@ -14,39 +22,23 @@ const TIER_OPTIONS = [
 ];
 
 const TIER_CLASS = {
-  free: "bg-brand-off text-brand-mute border-brand-line",
+  free: "bg-slate-50 text-slate-700 border-slate-200",
   starter: "bg-emerald-50 text-emerald-800 border-emerald-200",
   pro: "bg-yellow-50 text-yellow-900 border-yellow-200",
   business: "bg-purple-50 text-purple-900 border-purple-200",
 };
 
 const ACCOUNT_TYPE = {
-  admin: {
-    label: "Admin",
-    cls: "bg-red-50 text-red-800 border-red-200",
-    icon: ShieldCheck,
-  },
-  owner: {
-    label: "Owner",
-    cls: "bg-brand-off text-brand border-brand-line",
-    icon: Store,
-  },
-  staff: {
-    label: "Staff",
-    cls: "bg-sky-50 text-sky-800 border-sky-200",
-    icon: Users,
-  },
-  user: {
-    label: "User",
-    cls: "bg-white text-brand-mute border-brand-line",
-    icon: UserCog,
-  },
+  admin: { label: "Admin", cls: "bg-red-50 text-red-800 border-red-200", icon: ShieldCheck },
+  owner: { label: "Owner", cls: "bg-brand-off text-brand border-brand-line", icon: Store },
+  staff: { label: "Staff", cls: "bg-sky-50 text-sky-800 border-sky-200", icon: Users },
+  user: { label: "User", cls: "bg-white text-brand-mute border-brand-line", icon: UserCog },
 };
 
 function TierBadge({ tier }) {
   const key = tier || "free";
   return (
-    <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-extrabold uppercase ${TIER_CLASS[key] || TIER_CLASS.free}`}>
+    <span className={`inline-flex min-w-[78px] justify-center rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase ${TIER_CLASS[key] || TIER_CLASS.free}`}>
       {key}
     </span>
   );
@@ -56,11 +48,29 @@ function AccountTypeBadge({ type }) {
   const meta = ACCOUNT_TYPE[type || "user"] || ACCOUNT_TYPE.user;
   const Icon = meta.icon;
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-extrabold uppercase ${meta.cls}`}>
+    <span className={`inline-flex min-w-[78px] items-center justify-center gap-1 rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase ${meta.cls}`}>
       <Icon className="w-3 h-3" />
       {meta.label}
     </span>
   );
+}
+
+function normalizeRows(data) {
+  const rows = Array.isArray(data) ? data : (data?.items || []);
+  return rows.map((u) => {
+    const shopLinked = Boolean(u.shop_linked || u.has_shop || u.shop_id || u.shop_name);
+    const accountType =
+      u.account_type ||
+      (u.role === "admin" ? "admin" : u.shop_role === "staff" ? "staff" : shopLinked ? "owner" : "user");
+
+    return {
+      ...u,
+      shop_linked: shopLinked,
+      account_type: accountType,
+      shop_name: u.shop_name || u.shop?.name || "",
+      shop_slug: u.shop_slug || u.shop?.slug || "",
+    };
+  });
 }
 
 export default function AdminUsers() {
@@ -76,7 +86,7 @@ export default function AdminUsers() {
     setLoading(true);
     try {
       const { data } = await api.get("/admin/users", { params: { q: query } });
-      const rows = Array.isArray(data) ? data : (data.items || []);
+      const rows = normalizeRows(data);
       setUsers(rows);
       setTierDrafts((prev) => {
         const next = { ...prev };
@@ -97,17 +107,8 @@ export default function AdminUsers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setTierDraft = (userId, tier) => {
-    setTierDrafts((prev) => ({ ...prev, [userId]: tier }));
-  };
-
   const saveTier = async (u) => {
     const tier = tierDrafts[u.user_id] || u.tier || "free";
-
-    if (!TIER_OPTIONS.some((t) => t.value === tier)) {
-      toast.error("Tier tidak valid");
-      return;
-    }
 
     setSavingTierFor(u.user_id);
     try {
@@ -137,34 +138,27 @@ export default function AdminUsers() {
     load(search);
   };
 
-  const stats = useMemo(() => {
-    return {
-      total: users.length,
-      owner: users.filter((u) => u.account_type === "owner").length,
-      staff: users.filter((u) => u.account_type === "staff").length,
-      admin: users.filter((u) => u.account_type === "admin").length,
-    };
-  }, [users]);
+  const stats = useMemo(() => ({
+    total: users.length,
+    owner: users.filter((u) => u.account_type === "owner").length,
+    staff: users.filter((u) => u.account_type === "staff").length,
+    admin: users.filter((u) => u.account_type === "admin").length,
+  }), [users]);
 
   return (
-    <AdminLayout title="Pengguna" subtitle="Daftar semua user, kelola tier, tipe akun, dan reset password.">
+    <AdminLayout title="Pengguna" subtitle="Kelola user, tier, tipe akun, dan reset password.">
       <div className="grid sm:grid-cols-4 gap-3 mb-5">
-        <div className="bg-white border border-brand-line rounded-2xl p-4 shadow-card">
-          <div className="text-xs text-brand-mute font-bold uppercase">Total</div>
-          <div className="text-2xl font-heading font-extrabold mt-1">{stats.total}</div>
-        </div>
-        <div className="bg-white border border-brand-line rounded-2xl p-4 shadow-card">
-          <div className="text-xs text-brand-mute font-bold uppercase">Owner</div>
-          <div className="text-2xl font-heading font-extrabold mt-1">{stats.owner}</div>
-        </div>
-        <div className="bg-white border border-brand-line rounded-2xl p-4 shadow-card">
-          <div className="text-xs text-brand-mute font-bold uppercase">Staff</div>
-          <div className="text-2xl font-heading font-extrabold mt-1">{stats.staff}</div>
-        </div>
-        <div className="bg-white border border-brand-line rounded-2xl p-4 shadow-card">
-          <div className="text-xs text-brand-mute font-bold uppercase">Admin</div>
-          <div className="text-2xl font-heading font-extrabold mt-1">{stats.admin}</div>
-        </div>
+        {[
+          ["Total", stats.total],
+          ["Owner", stats.owner],
+          ["Staff", stats.staff],
+          ["Admin", stats.admin],
+        ].map(([label, value]) => (
+          <div key={label} className="bg-white border border-brand-line rounded-2xl p-4 shadow-card">
+            <div className="text-xs text-brand-mute font-bold uppercase">{label}</div>
+            <div className="text-2xl font-heading font-extrabold mt-1">{value}</div>
+          </div>
+        ))}
       </div>
 
       <div className="bg-white border border-brand-line rounded-2xl shadow-card overflow-hidden">
@@ -179,7 +173,7 @@ export default function AdminUsers() {
               data-testid="admin-users-search"
             />
           </div>
-          <Button type="submit" variant="outline" className="rounded-xl border-brand-line h-11" data-testid="admin-users-search-btn">
+          <Button type="submit" variant="outline" className="rounded-xl border-brand-line h-11 px-6">
             Cari
           </Button>
         </form>
@@ -195,52 +189,62 @@ export default function AdminUsers() {
           <div className="p-10 text-center text-brand-mute">Memuat user…</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-brand-off/50 text-xs uppercase text-brand-mute">
+            <table className="w-full min-w-[1120px] text-sm">
+              <thead className="bg-brand-off/60 text-[11px] uppercase tracking-wide text-brand-mute">
                 <tr>
-                  <th className="text-left px-5 py-3">User</th>
-                  <th className="text-left px-5 py-3">Auth</th>
-                  <th className="text-left px-5 py-3">Tier</th>
-                  <th className="text-left px-5 py-3">Toko</th>
-                  <th className="text-left px-5 py-3">Tipe Akun</th>
-                  <th className="text-right px-5 py-3">Aksi</th>
+                  <th className="text-left px-5 py-3 w-[260px]">User</th>
+                  <th className="text-left px-4 py-3 w-[90px]">Auth</th>
+                  <th className="text-left px-4 py-3 w-[110px]">Tier</th>
+                  <th className="text-left px-4 py-3 w-[230px]">Toko</th>
+                  <th className="text-left px-4 py-3 w-[120px]">Tipe</th>
+                  <th className="text-left px-4 py-3 w-[260px]">Ubah Tier</th>
+                  <th className="text-right px-5 py-3 w-[130px]">Reset</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-line">
                 {users.map((u) => {
                   const currentDraft = tierDrafts[u.user_id] || u.tier || "free";
                   const tierChanged = currentDraft !== (u.tier || "free");
-                  const canResetPw = (u.auth_provider || "email") === "email" || (u.auth_provider || "") === "both";
+                  const canResetPw = ["email", "both"].includes(u.auth_provider || "email");
 
                   return (
                     <tr key={u.user_id} className="hover:bg-brand-off/30" data-testid={`admin-user-row-${u.user_id}`}>
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-brand-ink">{u.name || "-"}</div>
-                        <div className="text-xs text-brand-mute">{u.email}</div>
+                      <td className="px-5 py-4 align-middle">
+                        <div className="font-bold text-brand-ink leading-tight">{u.name || "-"}</div>
+                        <div className="text-xs text-brand-mute mt-0.5">{u.email}</div>
                       </td>
-                      <td className="px-5 py-4 text-xs">{u.auth_provider || "email"}</td>
-                      <td className="px-5 py-4">
+
+                      <td className="px-4 py-4 align-middle">
+                        <span className="text-xs font-semibold text-brand-mute">{u.auth_provider || "email"}</span>
+                      </td>
+
+                      <td className="px-4 py-4 align-middle">
                         <TierBadge tier={u.tier} />
                       </td>
-                      <td className="px-5 py-4">
+
+                      <td className="px-4 py-4 align-middle">
                         {u.shop_linked ? (
-                          <div className="min-w-[160px]">
-                            <div className="font-semibold text-brand-ink truncate">{u.shop_name || "Toko"}</div>
-                            <div className="text-xs text-brand-mute truncate">/{u.shop_slug || "-"}</div>
+                          <div className="max-w-[220px]">
+                            <div className="font-semibold text-brand-ink truncate">{u.shop_name || "Toko aktif"}</div>
+                            <div className="text-xs text-brand-mute truncate">
+                              {u.shop_slug ? `/${u.shop_slug}` : "shop_id tersimpan"}
+                            </div>
                           </div>
                         ) : (
                           <span className="text-brand-mute">-</span>
                         )}
                       </td>
-                      <td className="px-5 py-4">
+
+                      <td className="px-4 py-4 align-middle">
                         <AccountTypeBadge type={u.account_type} />
                       </td>
-                      <td className="px-5 py-4">
-                        <div className="flex justify-end items-center gap-2">
+
+                      <td className="px-4 py-4 align-middle">
+                        <div className="flex items-center gap-2">
                           <select
                             value={currentDraft}
-                            onChange={(e) => setTierDraft(u.user_id, e.target.value)}
-                            className="h-9 rounded-xl border border-brand-line bg-white px-2 text-xs font-bold"
+                            onChange={(e) => setTierDrafts((prev) => ({ ...prev, [u.user_id]: e.target.value }))}
+                            className="h-10 w-[120px] rounded-xl border border-brand-line bg-white px-3 text-xs font-bold"
                             data-testid={`tier-select-${u.user_id}`}
                           >
                             {TIER_OPTIONS.map((t) => (
@@ -253,36 +257,29 @@ export default function AdminUsers() {
                             size="sm"
                             onClick={() => saveTier(u)}
                             disabled={savingTierFor === u.user_id || !tierChanged}
-                            className={tierChanged ? "bg-brand text-white hover:bg-brand-hover rounded-xl" : "rounded-xl border-brand-line"}
+                            className={tierChanged ? "bg-brand text-white hover:bg-brand-hover rounded-xl h-10 px-4" : "rounded-xl border-brand-line h-10 px-4"}
                             data-testid={`tier-save-${u.user_id}`}
                           >
-                            {savingTierFor === u.user_id ? (
-                              "..."
-                            ) : (
-                              <>
-                                <Save className="w-3.5 h-3.5 mr-1" /> Simpan
-                              </>
-                            )}
+                            <Save className="w-3.5 h-3.5 mr-1.5" />
+                            {savingTierFor === u.user_id ? "..." : "Simpan"}
                           </Button>
-
-                          {canResetPw && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => resetPw(u)}
-                              className="rounded-xl"
-                              data-testid={`reset-pw-${u.user_id}`}
-                            >
-                              <KeyRound className="w-3.5 h-3.5 mr-1" /> Reset PW
-                            </Button>
-                          )}
-
-                          {u.tier !== "free" && (
-                            <span title="Paid tier">
-                              <Crown className="w-4 h-4 text-brand" />
-                            </span>
-                          )}
                         </div>
+                      </td>
+
+                      <td className="px-5 py-4 align-middle text-right">
+                        {canResetPw ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => resetPw(u)}
+                            className="rounded-xl whitespace-nowrap"
+                            data-testid={`reset-pw-${u.user_id}`}
+                          >
+                            <KeyRound className="w-3.5 h-3.5 mr-1.5" /> Reset PW
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-brand-mute">Google</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -290,7 +287,7 @@ export default function AdminUsers() {
 
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-brand-mute">
+                    <td colSpan={7} className="px-5 py-10 text-center text-brand-mute">
                       Tidak ada user ditemukan.
                     </td>
                   </tr>
