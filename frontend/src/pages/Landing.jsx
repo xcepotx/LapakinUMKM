@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import {useEffect, useState} from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,28 @@ import { Sparkles, Wand2, ImageIcon, Smartphone, ArrowRight, Check, Store } from
 const HERO_IMG =
   "https://images.unsplash.com/photo-1777049645539-ed5b46f3fa5d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxNzV8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHNtYWxsJTIwYnVzaW5lc3MlMjBtYXJrZXQlMjBzdGFsbHxlbnwwfHx8fDE3Nzc0MzExMzh8MA&ixlib=rb-4.1.0&q=85";
 
+
+function compactIdr(value) {
+  const n = Number(value || 0);
+  if (n <= 0) return "Rp 0";
+  if (n % 1000 === 0) return `Rp ${Math.round(n / 1000)}rb/bln`;
+  return `Rp ${n.toLocaleString("id-ID")}/bln`;
+}
+
+function tierMonthlyPrice(tiers, key, fallback) {
+  return compactIdr(tiers?.[key]?.price_idr_month ?? fallback);
+}
+
 export default function Landing() {
+  const [pricingTiers, setPricingTiers] = useState(null);
+
+  useEffect(() => {
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/billing/tiers`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => setPricingTiers(data?.tiers || null))
+      .catch(() => {});
+  }, []);
+
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [featured, setFeatured] = useState([]);
@@ -232,29 +253,37 @@ export default function Landing() {
             Trial Pro 14 hari otomatis untuk semua user baru. Bayar pakai QRIS, GoPay, OVO, transfer bank, atau kartu kredit.
           </p>
         </div>
-        <div className="mt-12 grid md:grid-cols-3 gap-6">
+        <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           <PriceCard
             name="Gratis"
-            price="Rp 0"
-            features={["1 toko di subdomain Lapakin", "5 produk", "AI Studio basic (limit harian)", "Toko Cards basic", "Powered by Lapakin"]}
+            price={tierMonthlyPrice(pricingTiers, "free", 0)}
+            features={["1 toko di subdomain Lapakin", "5 produk", "5 AI photo/bulan", "5 AI copy/bulan", "Powered by Lapakin"]}
             cta="Mulai Gratis"
             onClick={() => navigate(user ? "/dashboard" : "/register")}
             tid="price-free"
           />
           <PriceCard
+            name="Starter"
+            price={tierMonthlyPrice(pricingTiers, "starter", 19000)}
+            features={["30 produk", "30 AI photo/bulan", "50 AI copy/bulan", "Custom subdomain", "Buku Jualan basic"]}
+            cta="Lihat Detail Paket"
+            onClick={() => navigate("/pricing")}
+            tid="price-starter"
+          />
+          <PriceCard
             name="Pro"
-            price="Rp 49rb/bln"
+            price={tierMonthlyPrice(pricingTiers, "pro", 49000)}
             highlight
             badge="Paling Populer"
-            features={["100 produk", "AI Studio generous (foto + caption)", "Tanpa branding Lapakin", "Custom subdomain", "Analytics storefront", "Bulk Toko Cards Pack"]}
+            features={["100 produk", "100 AI photo/bulan", "AI copy unlimited", "Tanpa branding Lapakin", "Analytics storefront", "Custom subdomain"]}
             cta="Lihat Detail Paket"
             onClick={() => navigate("/pricing")}
             tid="price-pro"
           />
           <PriceCard
             name="Bisnis"
-            price="Rp 149rb/bln"
-            features={["Produk unlimited", "AI Studio unlimited", "Custom domain (.com)", "Multi-shift schedule F&B", "WhatsApp broadcast", "Priority support"]}
+            price={tierMonthlyPrice(pricingTiers, "business", 149000)}
+            features={["Produk unlimited", "AI photo & copy unlimited", "Custom domain", "Multi-toko/cabang", "Anggota tim sampai 5", "Auto-post Instagram"]}
             cta="Lihat Detail Paket"
             onClick={() => navigate("/pricing")}
             tid="price-business"

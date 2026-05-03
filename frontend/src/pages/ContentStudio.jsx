@@ -149,7 +149,7 @@ export default function ContentStudio() {
             <Link to="/pricing">
               <Button className="bg-brand text-white hover:bg-brand-dark rounded-xl font-bold h-11 px-6"
                 data-testid="content-studio-upgrade-cta">
-                Upgrade ke Pro — Rp 49rb/bulan
+                Upgrade paket untuk lanjut
               </Button>
             </Link>
           </div>
