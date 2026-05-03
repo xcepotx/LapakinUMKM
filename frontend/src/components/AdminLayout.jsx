@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
   Sparkles, ShieldCheck, Store, Users, Trash2, Megaphone, ScrollText,
-  Activity, LogOut, ExternalLink, BookOpen, HeartPulse,
+  Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server,
 } from "lucide-react";
 
 export default function AdminLayout({ children, title, subtitle, actions }) {
@@ -21,6 +21,7 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
     { to: "/admin/stories", icon: BookOpen, label: "Cerita UMKM", tid: "admin-nav-stories" },
     { to: "/admin/audit", icon: ScrollText, label: "Audit Log", tid: "admin-nav-audit" },
     { to: "/admin/health", icon: HeartPulse, label: "Health Check", tid: "admin-nav-health" },
+    { to: "/admin/server", icon: Server, label: "Server Monitor", tid: "admin-nav-server" },
   ];
 
   const handleLogout = async () => { await logout(); navigate("/"); };

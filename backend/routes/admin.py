@@ -1,4 +1,10 @@
 """Admin routes: all require role=admin."""
+import asyncio
+import os
+import platform
+from pathlib import Path
+import shutil
+import time
 import uuid
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -14,6 +20,175 @@ from tiers import VALID_TIERS, get_tier
 from routes.whatsapp import _wa_send
 
 router = APIRouter()
+
+
+def _read_proc_stat_cpu():
+    try:
+        with open("/proc/stat", "r") as f:
+            parts = f.readline().split()
+        if not parts or parts[0] != "cpu":
+            return None
+        values = [int(x) for x in parts[1:]]
+        idle = values[3] + (values[4] if len(values) > 4 else 0)
+        total = sum(values)
+        return total, idle
+    except Exception:
+        return None
+
+
+async def _cpu_percent_sample():
+    first = _read_proc_stat_cpu()
+    if not first:
+        return None
+    await asyncio.sleep(0.2)
+    second = _read_proc_stat_cpu()
+    if not second:
+        return None
+
+    total_delta = second[0] - first[0]
+    idle_delta = second[1] - first[1]
+    if total_delta <= 0:
+        return None
+    return round(max(0, min(100, (1 - idle_delta / total_delta) * 100)), 1)
+
+
+def _read_meminfo():
+    data = {}
+    try:
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                key, val = line.split(":", 1)
+                data[key] = int(val.strip().split()[0]) * 1024
+    except Exception:
+        return None
+
+    total = data.get("MemTotal", 0)
+    available = data.get("MemAvailable", 0)
+    used = max(0, total - available)
+    pct = round((used / total) * 100, 1) if total else 0
+    return {
+        "total_bytes": total,
+        "used_bytes": used,
+        "available_bytes": available,
+        "percent": pct,
+    }
+
+
+def _read_uptime_seconds():
+    try:
+        with open("/proc/uptime", "r") as f:
+            return int(float(f.read().split()[0]))
+    except Exception:
+        return None
+
+
+async def _run_cmd(*args):
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=2)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return ""
+        return out.decode("utf-8", errors="ignore").strip()
+    except Exception:
+        return ""
+
+
+async def _service_status(service_name: str):
+    active = await _run_cmd("systemctl", "is-active", service_name)
+    enabled = await _run_cmd("systemctl", "is-enabled", service_name)
+    main_pid = await _run_cmd("systemctl", "show", service_name, "--property=MainPID", "--value")
+    sub_state = await _run_cmd("systemctl", "show", service_name, "--property=SubState", "--value")
+    since = await _run_cmd("systemctl", "show", service_name, "--property=ActiveEnterTimestamp", "--value")
+
+    return {
+        "name": service_name,
+        "active": active or "unknown",
+        "enabled": enabled or "unknown",
+        "sub_state": sub_state or "",
+        "main_pid": int(main_pid) if main_pid.isdigit() else None,
+        "active_since": since or "",
+    }
+
+
+async def _process_info(pid):
+    if not pid:
+        return {}
+    proc_dir = f"/proc/{pid}"
+    try:
+        stat = Path(proc_dir, "stat").read_text().split()
+        rss_pages = int(stat[23])
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        rss_bytes = rss_pages * page_size
+    except Exception:
+        rss_bytes = None
+
+    try:
+        cmdline = Path(proc_dir, "cmdline").read_text().replace("\x00", " ").strip()
+    except Exception:
+        cmdline = ""
+
+    return {
+        "pid": pid,
+        "rss_bytes": rss_bytes,
+        "cmdline": cmdline,
+    }
+
+
+
+
+@router.get("/admin/server/metrics")
+async def admin_server_metrics(request: Request):
+    """VPS/server health metrics for admin-only ops dashboard."""
+    await require_admin(request)
+
+    cpu_percent = await _cpu_percent_sample()
+    memory = _read_meminfo()
+
+    disk_total, disk_used, disk_free = shutil.disk_usage("/")
+    disk_percent = round((disk_used / disk_total) * 100, 1) if disk_total else 0
+
+    try:
+        load_1, load_5, load_15 = os.getloadavg()
+        load_average = {
+            "1m": round(load_1, 2),
+            "5m": round(load_5, 2),
+            "15m": round(load_15, 2),
+        }
+    except Exception:
+        load_average = {"1m": None, "5m": None, "15m": None}
+
+    service = await _service_status("lapakin-backend.service")
+    process = await _process_info(service.get("main_pid"))
+
+    return {
+        "ok": True,
+        "hostname": platform.node(),
+        "platform": platform.platform(),
+        "python_version": platform.python_version(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_seconds": _read_uptime_seconds(),
+        "cpu": {
+            "percent": cpu_percent,
+            "cores": os.cpu_count(),
+            "load_average": load_average,
+        },
+        "memory": memory,
+        "disk": {
+            "mount": "/",
+            "total_bytes": disk_total,
+            "used_bytes": disk_used,
+            "free_bytes": disk_free,
+            "percent": disk_percent,
+        },
+        "service": service,
+        "process": process,
+    }
 
 
 @router.get("/admin/llm/status")
