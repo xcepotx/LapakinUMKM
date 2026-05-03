@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from deps import db, logger, require_user
 from payment_service import (
     PLANS, is_configured, create_snap_transaction,
+    get_plans_with_dynamic_prices, get_plan_with_dynamic_price,
     verify_webhook_signature, MIDTRANS_CLIENT_KEY, MIDTRANS_IS_PRODUCTION, snap_url,
 )
 
@@ -26,7 +27,7 @@ async def _activate_subscription(user_id: str, plan_id: str, order_id: str,
                                   payment_type: str = "", amount_idr: Optional[int] = None):
     """Upgrade user tier + extend expiry. Idempotent per (user_id, order_id).
     Sends receipt email on successful activation (best-effort, no raise)."""
-    plan = PLANS.get(plan_id)
+    plan = await get_plan_with_dynamic_price(db, plan_id)
     if not plan:
         logger.warning("activate_subscription: unknown plan_id=%s", plan_id)
         return
@@ -148,7 +149,7 @@ async def payment_config():
         "client_key": MIDTRANS_CLIENT_KEY if is_configured() else "",
         "snap_url": snap_url(),
         "is_production": MIDTRANS_IS_PRODUCTION,
-        "plans": {pid: {**p} for pid, p in PLANS.items()},
+        "plans": await get_plans_with_dynamic_prices(db),
     }
 
 

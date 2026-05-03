@@ -82,3 +82,20 @@ def snap_url() -> str:
     return ("https://app.midtrans.com/snap/snap.js"
             if MIDTRANS_IS_PRODUCTION
             else "https://app.sandbox.midtrans.com/snap/snap.js")
+
+
+async def get_plans_with_dynamic_prices(db):
+    """Return payment PLANS with price_idr overridden by admin pricing settings."""
+    from pricing_config import get_plan_price
+
+    out = {}
+    for plan_id, plan in PLANS.items():
+        item = {**plan}
+        item["price_idr"] = await get_plan_price(db, item["tier"], item["cycle"])
+        out[plan_id] = item
+    return out
+
+
+async def get_plan_with_dynamic_price(db, plan_id: str):
+    plans = await get_plans_with_dynamic_prices(db)
+    return plans.get(plan_id)
