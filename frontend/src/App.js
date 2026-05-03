@@ -9,7 +9,6 @@ import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
-import AuthCallback from "@/pages/AuthCallback";
 import Onboarding from "@/pages/Onboarding";
 import Dashboard from "@/pages/Dashboard";
 import AIStudio from "@/pages/AIStudio";
@@ -65,9 +64,7 @@ function AppRouter() {
   const location = useLocation();
   const tenantSlug = detectTenantSlug();
   // Synchronous check for OAuth session_id BEFORE rendering routes
-  if (location.hash?.includes("session_id=")) {
-    return <AuthCallback />;
-  }
+ 
   return (
     <Routes>
       {/* Tenant subdomain root: <slug>.lapakin.my.id/ → load that shop's storefront */}
