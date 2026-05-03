@@ -53,6 +53,9 @@ async def _activate_subscription(user_id: str, plan_id: str, order_id: str,
             "tier": plan["tier"],
             "trial": False,  # paid cancels trial
             "trial_expires_at": None,
+            "trial_used": True,
+            "trial_expired": False,
+            "trial_expired_at": None,
             "subscription_plan_id": plan_id,
             "subscription_cycle": plan["cycle"],
             "subscription_started_at": now.isoformat(),
@@ -111,6 +114,8 @@ async def start_pro_trial(request: Request):
         "trial_used": True,
         "trial_started_at": now.isoformat(),
         "trial_expires_at": trial_expires_at.isoformat(),
+        "trial_expired": False,
+        "trial_expired_at": None,
         "subscription_plan_id": None,
         "subscription_cycle": None,
         "subscription_expires_at": None,
@@ -129,6 +134,8 @@ async def start_pro_trial(request: Request):
         "trial_used": True,
         "trial_started_at": now.isoformat(),
         "trial_expires_at": trial_expires_at.isoformat(),
+        "trial_expired": False,
+        "trial_expired_at": None,
         "message": "Trial Pro aktif selama 10 hari.",
     }
 

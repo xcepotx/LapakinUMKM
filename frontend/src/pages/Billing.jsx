@@ -212,7 +212,15 @@ const canUseTrialForPlan = (plan_id) => {
                 <div className="text-sm mt-0.5" data-testid="trial-expires">
                   Trial gratis berakhir {new Date(data.trial_expires_at).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
                 </div>
+              ) : data.trial_expired ? (
+                <div className="text-sm mt-0.5 text-orange-800 font-semibold" data-testid="trial-expired">
+	          Trial Pro sudah berakhir. Akun kembali ke paket Gratis.
+                </div>
               ) : data.limits.price_idr_month > 0 ? (
+                <div className="text-sm mt-0.5">Rp {data.limits.price_idr_month.toLocaleString("id-ID")}/bulan</div>
+              ) : (
+                <div className="text-sm mt-0.5">Gratis selamanya</div>
+              )}
                 <div className="text-sm mt-0.5">Rp {data.limits.price_idr_month.toLocaleString("id-ID")}/bulan</div>
               ) : (
                 <div className="text-sm mt-0.5">Gratis selamanya</div>
@@ -235,6 +243,23 @@ const canUseTrialForPlan = (plan_id) => {
             )}
           </div>
         </div>
+
+        {data.trial_expired && (
+          <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
+            <div className="font-bold">Trial Pro sudah selesai</div>
+            <p className="mt-1">
+              Kamu masih bisa memakai fitur Gratis. Untuk membuka kembali fitur Pro, aktivasi paket bisa dilakukan manual dulu via WhatsApp.
+            </p>
+            <a
+              href="https://wa.me/628123456789?text=Halo%20Lapakin%2C%20saya%20mau%20aktivasi%20paket%20Pro."
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex rounded-xl bg-orange-900 px-4 py-2 font-bold text-white hover:opacity-90"
+            >
+              Aktivasi Pro Manual
+            </a>
+          </div>
+        )}
 
         {/* Usage bars */}
         <div className="mt-8">

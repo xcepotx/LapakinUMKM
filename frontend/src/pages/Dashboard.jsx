@@ -109,6 +109,31 @@ export default function Dashboard() {
         </div>
       }
     >
+    {user?.trial_expired && !user?.trial && (
+      <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-5 text-orange-950 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-bold uppercase tracking-wide text-orange-800">
+              Trial Pro Berakhir
+            </div>
+            <div className="mt-1 text-lg font-extrabold">
+              Trial Pro kamu sudah selesai.
+            </div>
+            <p className="mt-1 text-sm text-orange-800">
+              Beberapa fitur Pro seperti Analitik, custom subdomain, dan fitur premium lainnya akan terkunci kembali.
+            </p>
+          </div>
+
+          <a
+            href="/dashboard/billing"
+            className="inline-flex shrink-0 items-center justify-center rounded-xl bg-orange-900 px-4 py-2 text-sm font-bold text-white hover:opacity-90"
+          >
+            Lihat Paket
+          </a>
+        </div>
+      </div>
+    )}
+
     {user?.trial && user?.trial_expires_at && (
       <div className="mb-6 rounded-2xl border border-yellow-200 bg-yellow-50 p-5 text-yellow-950 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
