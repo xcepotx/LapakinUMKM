@@ -37,6 +37,9 @@ export default function ShopSettings() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState("");
   const [addingMember, setAddingMember] = useState(false);
+  const [branchInfo, setBranchInfo] = useState(null);
+  const [branchName, setBranchName] = useState("");
+  const [creatingBranch, setCreatingBranch] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -64,6 +67,46 @@ export default function ShopSettings() {
     if (shop?.shop_id) loadTeam();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shop?.shop_id]);
+
+  const loadBranches = async () => {
+    try {
+      const { data } = await api.get("/shops/mine");
+      setBranchInfo(data);
+    } catch (e) {
+      setBranchInfo(null);
+    }
+  };
+
+  useEffect(() => {
+    if (shop?.shop_id) loadBranches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shop?.shop_id]);
+
+  const createBranch = async () => {
+    const name = branchName.trim();
+    if (!name) { toast.error("Isi nama cabang dulu"); return; }
+
+    setCreatingBranch(true);
+    try {
+      const payload = { ...shop, name };
+      [
+        "shop_id", "slug", "owner_user_id", "created_at", "updated_at",
+        "status", "featured", "custom_domain", "custom_domain_verified",
+        "custom_domain_requested_at", "custom_domain_verified_at",
+        "instagram_connected", "instagram_user_id", "instagram_access_token",
+        "instagram_connected_at", "instagram_connected_by",
+        "instagram_last_publish_at", "instagram_last_media_id",
+      ].forEach((k) => delete payload[k]);
+
+      await api.post("/shops/branches", payload);
+      toast.success("Cabang baru dibuat");
+      window.location.href = "/dashboard/settings";
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Gagal membuat cabang");
+    } finally {
+      setCreatingBranch(false);
+    }
+  };
 
   const addTeamMember = async () => {
     const email = teamEmail.trim().toLowerCase();
@@ -494,6 +537,72 @@ export default function ShopSettings() {
               )}
             </div>
           </Section>
+          {/* Cabang / Multi-toko */}
+          <Section
+            title="Cabang / Multi-toko"
+            desc="Kelola beberapa toko atau cabang. Semua data dashboard mengikuti cabang aktif."
+          >
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+              <div className="text-sm text-brand-mute">
+                {branchInfo ? (
+                  <span>
+                    {branchInfo.used} dari {branchInfo.limit === "unlimited" ? "∞" : branchInfo.limit} cabang terpakai
+                  </span>
+                ) : (
+                  <span>Memuat data cabang…</span>
+                )}
+              </div>
+              {branchInfo?.tier && (
+                <span className="text-xs font-bold uppercase rounded-full bg-brand-off border border-brand-line px-3 py-1 text-brand-mute">
+                  Paket {branchInfo.tier}
+                </span>
+              )}
+            </div>
+
+            <div className="divide-y divide-brand-line rounded-xl border border-brand-line bg-white overflow-hidden mb-4">
+              {(branchInfo?.shops || []).map((b) => (
+                <div key={b.shop_id} className="flex items-center justify-between gap-3 p-4" data-testid={`branch-row-${b.shop_id}`}>
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">{b.name}</div>
+                    <div className="text-xs text-brand-mute truncate">/{b.slug}</div>
+                  </div>
+                  <span className={`text-xs font-bold rounded-full px-2.5 py-1 border ${
+                    b.shop_id === branchInfo.active_shop_id
+                      ? "bg-brand-off text-brand border-brand-line"
+                      : "bg-white text-brand-mute border-brand-line"
+                  }`}>
+                    {b.shop_id === branchInfo.active_shop_id ? "Aktif" : "Cabang"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {branchInfo?.can_create ? (
+              <div className="grid sm:grid-cols-[1fr_auto] gap-2">
+                <Input
+                  value={branchName}
+                  onChange={(e) => setBranchName(e.target.value)}
+                  placeholder="Nama cabang baru, misal: Lapakin Bu Sari - Dago"
+                  className="rounded-xl border-brand-line h-12"
+                  data-testid="branch-name-input"
+                />
+                <Button
+                  type="button"
+                  onClick={createBranch}
+                  disabled={creatingBranch}
+                  className="bg-brand hover:bg-brand-hover text-white rounded-xl h-12 font-bold"
+                  data-testid="branch-create-btn"
+                >
+                  {creatingBranch ? "Membuat…" : "Tambah Cabang"}
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Limit cabang paket ini sudah penuh. Upgrade ke paket yang lebih tinggi untuk menambah cabang.
+              </div>
+            )}
+          </Section>
+
           {/* Anggota Tim */}
           <Section
             title="Anggota Tim"
