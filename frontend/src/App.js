@@ -28,6 +28,7 @@ import DailyMenu from "@/pages/DailyMenu";
 import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminShops from "@/pages/admin/AdminShops";
 import AdminUsers from "@/pages/admin/AdminUsers";
+import AdminPricing from "@/pages/admin/AdminPricing";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminBroadcasts from "@/pages/admin/AdminBroadcasts";
 import AdminAIUsage from "@/pages/admin/AdminAIUsage";
@@ -97,6 +98,7 @@ function AppRouter() {
       <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
       <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />
       <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
+      <Route path="/admin/pricing" element={<AdminRoute><AdminPricing /></AdminRoute>} />
       <Route path="/admin/products" element={<AdminRoute><AdminProducts /></AdminRoute>} />
       <Route path="/admin/broadcasts" element={<AdminRoute><AdminBroadcasts /></AdminRoute>} />
       <Route path="/admin/ai-usage" element={<AdminRoute><AdminAIUsage /></AdminRoute>} />

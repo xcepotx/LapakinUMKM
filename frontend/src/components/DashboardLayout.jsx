@@ -40,6 +40,9 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const isStaff = user?.shop_role === "staff";
+  const [shopSwitcher, setShopSwitcher] = useState(null);
+  const [switchingShop, setSwitchingShop] = useState(false);
 
   const mainItems = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Beranda", tid: "nav-home" },
@@ -49,7 +52,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     { to: "/dashboard/analytics", icon: BarChart3, label: "Analitik", tid: "nav-analytics" },
   ];
 
-  const secondaryItems = [
+  const secondaryItems = isStaff ? [] : [
     { to: "/dashboard/settings", icon: Settings, label: "Pengaturan", tid: "nav-settings" },
     { to: "/dashboard/billing", icon: CreditCard, label: "Akun", tid: "nav-billing" },
   ];

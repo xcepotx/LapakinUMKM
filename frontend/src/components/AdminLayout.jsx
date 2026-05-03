@@ -2,7 +2,8 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
-  Sparkles, ShieldCheck, Store, Users, Trash2, Megaphone, ScrollText,
+  Sparkles, ShieldCheck, Store, Users,
+  Tags, Trash2, Megaphone, ScrollText,
   Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server,
 } from "lucide-react";
 
@@ -15,6 +16,7 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
     { to: "/admin", icon: ShieldCheck, label: "Overview", tid: "admin-nav-overview" },
     { to: "/admin/shops", icon: Store, label: "Toko UMKM", tid: "admin-nav-shops" },
     { to: "/admin/users", icon: Users, label: "Pengguna", tid: "admin-nav-users" },
+    { to: "/admin/pricing", icon: Tags, label: "Pricing", tid: "admin-nav-pricing" },
     { to: "/admin/products", icon: Trash2, label: "Moderasi Produk", tid: "admin-nav-products" },
     { to: "/admin/broadcasts", icon: Megaphone, label: "Broadcast", tid: "admin-nav-broadcasts" },
     { to: "/admin/ai-usage", icon: Activity, label: "AI Usage", tid: "admin-nav-ai" },

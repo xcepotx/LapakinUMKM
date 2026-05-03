@@ -9,6 +9,7 @@ import uuid
 import secrets
 from datetime import datetime, timezone, timedelta
 
+from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Request
 
 from deps import (
@@ -17,9 +18,14 @@ from deps import (
 )
 from models import TierIn, StatusIn, FeaturedIn, BroadcastIn
 from tiers import VALID_TIERS, get_tier
+from pricing_config import get_pricing_settings, save_pricing_settings
 from routes.whatsapp import _wa_send
 
 router = APIRouter()
+
+class AdminPricingIn(BaseModel):
+    tiers: dict
+
 
 
 def _read_proc_stat_cpu():
@@ -293,6 +299,29 @@ async def admin_list_shops(request: Request, q: str = "", limit: int = 100):
 
 
 # 3. List users
+@router.get("/admin/pricing")
+async def admin_get_pricing(request: Request):
+    admin = await require_admin(request)
+    tiers = await get_pricing_settings(db)
+    return {"tiers": tiers}
+
+
+@router.put("/admin/pricing")
+async def admin_update_pricing(data: AdminPricingIn, request: Request):
+    admin = await require_admin(request)
+    tiers = await save_pricing_settings(db, data.tiers or {}, admin.get("user_id", ""))
+
+    await log_admin_action(
+        admin,
+        "pricing_update",
+        "pricing",
+        "tiers",
+        {"tiers": tiers},
+    )
+
+    return {"ok": True, "tiers": tiers}
+
+
 @router.get("/admin/users")
 async def admin_list_users(request: Request, q: str = "", limit: int = 200):
     await require_admin(request)

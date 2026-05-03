@@ -224,10 +224,6 @@ const canUseTrialForPlan = (plan_id) => {
               ) : (
                 <div className="text-sm mt-0.5">Gratis selamanya</div>
               )}
-                <div className="text-sm mt-0.5">Rp {data.limits.price_idr_month.toLocaleString("id-ID")}/bulan</div>
-              ) : (
-                <div className="text-sm mt-0.5">Gratis selamanya</div>
-              )}
             </div>
             {data.tier !== "business" && (
               <Button

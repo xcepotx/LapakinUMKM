@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from deps import db, require_user
 from llm_service import active_provider
 from models import AnalyticsTrackIn
+from pricing_config import get_tier_limits_with_pricing
 from tiers import (
     TIER_LIMITS, VALID_TIERS, get_tier, get_limits,
     current_month_bucket, get_usage, is_unlimited, require_feature,
@@ -72,7 +73,8 @@ async def dismiss_broadcast(broadcast_id: str, request: Request):
 @router.get("/billing/tiers")
 async def billing_tiers():
     """Public — return available tiers and their limits/features."""
-    return {"tiers": TIER_LIMITS, "valid": VALID_TIERS}
+    tiers = await get_tier_limits_with_pricing(db)
+    return {"tiers": tiers, "valid": VALID_TIERS}
 
 
 @router.get("/billing/me")

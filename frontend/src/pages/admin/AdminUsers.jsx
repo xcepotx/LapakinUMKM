@@ -9,7 +9,7 @@ import {
   Save,
   ShieldCheck,
   Store,
-  UserCog,
+  User,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,7 +32,7 @@ const ACCOUNT_TYPE = {
   admin: { label: "Admin", cls: "bg-red-50 text-red-800 border-red-200", icon: ShieldCheck },
   owner: { label: "Owner", cls: "bg-brand-off text-brand border-brand-line", icon: Store },
   staff: { label: "Staff", cls: "bg-sky-50 text-sky-800 border-sky-200", icon: Users },
-  user: { label: "User", cls: "bg-white text-brand-mute border-brand-line", icon: UserCog },
+  user: { label: "User", cls: "bg-white text-brand-mute border-brand-line", icon: User },
 };
 
 function TierBadge({ tier }) {
