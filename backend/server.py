@@ -1,3 +1,6 @@
+from deps import JWT_SECRET, JWT_ALGORITHM
+import jwt as pyjwt
+import re
 try:
     from deps import get_current_user
 except Exception:
@@ -261,15 +264,53 @@ async def _server_generate_storefront_copy(data: ServerStorefrontCopyAIIn):
         return fallback, "fallback"
 
 
-@app.post("/api/shops/storefront-copy-ai")
-async def server_storefront_copy_ai(data: ServerStorefrontCopyAIIn, request: Request):
-    if get_current_user is None:
+
+
+async def server_get_user_from_bearer_token(request: Request):
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization") or ""
+    token = ""
+
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+
+    if not token:
+        token = (
+            request.cookies.get("access_token")
+            or request.cookies.get("token")
+            or request.cookies.get("auth_token")
+            or ""
+        )
+
+    if not token:
         raise HTTPException(status_code=401, detail="Tidak terautentikasi")
 
     try:
-        user = await get_current_user(request)
+        payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except Exception:
-        raise HTTPException(status_code=401, detail="Tidak terautentikasi")
+        raise HTTPException(status_code=401, detail="Token tidak valid")
+
+    user_id = payload.get("user_id") or payload.get("sub") or payload.get("id")
+    email = payload.get("email")
+
+    query = None
+    if user_id:
+        query = {"user_id": user_id}
+    elif email:
+        query = {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+
+    if not query:
+        raise HTTPException(status_code=401, detail="Token tidak berisi identitas user")
+
+    user = await db.users.find_one(query)
+    if not user:
+        raise HTTPException(status_code=401, detail="User tidak ditemukan")
+
+    return user
+
+
+@app.post("/api/shops/storefront-copy-ai")
+async def server_storefront_copy_ai(data: ServerStorefrontCopyAIIn, request: Request):
+    user = await server_get_user_from_bearer_token(request)
 
     tier = _server_normalize_storefront_tier(user)
 
