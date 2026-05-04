@@ -10,6 +10,30 @@ import { toast } from "sonner";
 import { GoogleLogin } from "@react-oauth/google";
 
 
+
+async function handlePostGoogleLoginRedirect(api, navigate) {
+  try {
+    const meResponse = await api.get("/auth/me");
+    const user = meResponse?.data || {};
+
+    if (user?.subscription_status === "suspended") {
+      navigate("/dashboard/billing?expired=1", { replace: true });
+      return;
+    }
+
+    if (user?.shop_id) {
+      await handlePostGoogleLoginRedirect(api, navigate);
+      return;
+    }
+
+    navigate("/onboarding", { replace: true });
+  } catch (err) {
+    console.error("Post Google login auth/me failed", err);
+    navigate("/login", { replace: true });
+  }
+}
+
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();

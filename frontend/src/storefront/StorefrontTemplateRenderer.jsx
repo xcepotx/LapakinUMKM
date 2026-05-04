@@ -1,8 +1,19 @@
-import { Component } from "react";
+import { Component, useEffect, useMemo, useState } from "react";
 import "./storefront-template-renderer.css";
 
 function cx(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes
+    .flatMap((item) => {
+      if (!item) return [];
+      if (typeof item === "string") return [item];
+      if (typeof item === "object") {
+        return Object.entries(item)
+          .filter(([, enabled]) => Boolean(enabled))
+          .map(([className]) => className);
+      }
+      return [];
+    })
+    .join(" ");
 }
 
 function getShop(data) {
@@ -285,6 +296,66 @@ function getHeroCopy(mode, template) {
   };
 }
 
+
+function getShopSlug(shop) {
+  return getValue(shop, ["slug", "shop_slug", "store_slug", "subdomain"], "storefront");
+}
+
+function getCartStorageKey(shop) {
+  return `lapakin_template_cart_${getShopSlug(shop)}`;
+}
+
+function getProductSnapshot(product, index = 0) {
+  return {
+    id: getProductId(product, index),
+    name: getProductName(product),
+    description: getProductDescription(product),
+    category: getProductCategory(product),
+    image_url: getProductImage(product),
+    price: getProductPrice(product),
+  };
+}
+
+function getCartTotal(cartItems) {
+  return cartItems.reduce((sum, item) => {
+    return sum + (Number(item.product?.price || 0) * Number(item.qty || 0));
+  }, 0);
+}
+
+function buildCartWhatsappLink(shop, cartItems) {
+  const phone = normalizeWhatsapp(
+    getValue(shop, [
+      "whatsapp",
+      "whatsapp_number",
+      "phone",
+      "phone_number",
+      "contact_phone",
+      "wa_number",
+    ])
+  );
+
+  if (!phone) return "#";
+
+  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
+
+  const lines = [
+    `Halo ${shopName}, saya ingin pesan:`,
+    "",
+    ...cartItems.map((item, index) => {
+      const product = item.product || {};
+      const qty = Number(item.qty || 0);
+      const price = Number(product.price || 0);
+      const subtotal = price * qty;
+      return `${index + 1}. ${product.name} x${qty} - ${formatPrice(subtotal)}`;
+    }),
+    "",
+    `Total: ${formatPrice(getCartTotal(cartItems))}`,
+  ];
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\\n"))}`;
+}
+
+
 function ProductImage({ product, className }) {
   const image = getProductImage(product);
   const name = getProductName(product);
@@ -416,7 +487,119 @@ function HeroSection({ shop, products, template }) {
   );
 }
 
-function ProductCard({ product, shop, template, index }) {
+
+function TemplateCartDrawer({
+  shop,
+  cartItems,
+  cartOpen,
+  onClose,
+  onIncrease,
+  onDecrease,
+  onRemove,
+  onClear,
+}) {
+  if (!cartOpen) return null;
+
+  const total = getCartTotal(cartItems);
+  const checkoutHref = buildCartWhatsappLink(shop, cartItems);
+
+  return (
+    <div className="ltr-cart-overlay" data-testid="storefront-template-cart-drawer">
+      <button className="ltr-cart-backdrop" type="button" onClick={onClose} aria-label="Tutup keranjang" />
+
+      <aside className="ltr-cart-drawer">
+        <div className="ltr-cart-header">
+          <div>
+            <span>Keranjang</span>
+            <h2>Cek pesanan kamu</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Tutup keranjang">
+            ×
+          </button>
+        </div>
+
+        {cartItems.length ? (
+          <>
+            <div className="ltr-cart-items">
+              {cartItems.map((item) => {
+                const product = item.product || {};
+                const qty = Number(item.qty || 0);
+
+                return (
+                  <div key={product.id} className="ltr-cart-item">
+                    {product.image_url ? (
+                      <img src={product.image_url} alt={product.name} />
+                    ) : (
+                      <div className="ltr-cart-item-placeholder">
+                        {String(product.name || "P").slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+
+                    <div className="ltr-cart-item-body">
+                      <h3>{product.name}</h3>
+                      <p>{formatPrice(product.price)}</p>
+
+                      <div className="ltr-cart-qty">
+                        <button type="button" onClick={() => onDecrease(product.id)}>
+                          −
+                        </button>
+                        <strong>{qty}</strong>
+                        <button type="button" onClick={() => onIncrease(product.id)}>
+                          +
+                        </button>
+                        <button type="button" onClick={() => onRemove(product.id)}>
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="ltr-cart-footer">
+              <div>
+                <span>Total</span>
+                <strong>{formatPrice(total)}</strong>
+              </div>
+
+              <a href={checkoutHref} target="_blank" rel="noreferrer">
+                Checkout WhatsApp
+              </a>
+
+              <button type="button" onClick={onClear}>
+                Kosongkan Keranjang
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="ltr-cart-empty">
+            <h3>Keranjang masih kosong</h3>
+            <p>Pilih produk lalu tekan Tambah ke Keranjang.</p>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function FloatingCartButton({ count, onOpen }) {
+  if (!count) return null;
+
+  return (
+    <button
+      type="button"
+      className="ltr-floating-cart"
+      onClick={onOpen}
+      data-testid="storefront-template-floating-cart"
+    >
+      <span>Keranjang</span>
+      <strong>{count}</strong>
+    </button>
+  );
+}
+
+function ProductCard({ product, shop, template, index, onAddToCart }) {
   const mode = getModeFromTemplate(template);
   const variant = template.productCard;
   const name = getProductName(product);
@@ -451,16 +634,37 @@ function ProductCard({ product, shop, template, index }) {
             {formatPrice(price)}
           </strong>
 
-          <a href={buildWhatsappLink(shop, product)} target="_blank" rel="noreferrer">
-            {isService ? "Tanya" : isFood ? "Pesan" : "Order"}
-          </a>
+          <div className="ltr-product-actions">
+            <button
+              type="button"
+              className="ltr-add-cart-btn"
+              onClick={() => onAddToCart?.(product, index)}
+              data-testid="storefront-template-add-cart"
+              aria-label={`Tambah ${name} ke keranjang`}
+              title="Tambah ke keranjang"
+            >
+              <svg
+                className="ltr-add-cart-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M7 18.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm10 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM6.2 6l.34 2H20a1 1 0 0 1 .97 1.24l-1.35 5.4A3 3 0 0 1 16.7 17H8.1a3 3 0 0 1-2.96-2.5L3.72 6H2.5a1 1 0 1 1 0-2h2.06a1 1 0 0 1 .99.84L5.75 6h.45Zm.68 4 .7 4.17a1 1 0 0 0 .99.83h8.13a1 1 0 0 0 .97-.76L18.73 10H6.88Z" />
+              </svg>
+              <span>Keranjang</span>
+            </button>
+
+            <a href={buildWhatsappLink(shop, product)} target="_blank" rel="noreferrer">
+              {isService ? "Tanya" : isFood ? "Pesan" : "Order"}
+            </a>
+          </div>
         </div>
       </div>
     </article>
   );
 }
 
-function ProductSection({ title, products, shop, template, limit, titleOverride }) {
+function ProductSection({ title, products, shop, template, limit, titleOverride, onAddToCart }) {
   const visibleProducts = (products || []).slice(0, limit || products.length);
   const finalTitle = titleOverride || title;
 
@@ -492,6 +696,7 @@ function ProductSection({ title, products, shop, template, limit, titleOverride 
             shop={shop}
             template={template}
             index={index}
+            onAddToCart={onAddToCart}
           />
         ))}
       </div>
@@ -626,7 +831,7 @@ function FaqSection({ template }) {
 }
 
 function renderSection(section, context) {
-  const { shop, products, template } = context;
+  const { shop, products, template, onAddToCart } = context;
   const mode = getModeFromTemplate(template);
   const title = getSectionTitle(section, mode);
   const featured = products.filter((product) => product?.featured || product?.is_featured);
@@ -658,6 +863,7 @@ function renderSection(section, context) {
           products={fallbackFeatured}
           shop={shop}
           template={template}
+          onAddToCart={onAddToCart}
           limit={4}
           titleOverride={getValue(shop, ["storefront_featured_title"], "")}
         />
@@ -674,6 +880,7 @@ function renderSection(section, context) {
           products={products}
           shop={shop}
           template={template}
+          onAddToCart={onAddToCart}
         />
       );
 
@@ -700,7 +907,7 @@ function renderSection(section, context) {
 }
 
 
-function MobileStickyOrderBar({ shop, template }) {
+function MobileStickyOrderBar({ shop, template, cartCount, onOpenCart }) {
   const mode = getModeFromTemplate(template);
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
 
@@ -717,9 +924,15 @@ function MobileStickyOrderBar({ shop, template }) {
         <span>{shopName}</span>
         <strong>{label}</strong>
       </div>
-      <a href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
-        Chat
-      </a>
+      {cartCount > 0 ? (
+        <button type="button" onClick={onOpenCart}>
+          Keranjang ({cartCount})
+        </button>
+      ) : (
+        <a href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
+          Chat
+        </a>
+      )}
     </div>
   );
 }
@@ -728,6 +941,113 @@ export default function StorefrontTemplateRenderer({ data, template }) {
   const shop = getShop(data);
   const products = getProducts(data);
   const mode = getModeFromTemplate(template);
+  const cartKey = getCartStorageKey(shop);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [cart, setCart] = useState(() => {
+    if (typeof window === "undefined") return {};
+
+    try {
+      const raw = window.localStorage.getItem(cartKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      window.localStorage.setItem(cartKey, JSON.stringify(cart));
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [cart, cartKey]);
+
+  const productMap = useMemo(() => {
+    const map = {};
+    products.forEach((product, index) => {
+      const snapshot = getProductSnapshot(product, index);
+      map[snapshot.id] = snapshot;
+    });
+    return map;
+  }, [products]);
+
+  const cartItems = useMemo(() => {
+    return Object.entries(cart)
+      .map(([id, item]) => {
+        const product = productMap[id] || item.product;
+        const qty = Number(item.qty || 0);
+
+        if (!product || !qty) return null;
+
+        return {
+          product,
+          qty,
+        };
+      })
+      .filter(Boolean);
+  }, [cart, productMap]);
+
+  const cartCount = cartItems.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+
+  const addToCart = (product, index = 0) => {
+    const snapshot = getProductSnapshot(product, index);
+
+    setCart((prev) => ({
+      ...prev,
+      [snapshot.id]: {
+        product: snapshot,
+        qty: Number(prev?.[snapshot.id]?.qty || 0) + 1,
+      },
+    }));
+
+  };
+
+  const increaseCartItem = (id) => {
+    setCart((prev) => {
+      const current = prev[id];
+      if (!current) return prev;
+
+      return {
+        ...prev,
+        [id]: {
+          ...current,
+          qty: Number(current.qty || 0) + 1,
+        },
+      };
+    });
+  };
+
+  const decreaseCartItem = (id) => {
+    setCart((prev) => {
+      const current = prev[id];
+      if (!current) return prev;
+
+      const nextQty = Number(current.qty || 0) - 1;
+      if (nextQty <= 0) {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+
+      return {
+        ...prev,
+        [id]: {
+          ...current,
+          qty: nextQty,
+        },
+      };
+    });
+  };
+
+  const removeCartItem = (id) => {
+    setCart((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
   const baseSections = template?.sectionOrder?.length
     ? [...template.sectionOrder]
     : ["hero", "categories", "all_products", "contact"];
@@ -767,10 +1087,28 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       <div className="ltr-background-orb ltr-background-orb-two" />
 
       <div className="ltr-container">
-        {sections.map((section) => renderSection(section, { shop, products, template }))}
+        {sections.map((section) => renderSection(section, { shop, products, template, onAddToCart: addToCart }))}
       </div>
 
-      <MobileStickyOrderBar shop={shop} template={template} />
+      <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
+
+      <TemplateCartDrawer
+        shop={shop}
+        cartItems={cartItems}
+        cartOpen={cartOpen}
+        onClose={() => setCartOpen(false)}
+        onIncrease={increaseCartItem}
+        onDecrease={decreaseCartItem}
+        onRemove={removeCartItem}
+        onClear={() => setCart({})}
+      />
+
+      <MobileStickyOrderBar
+        shop={shop}
+        template={template}
+        cartCount={cartCount}
+        onOpenCart={() => setCartOpen(true)}
+      />
     </main>
   );
 }

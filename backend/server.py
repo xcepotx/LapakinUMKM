@@ -1,3 +1,9 @@
+try:
+    from deps import get_current_user
+except Exception:
+    get_current_user = None
+
+from fastapi import Request, HTTPException
 import json
 """
 Lapakin Backend - AI-powered CMS for Indonesian SMEs (UMKM)
@@ -104,6 +110,30 @@ async def on_startup():
 async def on_shutdown():
     client.close()
 
+
+
+
+def _server_normalize_storefront_tier(user):
+    if not user:
+        return "free"
+
+    tier = (
+        user.get("tier")
+        or user.get("plan")
+        or user.get("subscription_tier")
+        or user.get("account_tier")
+        or "free"
+    )
+
+    tier = str(tier or "free").lower()
+    if tier not in {"free", "starter", "pro", "business"}:
+        return "free"
+
+    return tier
+
+
+def _server_storefront_ai_allowed_for_tier(tier):
+    return str(tier or "free").lower() in {"pro", "business"}
 
 class ServerStorefrontCopyAIIn(BaseModel):
     shop_name: str = ""
@@ -232,7 +262,23 @@ async def _server_generate_storefront_copy(data: ServerStorefrontCopyAIIn):
 
 
 @app.post("/api/shops/storefront-copy-ai")
-async def server_storefront_copy_ai(data: ServerStorefrontCopyAIIn):
+async def server_storefront_copy_ai(data: ServerStorefrontCopyAIIn, request: Request):
+    if get_current_user is None:
+        raise HTTPException(status_code=401, detail="Tidak terautentikasi")
+
+    try:
+        user = await get_current_user(request)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Tidak terautentikasi")
+
+    tier = _server_normalize_storefront_tier(user)
+
+    if not _server_storefront_ai_allowed_for_tier(tier):
+        raise HTTPException(
+            status_code=403,
+            detail="AI Enhance template tersedia mulai paket Pro.",
+        )
+
     copy, source = await _server_generate_storefront_copy(data)
     return {
         "copy": copy,

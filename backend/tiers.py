@@ -180,3 +180,57 @@ def require_feature(user: dict, feature_key: str):
             status_code=402,
             detail=f"Fitur '{feature_key}' tidak tersedia di tier {tier}. Upgrade untuk membuka fitur ini.",
         )
+
+
+# Storefront template feature gating.
+# free: simple legacy storefront.
+# starter: template renderer + manual editor with basic styles.
+# pro/business: full styles + AI copy.
+STOREFRONT_TEMPLATE_FEATURES = {
+    "free": {
+        "storefront_templates": False,
+        "storefront_template_styles": ["classic"],
+        "storefront_template_editor": False,
+        "storefront_template_ai": False,
+        "storefront_template_advanced": False,
+        "storefront_template_per_branch": False,
+        "storefront_template_ai_monthly_limit": 0,
+    },
+    "starter": {
+        "storefront_templates": True,
+        "storefront_template_styles": ["classic", "modern", "compact"],
+        "storefront_template_editor": True,
+        "storefront_template_ai": False,
+        "storefront_template_advanced": False,
+        "storefront_template_per_branch": False,
+        "storefront_template_ai_monthly_limit": 0,
+    },
+    "pro": {
+        "storefront_templates": True,
+        "storefront_template_styles": ["classic", "modern", "compact", "premium", "playful"],
+        "storefront_template_editor": True,
+        "storefront_template_ai": True,
+        "storefront_template_advanced": False,
+        "storefront_template_per_branch": False,
+        "storefront_template_ai_monthly_limit": 30,
+    },
+    "business": {
+        "storefront_templates": True,
+        "storefront_template_styles": ["classic", "modern", "compact", "premium", "playful"],
+        "storefront_template_editor": True,
+        "storefront_template_ai": True,
+        "storefront_template_advanced": True,
+        "storefront_template_per_branch": True,
+        "storefront_template_ai_monthly_limit": 200,
+    },
+}
+
+try:
+    for _tier_key, _features in STOREFRONT_TEMPLATE_FEATURES.items():
+        if _tier_key in TIER_LIMITS:
+            TIER_LIMITS[_tier_key].update(_features)
+except NameError:
+    # Keep import safe if a branch uses a different tier structure.
+    pass
+
+

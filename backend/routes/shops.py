@@ -333,6 +333,99 @@ async def _generate_storefront_copy_with_ai(data: StorefrontCopyAIIn):
         return fallback, "fallback"
 
 
+
+def _normalize_storefront_tier(user):
+    if not user:
+        return "free"
+
+    tier = (
+        user.get("tier")
+        or user.get("plan")
+        or user.get("subscription_tier")
+        or user.get("account_tier")
+        or "free"
+    )
+
+    tier = str(tier or "free").lower()
+    if tier not in {"free", "starter", "pro", "business"}:
+        return "free"
+
+    return tier
+
+
+def _storefront_features_for_tier(tier):
+    tier = str(tier or "free").lower()
+
+    if tier == "business":
+        return {
+            "templates": True,
+            "styles": {"classic", "modern", "compact", "premium", "playful"},
+            "editor": True,
+            "ai": True,
+            "advanced": True,
+        }
+
+    if tier == "pro":
+        return {
+            "templates": True,
+            "styles": {"classic", "modern", "compact", "premium", "playful"},
+            "editor": True,
+            "ai": True,
+            "advanced": False,
+        }
+
+    if tier == "starter":
+        return {
+            "templates": True,
+            "styles": {"classic", "modern", "compact"},
+            "editor": True,
+            "ai": False,
+            "advanced": False,
+        }
+
+    return {
+        "templates": False,
+        "styles": {"classic"},
+        "editor": False,
+        "ai": False,
+        "advanced": False,
+    }
+
+
+def _apply_storefront_tier_guard(payload, user):
+    if not payload:
+        return payload
+
+    features = _storefront_features_for_tier(_normalize_storefront_tier(user))
+    editable_copy_fields = [
+        "storefront_hero_title",
+        "storefront_hero_subtitle",
+        "storefront_cta_label",
+        "storefront_featured_title",
+        "storefront_about_title",
+    ]
+
+    if not features["templates"]:
+        payload["storefront_renderer"] = "legacy"
+        payload["storefront_mode"] = "catalog"
+        payload["storefront_style"] = "classic"
+
+        for field in editable_copy_fields:
+            payload.pop(field, None)
+
+        return payload
+
+    style = payload.get("storefront_style")
+    if style and style not in features["styles"]:
+        payload["storefront_style"] = "classic"
+
+    if not features["editor"]:
+        for field in editable_copy_fields:
+            payload.pop(field, None)
+
+    return payload
+
+
 @router.post("/storefront-copy-ai")
 async def generate_storefront_copy_ai_v2(data: StorefrontCopyAIIn):
     copy, source = await _generate_storefront_copy_with_ai(data)
@@ -547,6 +640,22 @@ async def switch_active_shop(shop_id: str, request: Request):
 async def create_branch_shop(data: ShopIn, request: Request):
     """Create a new shop/cabang for the current owner and switch to it."""
     user = await require_user(request)
+    # grandfather_existing_shops_branch_create_guard
+    # Existing shops stay accessible after downgrade. Only creating a new branch follows the active tier limit.
+    owner_user_id = user.get("user_id")
+    current_tier = user.get("tier") or "free"
+    max_shops_allowed = int(get_limits(current_tier).get("max_shops_per_user", 1) or 1)
+    owned_shops_count = await db.shops.count_documents({"owner_user_id": owner_user_id})
+
+    if owned_shops_count >= max_shops_allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Batas cabang paket kamu sudah tercapai. "
+                "Toko yang sudah ada tetap bisa diakses, tapi tambah cabang baru perlu upgrade."
+            ),
+        )
+
 
     if _is_staff(user):
         raise HTTPException(status_code=403, detail="Staff tidak bisa membuat cabang")

@@ -163,6 +163,73 @@ export default function ShopSettings() {
 
 
 
+
+  const getStorefrontTemplateFeatureConfig = (tierValue) => {
+    const normalizedTier = String(tierValue || "free").toLowerCase();
+
+    if (normalizedTier === "business") {
+      return {
+        tier: "business",
+        templates: true,
+        editor: true,
+        ai: true,
+        advanced: true,
+        allowedStyles: ["classic", "modern", "compact", "premium", "playful"],
+        aiLimit: 200,
+      };
+    }
+
+    if (normalizedTier === "pro") {
+      return {
+        tier: "pro",
+        templates: true,
+        editor: true,
+        ai: true,
+        advanced: false,
+        allowedStyles: ["classic", "modern", "compact", "premium", "playful"],
+        aiLimit: 30,
+      };
+    }
+
+    if (normalizedTier === "starter") {
+      return {
+        tier: "starter",
+        templates: true,
+        editor: true,
+        ai: false,
+        advanced: false,
+        allowedStyles: ["classic", "modern", "compact"],
+        aiLimit: 0,
+      };
+    }
+
+    return {
+      tier: "free",
+      templates: false,
+      editor: false,
+      ai: false,
+      advanced: false,
+      allowedStyles: ["classic"],
+      aiLimit: 0,
+    };
+  };
+
+  const currentUserForStorefrontTier = typeof user !== "undefined" ? user : null;
+  const storefrontTier =
+    shop?.tier ||
+    shop?.plan ||
+    shop?.subscription_tier ||
+    currentUserForStorefrontTier?.tier ||
+    currentUserForStorefrontTier?.plan ||
+    currentUserForStorefrontTier?.subscription_tier ||
+    "free";
+
+  const storefrontTemplateFeatures = getStorefrontTemplateFeatureConfig(storefrontTier);
+  const storefrontTemplateLocked = !storefrontTemplateFeatures.templates;
+  const storefrontEditorLocked = !storefrontTemplateFeatures.editor;
+  const storefrontAiLocked = !storefrontTemplateFeatures.ai;
+
+
   const enhanceStorefrontCopy = async () => {
 
     if (enhancingStorefrontCopy) return;
@@ -919,6 +986,7 @@ export default function ShopSettings() {
                   value={shop.storefront_mode || "catalog"}
                   onChange={(e) => update("storefront_mode", e.target.value)}
                   className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                  disabled={storefrontTemplateLocked}
                   data-testid="storefront-mode-select"
                 >
                   <option value="catalog">Katalog Produk</option>
@@ -936,13 +1004,14 @@ export default function ShopSettings() {
                   value={shop.storefront_style || "classic"}
                   onChange={(e) => update("storefront_style", e.target.value)}
                   className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                  disabled={storefrontTemplateLocked}
                   data-testid="storefront-style-select"
                 >
                   <option value="classic">Classic</option>
                   <option value="modern">Modern</option>
                   <option value="compact">Compact</option>
-                  <option value="premium">Premium</option>
-                  <option value="playful">Playful</option>
+                  <option value="premium" disabled={!storefrontTemplateFeatures.allowedStyles.includes("premium")}>Premium (Pro)</option>
+                  <option value="playful" disabled={!storefrontTemplateFeatures.allowedStyles.includes("playful")}>Playful (Pro)</option>
                 </select>
                 <span className="mt-1 block text-xs text-brand-mute">
                   Style menentukan nuansa visual website toko.
@@ -958,6 +1027,7 @@ export default function ShopSettings() {
                   value={shop.storefront_renderer || "legacy"}
                   onChange={(e) => update("storefront_renderer", e.target.value)}
                   className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                  disabled={storefrontTemplateLocked}
                   data-testid="storefront-renderer-select"
                 >
                   <option value="legacy">Legacy Aman</option>
@@ -969,6 +1039,37 @@ export default function ShopSettings() {
               </label>
             </div>
 
+
+
+            <div
+              className={`mt-4 rounded-2xl border p-4 ${
+                storefrontTemplateLocked
+                  ? "border-amber-200 bg-amber-50"
+                  : storefrontAiLocked
+                    ? "border-blue-200 bg-blue-50"
+                    : "border-emerald-200 bg-emerald-50"
+              }`}
+              data-testid="storefront-template-tier-gate"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-brand-ink">
+                    Fitur template untuk paket kamu
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed text-brand-mute">
+                    {storefrontTemplateLocked
+                      ? "Paket Free memakai website legacy. Upgrade ke Starter untuk membuka mode/template website."
+                      : storefrontAiLocked
+                        ? "Paket kamu sudah bisa memakai Template Baru dan Editor Konten. AI Enhance tersedia mulai Pro."
+                        : `Paket kamu membuka semua template dan AI Enhance (${storefrontTemplateFeatures.aiLimit}x/bulan).`}
+                  </p>
+                </div>
+
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-extrabold text-brand-ink shadow-sm">
+                  {String(storefrontTemplateFeatures.tier).toUpperCase()}
+                </span>
+              </div>
+            </div>
 
             {(() => {
               const previewMode = shop.storefront_mode || "catalog";
@@ -1236,11 +1337,11 @@ export default function ShopSettings() {
                   <button
                     type="button"
                     onClick={enhanceStorefrontCopy}
-                    disabled={enhancingStorefrontCopy}
+                    disabled={enhancingStorefrontCopy || storefrontAiLocked}
                     className="inline-flex items-center justify-center rounded-full bg-brand px-3 py-1 text-xs font-extrabold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                     data-testid="storefront-ai-enhance-copy-btn"
                   >
-                    {enhancingStorefrontCopy ? "AI menulis..." : "AI Enhance"}
+                    {enhancingStorefrontCopy ? "AI menulis..." : storefrontAiLocked ? "AI Pro" : "AI Enhance"}
                   </button>
                 </div>
               </div>
@@ -1254,6 +1355,7 @@ export default function ShopSettings() {
                     placeholder="Contoh: Fashion lokal Bandung untuk gaya harianmu"
                     maxLength={90}
                     className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    disabled={storefrontEditorLocked}
                     data-testid="storefront-hero-title-input"
                   />
                   <span className="mt-1 block text-xs text-brand-mute">
@@ -1270,6 +1372,7 @@ export default function ShopSettings() {
                     maxLength={220}
                     rows={3}
                     className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    disabled={storefrontEditorLocked}
                     data-testid="storefront-hero-subtitle-input"
                   />
                   <span className="mt-1 block text-xs text-brand-mute">
@@ -1285,6 +1388,7 @@ export default function ShopSettings() {
                     placeholder="Contoh: Chat & Order Sekarang"
                     maxLength={36}
                     className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    disabled={storefrontEditorLocked}
                     data-testid="storefront-cta-label-input"
                   />
                 </label>
@@ -1297,6 +1401,7 @@ export default function ShopSettings() {
                     placeholder="Contoh: Produk Favorit Minggu Ini"
                     maxLength={60}
                     className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    disabled={storefrontEditorLocked}
                     data-testid="storefront-featured-title-input"
                   />
                 </label>
@@ -1309,6 +1414,7 @@ export default function ShopSettings() {
                     placeholder="Contoh: Cerita di balik Kain Kita Bandung"
                     maxLength={80}
                     className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    disabled={storefrontEditorLocked}
                     data-testid="storefront-about-title-input"
                   />
                 </label>

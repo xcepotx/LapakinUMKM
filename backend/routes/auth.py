@@ -168,6 +168,45 @@ async def _expire_trial_if_needed(user: dict) -> dict:
         and not user.get("subscription_plan_id")
     )
 
+    # paid_trial_downgrade_guard
+    # Paid users can have stale trial flags from older flows.
+    # If they have subscription metadata, never downgrade tier to free just because trial_expires_at passed.
+    has_paid_subscription_for_trial_guard = bool(
+        user.get("subscription_status") in {"active", "suspended"}
+        or user.get("subscription_expires_at")
+        or user.get("subscription_started_at")
+        or user.get("subscription_suspended_at")
+        or user.get("subscription_unsuspended_at")
+        or user.get("last_payment_id")
+        or user.get("payment_id")
+        or user.get("midtrans_order_id")
+    )
+
+    if has_paid_subscription_for_trial_guard and has_expired_trial_date and (is_current_trial or is_legacy_expired_trial):
+        await db.users.update_one(
+            {"user_id": user["user_id"]},
+            {
+                "$set": {
+                    "trial": False,
+                    "trial_expired": True,
+                    "trial_expired_at": now.isoformat(),
+                    "updated_at": now.isoformat(),
+                },
+                "$unset": {
+                    "trial_expires_at": "",
+                },
+            },
+        )
+
+        user["trial"] = False
+        user["trial_expired"] = True
+        user["trial_expired_at"] = now.isoformat()
+        user["trial_expires_at"] = None
+
+        has_expired_trial_date = False
+        is_current_trial = False
+        is_legacy_expired_trial = False
+
     if has_expired_trial_date and (is_current_trial or is_legacy_expired_trial):
         update = {
             "tier": "free",
