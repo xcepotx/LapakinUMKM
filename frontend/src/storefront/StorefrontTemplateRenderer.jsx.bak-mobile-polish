@@ -687,31 +687,6 @@ function renderSection(section, context) {
   }
 }
 
-
-function MobileStickyOrderBar({ shop, template }) {
-  const mode = getModeFromTemplate(template);
-  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
-
-  const label =
-    mode === "services"
-      ? "Konsultasi via WhatsApp"
-      : mode === "food_menu"
-        ? "Pesan Menu via WhatsApp"
-        : "Order via WhatsApp";
-
-  return (
-    <div className="ltr-mobile-sticky-order" data-testid="storefront-mobile-sticky-order">
-      <div>
-        <span>{shopName}</span>
-        <strong>{label}</strong>
-      </div>
-      <a href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
-        Chat
-      </a>
-    </div>
-  );
-}
-
 export default function StorefrontTemplateRenderer({ data, template }) {
   const shop = getShop(data);
   const products = getProducts(data);
@@ -757,8 +732,6 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       <div className="ltr-container">
         {sections.map((section) => renderSection(section, { shop, products, template }))}
       </div>
-
-      <MobileStickyOrderBar shop={shop} template={template} />
     </main>
   );
 }
