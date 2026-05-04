@@ -13,7 +13,6 @@ import "../styles/storefront-mode-style.css";
 
 import "../styles/storefront-template-engine.css";
 import { resolveStorefrontTemplate } from "../storefront/templates";
-import { SafeStorefrontTemplateRenderer } from "../storefront/StorefrontTemplateRenderer";
 const STOREFRONT_MODE_OPTIONS = {
   catalog: {
     key: "catalog",
@@ -286,43 +285,6 @@ export default function Storefront({ tenantSlug = null }) {
 
   // Filler placeholders so grid never feels empty
   const fillerCount = Math.max(0, 4 - products.length);
-
-
-  const storefrontRendererSetting =
-    shop?.storefront_renderer ||
-    data?.shop?.storefront_renderer ||
-    data?.store?.storefront_renderer ||
-    data?.tenant?.storefront_renderer ||
-    data?.data?.shop?.storefront_renderer ||
-    data?.data?.store?.storefront_renderer ||
-    "legacy";
-
-  const templateRendererPreviewEnabled =
-    typeof window !== "undefined" &&
-    (
-      new URLSearchParams(window.location.search).get("renderer") === "1" ||
-      storefrontRendererSetting === "template"
-    );
-
-  if (templateRendererPreviewEnabled && data && activeStorefrontTemplate) {
-    const templateRendererData = { ...(data || {}) };
-
-    if (typeof shop !== "undefined") {
-      templateRendererData.shop = shop;
-    }
-
-    if (typeof products !== "undefined") {
-      templateRendererData.products = products;
-    }
-
-    return (
-      <SafeStorefrontTemplateRenderer
-        data={templateRendererData}
-        template={activeStorefrontTemplate}
-      />
-    );
-  }
-
 
   return (
     <div className="min-h-screen bg-brand-sand">

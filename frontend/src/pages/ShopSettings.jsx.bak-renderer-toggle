@@ -870,25 +870,6 @@ export default function ShopSettings() {
               </label>
             </div>
 
-
-            <div className="mt-4 rounded-2xl border border-brand-line bg-brand-off p-4">
-              <label className="block">
-                <span className="text-sm font-bold text-brand-ink">Renderer Website</span>
-                <select
-                  value={shop.storefront_renderer || "legacy"}
-                  onChange={(e) => update("storefront_renderer", e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
-                  data-testid="storefront-renderer-select"
-                >
-                  <option value="legacy">Legacy Aman</option>
-                  <option value="template">Template Baru</option>
-                </select>
-                <span className="mt-1 block text-xs text-brand-mute">
-                  Legacy menjaga tampilan lama. Template Baru memakai layout renderer mode/style yang lebih imajinatif.
-                </span>
-              </label>
-            </div>
-
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {[
                 { mode: "catalog", title: "Katalog", desc: "Untuk produk fisik dan toko umum." },

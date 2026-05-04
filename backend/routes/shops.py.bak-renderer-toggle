@@ -16,14 +16,12 @@ router = APIRouter()
 
 ALLOWED_STOREFRONT_MODES = {"catalog", "food_menu", "services"}
 ALLOWED_STOREFRONT_STYLES = {"classic", "modern", "compact", "premium", "playful"}
-ALLOWED_STOREFRONT_RENDERERS = {"legacy", "template"}
 
 def _with_storefront_defaults(shop):
     if not shop:
         return shop
     shop.setdefault("storefront_mode", "catalog")
     shop.setdefault("storefront_style", "classic")
-    shop.setdefault("storefront_renderer", "legacy")
     return shop
 
 
@@ -74,7 +72,6 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     payload = data.model_dump()
     raw_storefront_mode = payload.get("storefront_mode")
     raw_storefront_style = payload.get("storefront_style")
-    raw_storefront_renderer = payload.get("storefront_renderer")
 
     if raw_storefront_mode in (None, ""):
         payload.pop("storefront_mode", None)
@@ -89,13 +86,6 @@ async def create_or_update_shop(data: ShopIn, request: Request):
         raise HTTPException(status_code=400, detail="Style tampilan website tidak valid")
     else:
         payload["storefront_style"] = raw_storefront_style
-
-    if raw_storefront_renderer in (None, ""):
-        payload.pop("storefront_renderer", None)
-    elif raw_storefront_renderer not in ALLOWED_STOREFRONT_RENDERERS:
-        raise HTTPException(status_code=400, detail="Renderer tampilan website tidak valid")
-    else:
-        payload["storefront_renderer"] = raw_storefront_renderer
 
     if user.get("shop_id"):
         # update
@@ -123,7 +113,6 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     }
     doc.setdefault("storefront_mode", "catalog")
     doc.setdefault("storefront_style", "classic")
-    doc.setdefault("storefront_renderer", "legacy")
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})
     return {k: v for k, v in doc.items() if k != "_id"}

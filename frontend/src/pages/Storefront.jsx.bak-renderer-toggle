@@ -288,21 +288,9 @@ export default function Storefront({ tenantSlug = null }) {
   const fillerCount = Math.max(0, 4 - products.length);
 
 
-  const storefrontRendererSetting =
-    shop?.storefront_renderer ||
-    data?.shop?.storefront_renderer ||
-    data?.store?.storefront_renderer ||
-    data?.tenant?.storefront_renderer ||
-    data?.data?.shop?.storefront_renderer ||
-    data?.data?.store?.storefront_renderer ||
-    "legacy";
-
   const templateRendererPreviewEnabled =
     typeof window !== "undefined" &&
-    (
-      new URLSearchParams(window.location.search).get("renderer") === "1" ||
-      storefrontRendererSetting === "template"
-    );
+    new URLSearchParams(window.location.search).get("renderer") === "1";
 
   if (templateRendererPreviewEnabled && data && activeStorefrontTemplate) {
     const templateRendererData = { ...(data || {}) };
