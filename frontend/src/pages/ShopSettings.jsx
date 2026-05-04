@@ -1163,6 +1163,77 @@ export default function ShopSettings() {
               </div>
             </div>
 
+
+            {(() => {
+              const activeRenderer = shop.storefront_renderer || "legacy";
+              const isTemplateActive = activeRenderer === "template";
+              const activeSlug = shop.slug || shop.shop_slug || shop.store_slug || "";
+
+              return (
+                <div
+                  className={`mt-4 rounded-2xl border p-4 ${
+                    isTemplateActive
+                      ? "border-emerald-200 bg-emerald-50"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                  data-testid="storefront-template-active-status"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-extrabold ${
+                            isTemplateActive
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-white text-slate-700"
+                          }`}
+                          data-testid="storefront-template-active-badge"
+                        >
+                          {isTemplateActive ? "Template Baru Aktif" : "Legacy Aman Aktif"}
+                        </span>
+
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-extrabold text-brand-ink shadow-sm">
+                          Website Publik
+                        </span>
+                      </div>
+
+                      <p className="mt-3 text-sm leading-relaxed text-brand-mute">
+                        {isTemplateActive
+                          ? "Website toko publik sedang memakai renderer Template Baru sesuai mode, style, konten, dan produk unggulan yang dipilih."
+                          : "Website toko publik masih memakai tampilan Legacy Aman. Template Baru tetap bisa dicek lewat tombol preview sebelum dijadikan tampilan utama."}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {activeSlug && (
+                        <a
+                          href={`/toko/${activeSlug}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center rounded-xl border border-brand-line bg-white px-4 py-2 text-sm font-extrabold text-brand-ink hover:bg-brand-off"
+                          data-testid="storefront-active-live-link"
+                        >
+                          Lihat Website Aktif
+                        </a>
+                      )}
+
+                      {activeSlug && (
+                        <a
+                          href={`/toko/${activeSlug}?renderer=1`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center rounded-xl bg-brand px-4 py-2 text-sm font-extrabold text-white shadow-sm hover:opacity-90"
+                          data-testid="storefront-active-template-preview-link"
+                        >
+                          Preview Template Baru
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {(() => {
               const previewMode = shop.storefront_mode || "catalog";
               const previewStyle = shop.storefront_style || "classic";
