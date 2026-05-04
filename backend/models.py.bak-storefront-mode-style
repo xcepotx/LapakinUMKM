@@ -39,8 +39,6 @@ class ResetIn(BaseModel):
 
 # ---- Shops ----
 class ShopIn(BaseModel):
-    storefront_mode: Optional[str] = None
-    storefront_style: Optional[str] = None
     name: str
     tagline: Optional[str] = ""
     description: Optional[str] = ""

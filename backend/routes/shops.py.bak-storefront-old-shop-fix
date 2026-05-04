@@ -17,14 +17,6 @@ router = APIRouter()
 ALLOWED_STOREFRONT_MODES = {"catalog", "food_menu", "services"}
 ALLOWED_STOREFRONT_STYLES = {"classic", "modern", "compact", "premium", "playful"}
 
-def _with_storefront_defaults(shop):
-    if not shop:
-        return shop
-    shop.setdefault("storefront_mode", "catalog")
-    shop.setdefault("storefront_style", "classic")
-    return shop
-
-
 
 
 async def _unique_shop_slug(name: str) -> str:
@@ -61,7 +53,6 @@ async def get_my_shop(request: Request):
     if not user.get("shop_id"):
         return None
     shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
-    shop = _with_storefront_defaults(shop)
     return shop
 
 
@@ -96,7 +87,6 @@ async def create_or_update_shop(data: ShopIn, request: Request):
         # Invalidate OG image cache (cover/brand/name/tagline may have changed)
         OG_PNG_CACHE.pop(user["shop_id"], None)
         shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
-        shop = _with_storefront_defaults(shop)
         return shop
     # On first creation, smart-default sells_by based on business_type
     if payload.get("sells_by") in (None, "", "stock"):
@@ -125,7 +115,6 @@ async def toggle_shop_open(request: Request):
     if not user.get("shop_id"):
         raise HTTPException(status_code=400, detail="Belum punya toko")
     shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
-    shop = _with_storefront_defaults(shop)
     if not shop:
         raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
     new_state = not bool(shop.get("is_open", True))
@@ -180,7 +169,6 @@ async def list_my_shops(request: Request):
         shops = []
         if user.get("shop_id"):
             shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
-            shop = _with_storefront_defaults(shop)
             if shop:
                 shops = [shop]
         return {
@@ -306,8 +294,6 @@ async def update_my_shop_open_status(request: Request):
     is_open = bool(payload.get("is_open"))
 
     shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
-
-    shop = _with_storefront_defaults(shop)
     if not shop:
         raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
 
@@ -335,7 +321,6 @@ async def update_my_shop_open_status(request: Request):
 @router.get("/shops/by-slug/{slug}")
 async def get_shop_public(slug: str):
     shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
-    shop = _with_storefront_defaults(shop)
     if not shop:
         raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
     if shop.get("status") == "suspended":
@@ -402,7 +387,6 @@ async def verify_custom_domain(request: Request):
     user = await require_user(request)
     require_feature(user, "custom_domain")
     shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
-    shop = _with_storefront_defaults(shop)
     if not shop or not shop.get("custom_domain"):
         raise HTTPException(status_code=400, detail="Belum request custom domain")
     domain = shop["custom_domain"]
@@ -455,7 +439,6 @@ async def share_health(request: Request):
     if not user.get("shop_id"):
         raise HTTPException(status_code=400, detail="Belum punya toko")
     shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
-    shop = _with_storefront_defaults(shop)
     if not shop:
         raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
 

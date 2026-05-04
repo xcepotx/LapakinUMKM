@@ -1,0 +1,308 @@
+/*
+ * Lapakin Storefront Template Engine
+ * Stronger visual language per mode + style.
+ * The actual active template is applied from Storefront.jsx through html data attributes.
+ */
+
+html[data-lapakin-storefront-template] {
+  --lapakin-template-accent: #6b4f2a;
+  --lapakin-template-bg: #fbf6ee;
+  --lapakin-template-surface: #ffffff;
+  --lapakin-template-ink: #2e2418;
+  --lapakin-template-muted: #7c6b5a;
+}
+
+html[data-lapakin-storefront-template] body,
+html[data-lapakin-storefront-template] #root {
+  background: var(--lapakin-template-bg) !important;
+}
+
+/* Visible template badge */
+#lapakin-storefront-mode-style-badge {
+  max-width: min(92vw, 520px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Hero-like first sections become more template-specific */
+html[data-lapakin-storefront-template] main > section:first-of-type,
+html[data-lapakin-storefront-template] main > div:first-child,
+html[data-lapakin-storefront-template] [class*="min-h-screen"] > section:first-of-type {
+  position: relative;
+  overflow: hidden;
+}
+
+html[data-lapakin-storefront-template] main > section:first-of-type::after,
+html[data-lapakin-storefront-template] main > div:first-child::after,
+html[data-lapakin-storefront-template] [class*="min-h-screen"] > section:first-of-type::after {
+  content: "";
+  position: absolute;
+  inset: auto -10% -35% auto;
+  width: 280px;
+  height: 280px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lapakin-template-accent) 20%, transparent);
+  pointer-events: none;
+}
+
+/* Generic card transformation */
+html[data-lapakin-storefront-template] article,
+html[data-lapakin-storefront-template] [data-testid*="product"],
+html[data-lapakin-storefront-template] [class*="shadow-sm"],
+html[data-lapakin-storefront-template] [class*="shadow-md"] {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+html[data-lapakin-storefront-template] article:hover,
+html[data-lapakin-storefront-template] [data-testid*="product"]:hover {
+  transform: translateY(-2px);
+}
+
+/* STYLE: modern */
+html[data-lapakin-storefront-template$="_modern"] {
+  --lapakin-template-accent: #0f172a;
+  --lapakin-template-bg: #f8fafc;
+  --lapakin-template-surface: #ffffff;
+  --lapakin-template-ink: #0f172a;
+  --lapakin-template-muted: #64748b;
+}
+
+html[data-lapakin-storefront-template$="_modern"] body,
+html[data-lapakin-storefront-template$="_modern"] #root {
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.16), transparent 28rem),
+    linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
+}
+
+html[data-lapakin-storefront-template$="_modern"] article,
+html[data-lapakin-storefront-template$="_modern"] [data-testid*="product"] {
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08) !important;
+}
+
+/* STYLE: compact */
+html[data-lapakin-storefront-template$="_compact"] {
+  --lapakin-template-accent: #334155;
+  --lapakin-template-bg: #ffffff;
+  --lapakin-template-surface: #ffffff;
+  --lapakin-template-ink: #111827;
+  --lapakin-template-muted: #6b7280;
+}
+
+html[data-lapakin-storefront-template$="_compact"] section,
+html[data-lapakin-storefront-template$="_compact"] article,
+html[data-lapakin-storefront-template$="_compact"] [class*="rounded"] {
+  border-radius: 0.75rem !important;
+}
+
+html[data-lapakin-storefront-template$="_compact"] article,
+html[data-lapakin-storefront-template$="_compact"] [data-testid*="product"] {
+  padding: 0.75rem !important;
+  gap: 0.75rem !important;
+}
+
+html[data-lapakin-storefront-template$="_compact"] h1 {
+  font-size: clamp(1.7rem, 5vw, 2.4rem) !important;
+}
+
+/* STYLE: premium */
+html[data-lapakin-storefront-template$="_premium"] {
+  --lapakin-template-accent: #d97706;
+  --lapakin-template-bg: #0c0a09;
+  --lapakin-template-surface: #1c1917;
+  --lapakin-template-ink: #fafaf9;
+  --lapakin-template-muted: #d6d3d1;
+}
+
+html[data-lapakin-storefront-template$="_premium"] body,
+html[data-lapakin-storefront-template$="_premium"] #root {
+  background:
+    radial-gradient(circle at top, rgba(217, 119, 6, 0.25), transparent 24rem),
+    radial-gradient(circle at bottom right, rgba(120, 53, 15, 0.22), transparent 30rem),
+    #0c0a09 !important;
+  color: #fafaf9 !important;
+}
+
+html[data-lapakin-storefront-template$="_premium"] section,
+html[data-lapakin-storefront-template$="_premium"] article,
+html[data-lapakin-storefront-template$="_premium"] [class*="bg-white"] {
+  background-color: rgba(28, 25, 23, 0.94) !important;
+  color: #fafaf9 !important;
+  border-color: rgba(245, 158, 11, 0.32) !important;
+}
+
+html[data-lapakin-storefront-template$="_premium"] [class*="text-brand-ink"],
+html[data-lapakin-storefront-template$="_premium"] [class*="text-gray-900"],
+html[data-lapakin-storefront-template$="_premium"] [class*="text-slate-900"],
+html[data-lapakin-storefront-template$="_premium"] h1,
+html[data-lapakin-storefront-template$="_premium"] h2,
+html[data-lapakin-storefront-template$="_premium"] h3 {
+  color: #fafaf9 !important;
+}
+
+html[data-lapakin-storefront-template$="_premium"] [class*="text-brand-mute"],
+html[data-lapakin-storefront-template$="_premium"] [class*="text-brand-muted"],
+html[data-lapakin-storefront-template$="_premium"] [class*="text-gray-500"],
+html[data-lapakin-storefront-template$="_premium"] [class*="text-gray-600"],
+html[data-lapakin-storefront-template$="_premium"] p {
+  color: #d6d3d1 !important;
+}
+
+/* STYLE: playful */
+html[data-lapakin-storefront-template$="_playful"] {
+  --lapakin-template-accent: #f97316;
+  --lapakin-template-bg: #fff7ed;
+  --lapakin-template-surface: #ffffff;
+  --lapakin-template-ink: #431407;
+  --lapakin-template-muted: #9a3412;
+}
+
+html[data-lapakin-storefront-template$="_playful"] body,
+html[data-lapakin-storefront-template$="_playful"] #root {
+  background:
+    radial-gradient(circle at 12% 12%, rgba(251, 146, 60, 0.28), transparent 12rem),
+    radial-gradient(circle at 82% 8%, rgba(253, 224, 71, 0.35), transparent 10rem),
+    linear-gradient(135deg, #fff7ed 0%, #ffedd5 55%, #fef3c7 100%) !important;
+}
+
+html[data-lapakin-storefront-template$="_playful"] section,
+html[data-lapakin-storefront-template$="_playful"] article,
+html[data-lapakin-storefront-template$="_playful"] [class*="rounded-2xl"],
+html[data-lapakin-storefront-template$="_playful"] [class*="rounded-3xl"] {
+  border-radius: 1.75rem !important;
+}
+
+html[data-lapakin-storefront-template$="_playful"] article,
+html[data-lapakin-storefront-template$="_playful"] [data-testid*="product"] {
+  border-color: #fed7aa !important;
+  box-shadow: 0 16px 32px rgba(249, 115, 22, 0.12) !important;
+}
+
+/* MODE: catalog */
+html[data-lapakin-storefront-mode="catalog"] article,
+html[data-lapakin-storefront-mode="catalog"] [data-testid*="product"] {
+  border-left: 6px solid var(--lapakin-template-accent) !important;
+}
+
+/* MODE: food menu */
+html[data-lapakin-storefront-mode="food_menu"] {
+  --lapakin-template-food-accent: #fb923c;
+}
+
+html[data-lapakin-storefront-mode="food_menu"] article,
+html[data-lapakin-storefront-mode="food_menu"] [data-testid*="product"] {
+  border-left: 7px solid var(--lapakin-template-food-accent) !important;
+}
+
+html[data-lapakin-storefront-mode="food_menu"] img {
+  border-radius: 1rem !important;
+}
+
+html[data-lapakin-storefront-mode="food_menu"] h1::before {
+  content: "Menu ";
+  color: var(--lapakin-template-accent);
+}
+
+/* MODE: services */
+html[data-lapakin-storefront-mode="services"] {
+  --lapakin-template-service-accent: #2563eb;
+}
+
+html[data-lapakin-storefront-mode="services"] article,
+html[data-lapakin-storefront-mode="services"] [data-testid*="product"] {
+  border-left: 7px solid var(--lapakin-template-service-accent) !important;
+  border-style: dashed !important;
+}
+
+html[data-lapakin-storefront-mode="services"] h1::before {
+  content: "Layanan ";
+  color: var(--lapakin-template-accent);
+}
+
+/* Hero variants */
+html[data-lapakin-storefront-hero="split_banner"] main > section:first-of-type,
+html[data-lapakin-storefront-hero="split_service_hero"] main > section:first-of-type {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--lapakin-template-accent) 14%, white), white) !important;
+  border: 1px solid color-mix(in srgb, var(--lapakin-template-accent) 18%, transparent) !important;
+}
+
+html[data-lapakin-storefront-hero="luxury_banner"] main > section:first-of-type,
+html[data-lapakin-storefront-hero="chef_story_banner"] main > section:first-of-type,
+html[data-lapakin-storefront-hero="luxury_service_banner"] main > section:first-of-type {
+  background:
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.24), transparent 16rem),
+    linear-gradient(135deg, #1c1917, #0c0a09) !important;
+  color: #fafaf9 !important;
+  border: 1px solid rgba(245, 158, 11, 0.32) !important;
+}
+
+html[data-lapakin-storefront-hero="fun_banner"] main > section:first-of-type,
+html[data-lapakin-storefront-hero="fun_food_banner"] main > section:first-of-type,
+html[data-lapakin-storefront-hero="friendly_service_banner"] main > section:first-of-type {
+  background:
+    radial-gradient(circle at 88% 20%, rgba(253, 224, 71, 0.48), transparent 8rem),
+    linear-gradient(135deg, #ffffff, color-mix(in srgb, var(--lapakin-template-accent) 14%, white)) !important;
+  border: 1px solid color-mix(in srgb, var(--lapakin-template-accent) 24%, transparent) !important;
+}
+
+/* Card variants */
+html[data-lapakin-storefront-card="menu_row"] article,
+html[data-lapakin-storefront-card="menu_dense_row"] article,
+html[data-lapakin-storefront-card="fun_food_card"] article {
+  display: grid;
+  grid-template-columns: minmax(72px, 112px) 1fr;
+  align-items: center;
+}
+
+html[data-lapakin-storefront-card="editorial"] article,
+html[data-lapakin-storefront-card="editorial_food"] article,
+html[data-lapakin-storefront-card="service_editorial"] article {
+  min-height: 220px;
+  letter-spacing: 0.01em;
+}
+
+html[data-lapakin-storefront-card="service_standard"] article,
+html[data-lapakin-storefront-card="service_modern"] article,
+html[data-lapakin-storefront-card="service_playful"] article {
+  border-left-width: 8px !important;
+}
+
+/* CTA variants */
+html[data-lapakin-storefront-cta="gold"] a[href*="wa"],
+html[data-lapakin-storefront-cta="gold"] button {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color: #111827 !important;
+}
+
+html[data-lapakin-storefront-cta="gradient"] a[href*="wa"],
+html[data-lapakin-storefront-cta="gradient"] button {
+  background: linear-gradient(135deg, var(--lapakin-template-accent), #facc15) !important;
+  color: #111827 !important;
+}
+
+html[data-lapakin-storefront-cta="dark"] a[href*="wa"],
+html[data-lapakin-storefront-cta="dark"] button {
+  background: #0f172a !important;
+  color: white !important;
+}
+
+/* Density */
+html[data-lapakin-storefront-density="airy"] main,
+html[data-lapakin-storefront-density="airy"] [class*="container"] {
+  gap: 2rem !important;
+}
+
+html[data-lapakin-storefront-density="tight"] section {
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+@media (max-width: 640px) {
+  html[data-lapakin-storefront-card="menu_row"] article,
+  html[data-lapakin-storefront-card="menu_dense_row"] article,
+  html[data-lapakin-storefront-card="fun_food_card"] article {
+    grid-template-columns: 84px 1fr;
+  }
+}

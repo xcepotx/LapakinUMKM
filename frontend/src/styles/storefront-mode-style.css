@@ -1,0 +1,110 @@
+
+
+
+/*
+ * Lapakin Storefront Mode + Style
+ * Controlled by Storefront.jsx using html[data-lapakin-storefront-mode/style].
+ */
+
+#lapakin-storefront-mode-style-badge {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 99999;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+html[data-lapakin-storefront-style="classic"] body,
+html[data-lapakin-storefront-style="classic"] #root {
+  background: #fbf6ee !important;
+}
+
+html[data-lapakin-storefront-style="modern"] body,
+html[data-lapakin-storefront-style="modern"] #root {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
+}
+
+html[data-lapakin-storefront-style="playful"] body,
+html[data-lapakin-storefront-style="playful"] #root {
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 55%, #fef3c7 100%) !important;
+}
+
+html[data-lapakin-storefront-style="premium"] body,
+html[data-lapakin-storefront-style="premium"] #root {
+  background: radial-gradient(circle at top, #292524 0%, #0c0a09 55%, #000 100%) !important;
+  color: #fafaf9 !important;
+}
+
+html[data-lapakin-storefront-style="compact"] body,
+html[data-lapakin-storefront-style="compact"] #root {
+  background: #ffffff !important;
+}
+
+html[data-lapakin-storefront-style="compact"] section,
+html[data-lapakin-storefront-style="compact"] article,
+html[data-lapakin-storefront-style="compact"] [class*="rounded"] {
+  border-radius: 0.875rem !important;
+}
+
+html[data-lapakin-storefront-style="premium"] section,
+html[data-lapakin-storefront-style="premium"] article,
+html[data-lapakin-storefront-style="premium"] [class*="bg-white"] {
+  background-color: rgba(28, 25, 23, 0.94) !important;
+  color: #fafaf9 !important;
+  border-color: #57534e !important;
+}
+
+html[data-lapakin-storefront-style="premium"] [class*="text-brand-ink"],
+html[data-lapakin-storefront-style="premium"] [class*="text-gray-900"],
+html[data-lapakin-storefront-style="premium"] [class*="text-slate-900"] {
+  color: #fafaf9 !important;
+}
+
+html[data-lapakin-storefront-style="premium"] [class*="text-brand-mute"],
+html[data-lapakin-storefront-style="premium"] [class*="text-brand-muted"],
+html[data-lapakin-storefront-style="premium"] [class*="text-gray-500"],
+html[data-lapakin-storefront-style="premium"] [class*="text-gray-600"] {
+  color: #d6d3d1 !important;
+}
+
+html[data-lapakin-storefront-style="playful"] section,
+html[data-lapakin-storefront-style="playful"] article,
+html[data-lapakin-storefront-style="playful"] [class*="bg-white"] {
+  border-color: #fed7aa !important;
+}
+
+html[data-lapakin-storefront-mode="food_menu"] article,
+html[data-lapakin-storefront-mode="food_menu"] [data-testid*="product"],
+html[data-lapakin-storefront-mode="food_menu"] [class*="card"] {
+  border-left: 6px solid #fb923c !important;
+}
+
+html[data-lapakin-storefront-mode="services"] article,
+html[data-lapakin-storefront-mode="services"] [data-testid*="product"],
+html[data-lapakin-storefront-mode="services"] [class*="card"] {
+  border-left: 6px solid #2563eb !important;
+  border-style: dashed !important;
+}
+
+html[data-lapakin-storefront-mode="catalog"] article,
+html[data-lapakin-storefront-mode="catalog"] [data-testid*="product"],
+html[data-lapakin-storefront-mode="catalog"] [class*="card"] {
+  border-left: 6px solid #a16207 !important;
+}
+
+html[data-lapakin-storefront-mode="food_menu"] img {
+  border-radius: 1rem !important;
+}
+
+html[data-lapakin-storefront-style="modern"] button,
+html[data-lapakin-storefront-style="playful"] button,
+html[data-lapakin-storefront-style="premium"] button {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+}

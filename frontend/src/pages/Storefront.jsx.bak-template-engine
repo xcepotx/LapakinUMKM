@@ -11,8 +11,6 @@ import { Button } from "@/components/ui/button";
 import "../styles/storefront-mode-style.css";
 
 
-import "../styles/storefront-template-engine.css";
-import { resolveStorefrontTemplate } from "../storefront/templates";
 const STOREFRONT_MODE_OPTIONS = {
   catalog: {
     key: "catalog",
@@ -80,24 +78,13 @@ export default function Storefront({ tenantSlug = null }) {
     STOREFRONT_MODE_OPTIONS[storefrontThemeMode] || STOREFRONT_MODE_OPTIONS.catalog;
   const storefrontStyleMeta =
     STOREFRONT_STYLE_OPTIONS[storefrontThemeStyle] || STOREFRONT_STYLE_OPTIONS.classic;
-  const activeStorefrontTemplate = resolveStorefrontTemplate(storefrontModeMeta.key, storefrontStyleMeta.key);
 
   useEffect(() => {
     const root = document.documentElement;
 
     root.setAttribute("data-lapakin-storefront-mode", storefrontModeMeta.key);
     root.setAttribute("data-lapakin-storefront-style", storefrontStyleMeta.key);
-    root.setAttribute("data-lapakin-storefront-template", activeStorefrontTemplate.templateKey);
-    root.setAttribute("data-lapakin-storefront-hero", activeStorefrontTemplate.hero);
-    root.setAttribute("data-lapakin-storefront-card", activeStorefrontTemplate.productCard);
-    root.setAttribute("data-lapakin-storefront-cta", activeStorefrontTemplate.ctaStyle);
-    root.setAttribute("data-lapakin-storefront-density", activeStorefrontTemplate.density);
     root.style.setProperty("--lapakin-storefront-accent", storefrontStyleMeta.accent);
-    root.style.setProperty("--lapakin-template-accent", activeStorefrontTemplate.tokens.accent);
-    root.style.setProperty("--lapakin-template-bg", activeStorefrontTemplate.tokens.background);
-    root.style.setProperty("--lapakin-template-surface", activeStorefrontTemplate.tokens.surface);
-    root.style.setProperty("--lapakin-template-ink", activeStorefrontTemplate.tokens.ink);
-    root.style.setProperty("--lapakin-template-muted", activeStorefrontTemplate.tokens.muted);
 
     let badge = document.getElementById("lapakin-storefront-mode-style-badge");
     if (!badge) {
@@ -106,22 +93,12 @@ export default function Storefront({ tenantSlug = null }) {
       document.body.appendChild(badge);
     }
 
-    badge.textContent = `${activeStorefrontTemplate.label} · ${activeStorefrontTemplate.mood}`;
+    badge.textContent = `${storefrontModeMeta.label} · Style: ${storefrontStyleMeta.label}`;
 
     return () => {
       root.removeAttribute("data-lapakin-storefront-mode");
       root.removeAttribute("data-lapakin-storefront-style");
-      root.removeAttribute("data-lapakin-storefront-template");
-      root.removeAttribute("data-lapakin-storefront-hero");
-      root.removeAttribute("data-lapakin-storefront-card");
-      root.removeAttribute("data-lapakin-storefront-cta");
-      root.removeAttribute("data-lapakin-storefront-density");
       root.style.removeProperty("--lapakin-storefront-accent");
-      root.style.removeProperty("--lapakin-template-accent");
-      root.style.removeProperty("--lapakin-template-bg");
-      root.style.removeProperty("--lapakin-template-surface");
-      root.style.removeProperty("--lapakin-template-ink");
-      root.style.removeProperty("--lapakin-template-muted");
 
       const currentBadge = document.getElementById("lapakin-storefront-mode-style-badge");
       if (currentBadge) currentBadge.remove();
