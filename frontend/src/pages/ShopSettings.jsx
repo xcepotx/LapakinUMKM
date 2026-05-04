@@ -29,6 +29,29 @@ const COVER_STYLES = [
 export default function ShopSettings() {
   const navigate = useNavigate();
   const [shop, setShop] = useState(null);
+  const [settingsCurrentUserForTier, setSettingsCurrentUserForTier] = useState(null);
+  // settings-current-user-tier-loader
+  useEffect(() => {
+    let alive = true;
+
+    api.get("/auth/me")
+      .then((response) => {
+        if (alive) {
+          setSettingsCurrentUserForTier(response?.data || null);
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setSettingsCurrentUserForTier(null);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+
   const [enhancingStorefrontCopy, setEnhancingStorefrontCopy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generatingAbout, setGeneratingAbout] = useState(false);
@@ -161,9 +184,6 @@ export default function ShopSettings() {
 
   const update = (k, v) => setShop((s) => ({ ...s, [k]: v }));
 
-
-
-
   const getStorefrontTemplateFeatureConfig = (tierValue) => {
     const normalizedTier = String(tierValue || "free").toLowerCase();
 
@@ -214,14 +234,17 @@ export default function ShopSettings() {
     };
   };
 
-  const currentUserForStorefrontTier = typeof user !== "undefined" ? user : null;
+  const currentUserForStorefrontTier =
+    settingsCurrentUserForTier ||
+    (typeof user !== "undefined" ? user : null);
+
   const storefrontTier =
-    shop?.tier ||
-    shop?.plan ||
-    shop?.subscription_tier ||
     currentUserForStorefrontTier?.tier ||
     currentUserForStorefrontTier?.plan ||
     currentUserForStorefrontTier?.subscription_tier ||
+    shop?.tier ||
+    shop?.plan ||
+    shop?.subscription_tier ||
     "free";
 
   const storefrontTemplateFeatures = getStorefrontTemplateFeatureConfig(storefrontTier);
