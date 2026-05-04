@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, Download, Printer, BookOpen, CheckCircle2 } from "lucide-react";
+import { Download, Printer, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import DashboardLayout from "@/components/DashboardLayout";
 
 const sections = [
   {
@@ -152,7 +153,32 @@ export default function Manual() {
   const pdfUrl = "/manual/lapakin-manual.pdf";
 
   return (
-    <div className="min-h-screen bg-brand-bg text-brand-ink">
+    <DashboardLayout
+      title="Manual Penggunaan"
+      subtitle="Panduan fitur Lapakin untuk owner, staff, dan admin."
+      actions={(
+        <div className="flex items-center gap-2">
+          <Button
+            asChild
+            variant="outline"
+            className="rounded-xl border-brand-line"
+          >
+            <a href="/manual/lapakin-manual.pdf" download>
+              <Download className="w-4 h-4 mr-2" />
+              Download PDF
+            </a>
+          </Button>
+
+          <Button
+            onClick={() => window.print()}
+            className="rounded-xl bg-brand hover:bg-brand-hover text-white"
+          >
+            <Printer className="w-4 h-4 mr-2" />
+            Cetak
+          </Button>
+        </div>
+      )}
+    >
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -161,45 +187,9 @@ export default function Manual() {
         }
       `}</style>
 
-      <header className="no-print sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-brand-line">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
-          <Link to="/dashboard" className="inline-flex items-center gap-2 font-heading font-extrabold">
-            <span className="w-9 h-9 rounded-xl bg-brand text-white grid place-items-center">
-              <BookOpen className="w-4 h-4" />
-            </span>
-            Manual Penggunaan
-          </Link>
+      <div className="max-w-5xl">
 
-          <div className="flex items-center gap-2">
-            <Button
-              asChild
-              variant="outline"
-              className="rounded-xl border-brand-line"
-            >
-              <a href={pdfUrl} download>
-                <Download className="w-4 h-4 mr-2" />
-                Download PDF
-              </a>
-            </Button>
-
-            <Button
-              onClick={() => window.print()}
-              className="rounded-xl bg-brand hover:bg-brand-hover text-white"
-            >
-              <Printer className="w-4 h-4 mr-2" />
-              Cetak / Simpan PDF
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <Link to="/dashboard" className="no-print inline-flex items-center gap-2 text-sm text-brand-mute hover:text-brand mb-6">
-          <ArrowLeft className="w-4 h-4" />
-          Kembali ke Dashboard
-        </Link>
-
-        <section className="bg-white border border-brand-line rounded-3xl shadow-card p-8 sm:p-10 mb-6">
+<section className="bg-white border border-brand-line rounded-3xl shadow-card p-8 sm:p-10 mb-6">
           <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-brand">
             Panduan Penggunaan
           </div>
@@ -244,23 +234,7 @@ export default function Manual() {
           ))}
         </div>
 
-        <section className="mt-6 bg-brand text-white rounded-3xl p-8 no-print">
-          <h2 className="font-heading font-extrabold text-2xl">
-            Butuh bantuan?
-          </h2>
-          <p className="mt-2 text-white/80">
-            Hubungi admin Lapakin jika ada kendala login, billing, subscription, atau fitur toko.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Button asChild className="bg-white text-brand hover:bg-brand-off rounded-xl font-bold">
-              <Link to="/dashboard">Kembali ke Dashboard</Link>
-            </Button>
-            <Button asChild variant="outline" className="border-white/30 text-white hover:bg-white/10 rounded-xl font-bold">
-              <Link to="/dashboard/billing">Lihat Billing</Link>
-            </Button>
-          </div>
-        </section>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

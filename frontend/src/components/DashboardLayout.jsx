@@ -48,6 +48,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
   const mainItems = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Beranda", tid: "nav-home" },
     { to: "/dashboard/products", icon: Package, label: "Produk", tid: "nav-products" },
+    { to: "/dashboard/content-studio", icon: Sparkles, label: "Konten", tid: "nav-content-studio" },
     { to: "/dashboard/sales", icon: BookOpen, label: "Buku Jualan", tid: "nav-sales" },
     { to: "/dashboard/whatsapp", icon: MessageSquare, label: "WhatsApp", tid: "nav-whatsapp" },
     { to: "/dashboard/analytics", icon: BarChart3, label: "Analitik", tid: "nav-analytics" },

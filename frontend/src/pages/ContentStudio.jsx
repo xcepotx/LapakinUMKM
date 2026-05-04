@@ -8,6 +8,7 @@ import {
   Wand2, ChevronLeft, ChevronRight, Package, ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import DashboardLayout from "@/components/DashboardLayout";
 import { rupiah } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -126,9 +127,8 @@ export default function ContentStudio() {
   // ---------- Upsell for Free tier ----------
   if (quota && !canUse) {
     return (
-      <div className="min-h-screen bg-brand-paper">
-        <Header />
-        <div className="max-w-3xl mx-auto px-4 py-12">
+      <DashboardLayout title="Konten" subtitle="Buat konten promosi dari produk toko.">
+<div className="max-w-3xl mx-auto px-4 py-12">
           <div className="bg-white border border-brand-line rounded-3xl p-8 text-center shadow-card" data-testid="content-studio-upsell">
             <div className="w-16 h-16 rounded-2xl bg-brand/10 grid place-items-center mx-auto mb-4">
               <Lock className="w-7 h-7 text-brand" />
@@ -154,7 +154,7 @@ export default function ContentStudio() {
             </Link>
           </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
@@ -162,9 +162,8 @@ export default function ContentStudio() {
   if (tab === "result" && result) {
     const slide = result.slides[activeSlide];
     return (
-      <div className="min-h-screen bg-brand-paper">
-        <Header />
-        <div className="max-w-6xl mx-auto px-4 py-6">
+      <DashboardLayout title="Konten" subtitle="Buat konten promosi dari produk toko.">
+<div className="max-w-6xl mx-auto px-4 py-6">
           <button onClick={() => setTab("setup")}
             className="text-sm text-brand-mute hover:text-brand-ink font-semibold inline-flex items-center gap-1 mb-4"
             data-testid="content-studio-back-setup">
@@ -232,15 +231,14 @@ export default function ContentStudio() {
             </div>
           </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   // ---------- Setup tab ----------
   return (
-    <div className="min-h-screen bg-brand-paper">
-      <Header />
-      <div className="max-w-6xl mx-auto px-4 py-6">
+    <DashboardLayout title="Konten" subtitle="Buat konten promosi dari produk toko.">
+<div className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-widest font-bold text-brand mb-1">CONTENT STUDIO</div>
@@ -353,7 +351,7 @@ export default function ContentStudio() {
           </Button>
         </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
 
@@ -361,10 +359,7 @@ function Header() {
   return (
     <div className="border-b border-brand-line bg-white">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-        <Link to="/dashboard" className="text-sm text-brand-mute hover:text-brand-ink font-semibold inline-flex items-center gap-1" data-testid="content-studio-back">
-          <ArrowLeft className="w-4 h-4" /> Dashboard
-        </Link>
-        <div className="text-xs uppercase tracking-widest font-bold text-brand-mute">Content Studio</div>
+<div className="text-xs uppercase tracking-widest font-bold text-brand-mute">Content Studio</div>
       </div>
     </div>
   );

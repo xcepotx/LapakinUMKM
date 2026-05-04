@@ -225,14 +225,7 @@ export default function Dashboard() {
       subtitle="Kelola produkmu dan biarkan AI mengerjakan bagian susahnya."
       actions={
         <div className="flex gap-2 flex-wrap">
-          <Button
-            onClick={() => navigate("/dashboard/content-studio")}
-            variant="outline"
-            className="border-brand-line bg-white hover:bg-brand-sand rounded-xl px-4 h-12 font-semibold btn-press"
-            data-testid="dashboard-cta-content-studio"
-          >
-            <Sparkles className="w-4 h-4 mr-2" /> Content Studio
-          </Button>
+          
           <Button
             onClick={() => navigate("/dashboard/ai-studio")}
             className="bg-brand hover:bg-brand-hover text-white rounded-xl px-6 h-12 font-semibold btn-press"
