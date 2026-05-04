@@ -47,6 +47,10 @@ class ShopIn(BaseModel):
     storefront_cta_label: Optional[str] = ""
     storefront_featured_title: Optional[str] = ""
     storefront_featured_product_ids: Optional[List[str]] = None
+    storefront_show_promo: Optional[bool] = False
+    storefront_promo_title: Optional[str] = ""
+    storefront_promo_text: Optional[str] = ""
+    storefront_promo_cta_label: Optional[str] = ""
     storefront_about_title: Optional[str] = ""
     name: str
     tagline: Optional[str] = ""

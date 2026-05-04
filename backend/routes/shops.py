@@ -26,6 +26,10 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_mode", "catalog")
     shop.setdefault("storefront_style", "classic")
     shop.setdefault("storefront_featured_product_ids", [])
+    shop.setdefault("storefront_show_promo", False)
+    shop.setdefault("storefront_promo_title", "")
+    shop.setdefault("storefront_promo_text", "")
+    shop.setdefault("storefront_promo_cta_label", "")
     shop.setdefault("storefront_renderer", "legacy")
     return shop
 
@@ -440,12 +444,63 @@ def _sanitize_storefront_featured_product_ids(payload, features):
     return payload
 
 
+
+
+def _clean_storefront_promo_text(value, max_len=180):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    value = " ".join(value.split())
+    return value[:max_len]
+
+
+def _sanitize_storefront_promo_payload(payload, features):
+    if not payload:
+        return payload
+
+    promo_fields = [
+        "storefront_show_promo",
+        "storefront_promo_title",
+        "storefront_promo_text",
+        "storefront_promo_cta_label",
+    ]
+
+    if not features.get("templates") or not features.get("promo"):
+        for field in promo_fields:
+            payload.pop(field, None)
+        return payload
+
+    if "storefront_show_promo" in payload:
+        payload["storefront_show_promo"] = bool(payload.get("storefront_show_promo"))
+
+    if "storefront_promo_title" in payload:
+        payload["storefront_promo_title"] = _clean_storefront_promo_text(
+            payload.get("storefront_promo_title"),
+            80,
+        )
+
+    if "storefront_promo_text" in payload:
+        payload["storefront_promo_text"] = _clean_storefront_promo_text(
+            payload.get("storefront_promo_text"),
+            180,
+        )
+
+    if "storefront_promo_cta_label" in payload:
+        payload["storefront_promo_cta_label"] = _clean_storefront_promo_text(
+            payload.get("storefront_promo_cta_label"),
+            36,
+        )
+
+    return payload
+
+
 def _apply_storefront_tier_guard(payload, user):
     if not payload:
         return payload
 
     tier_for_featured_products = _normalize_storefront_tier(user)
     features = dict(_storefront_features_for_tier(tier_for_featured_products))
+    features["promo"] = tier_for_featured_products in {"pro", "business"}
     featured_limits_by_tier = {
         "free": 0,
         "starter": 3,
@@ -481,6 +536,8 @@ def _apply_storefront_tier_guard(payload, user):
             payload.pop(field, None)
 
     payload = _sanitize_storefront_featured_product_ids(payload, features)
+
+    payload = _sanitize_storefront_promo_payload(payload, features)
 
     return payload
 
@@ -609,6 +666,10 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_mode", "catalog")
     doc.setdefault("storefront_style", "classic")
     doc.setdefault("storefront_featured_product_ids", [])
+    doc.setdefault("storefront_show_promo", False)
+    doc.setdefault("storefront_promo_title", "")
+    doc.setdefault("storefront_promo_text", "")
+    doc.setdefault("storefront_promo_cta_label", "")
     doc.setdefault("storefront_renderer", "legacy")
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})

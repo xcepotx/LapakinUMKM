@@ -242,6 +242,10 @@ export default function ShopSettings() {
       storefront_about_title: "",
 
       storefront_featured_product_ids: [],
+    storefront_show_promo: false,
+    storefront_promo_title: "",
+    storefront_promo_text: "",
+    storefront_promo_cta_label: "",
 
     }));
 
@@ -257,6 +261,7 @@ export default function ShopSettings() {
         editor: true,
         ai: true,
         advanced: true,
+        promo: true,
         allowedStyles: ["classic", "modern", "compact", "premium", "playful"],
         aiLimit: 200,
         featuredLimit: 12,
@@ -270,6 +275,7 @@ export default function ShopSettings() {
         editor: true,
         ai: true,
         advanced: false,
+        promo: true,
         allowedStyles: ["classic", "modern", "compact", "premium", "playful"],
         aiLimit: 30,
         featuredLimit: 6,
@@ -283,6 +289,7 @@ export default function ShopSettings() {
         editor: true,
         ai: false,
         advanced: false,
+        promo: false,
         allowedStyles: ["classic", "modern", "compact"],
         aiLimit: 0,
         featuredLimit: 3,
@@ -318,6 +325,7 @@ export default function ShopSettings() {
   const storefrontTemplateLocked = !storefrontTemplateFeatures.templates;
   const storefrontEditorLocked = !storefrontTemplateFeatures.editor;
   const storefrontAiLocked = !storefrontTemplateFeatures.ai;
+  const storefrontPromoLocked = !storefrontTemplateFeatures.promo;
 
   const storefrontFeaturedLimit = storefrontTemplateFeatures.featuredLimit || 0;
   const selectedFeaturedProductIds = Array.isArray(shop.storefront_featured_product_ids)
@@ -1703,6 +1711,92 @@ export default function ShopSettings() {
                     Belum ada produk/menu/layanan yang bisa dipilih.
                   </div>
                 )}
+              </div>
+
+
+              <div
+                className={`mt-5 rounded-2xl border p-4 ${
+                  storefrontPromoLocked
+                    ? "border-amber-200 bg-amber-50"
+                    : "border-brand-line bg-brand-off"
+                }`}
+                data-testid="storefront-promo-banner-editor"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-brand-ink">
+                      Promo Banner
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                      Tampilkan banner promo sederhana di website template baru. Cocok untuk diskon,
+                      paket menu, pre-order, campaign, atau penawaran jasa.
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-extrabold text-brand-ink shadow-sm">
+                    {storefrontPromoLocked ? "PRO" : "Aktif untuk paket kamu"}
+                  </span>
+                </div>
+
+                {storefrontPromoLocked && (
+                  <div className="mt-3 rounded-xl bg-white/80 p-3 text-xs leading-relaxed text-amber-800">
+                    Promo Banner tersedia mulai paket Pro.
+                  </div>
+                )}
+
+                <label className="mt-4 flex items-center gap-3 rounded-xl bg-white p-3 text-sm font-bold text-brand-ink">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(shop.storefront_show_promo)}
+                    onChange={(e) => update("storefront_show_promo", e.target.checked)}
+                    disabled={storefrontPromoLocked}
+                    className="h-4 w-4"
+                    data-testid="storefront-show-promo-toggle"
+                  />
+                  Tampilkan Promo Banner
+                </label>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="text-sm font-bold text-brand-ink">Judul Promo</span>
+                    <input
+                      value={shop.storefront_promo_title || ""}
+                      onChange={(e) => update("storefront_promo_title", e.target.value)}
+                      disabled={storefrontPromoLocked}
+                      placeholder="Contoh: Promo Minggu Ini"
+                      maxLength={80}
+                      className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                      data-testid="storefront-promo-title-input"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-bold text-brand-ink">Teks Tombol Promo</span>
+                    <input
+                      value={shop.storefront_promo_cta_label || ""}
+                      onChange={(e) => update("storefront_promo_cta_label", e.target.value)}
+                      disabled={storefrontPromoLocked}
+                      placeholder="Contoh: Ambil Promo"
+                      maxLength={36}
+                      className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                      data-testid="storefront-promo-cta-input"
+                    />
+                  </label>
+
+                  <label className="block md:col-span-2">
+                    <span className="text-sm font-bold text-brand-ink">Deskripsi Promo</span>
+                    <textarea
+                      value={shop.storefront_promo_text || ""}
+                      onChange={(e) => update("storefront_promo_text", e.target.value)}
+                      disabled={storefrontPromoLocked}
+                      placeholder="Contoh: Pesan paket menu minggu ini dan dapatkan bonus minuman."
+                      maxLength={180}
+                      rows={3}
+                      className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                      data-testid="storefront-promo-text-input"
+                    />
+                  </label>
+                </div>
               </div>
 
               <div className="mt-4 rounded-2xl bg-brand-off p-4 text-xs leading-relaxed text-brand-mute">

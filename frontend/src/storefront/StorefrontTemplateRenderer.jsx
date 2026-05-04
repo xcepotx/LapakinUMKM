@@ -112,6 +112,47 @@ function normalizeWhatsapp(raw) {
   return digits;
 }
 
+
+
+function isLegacyPromoLikeSection(section) {
+  const key = String(section || "").toLowerCase();
+
+  return (
+    key === "cta" ||
+    key === "quick_cta" ||
+    key === "order_cta" ||
+    key === "banner_cta" ||
+    key === "cta_banner" ||
+    key === "promo_cta" ||
+    key === "promo_card" ||
+    key === "promotion" ||
+    key === "campaign" ||
+    key === "announcement" ||
+    key === "highlight_cta" ||
+    key === "template_cta" ||
+    key.includes("promo") ||
+    key.includes("campaign") ||
+    key.includes("announcement")
+  );
+}
+
+function shouldShowPromoBanner(shop) {
+  return Boolean(shop?.storefront_show_promo);
+}
+
+function getPromoTitle(shop) {
+  return String(shop?.storefront_promo_title || "").trim() || "Promo Spesial";
+}
+
+function getPromoText(shop) {
+  return String(shop?.storefront_promo_text || "").trim() || "Hubungi kami untuk penawaran terbaik hari ini.";
+}
+
+function getPromoCtaLabel(shop) {
+  return String(shop?.storefront_promo_cta_label || "").trim() || "Chat Sekarang";
+}
+
+
 function buildWhatsappLink(shop, product) {
   const phone = normalizeWhatsapp(
     getValue(shop, [
@@ -821,31 +862,152 @@ function Benefits({ template }) {
   );
 }
 
-function ContactSection({ shop, template }) {
-  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
-  const address = getValue(shop, ["address", "location", "full_address"], "");
-  const mode = getModeFromTemplate(template);
 
+
+function normalizePromoFinalSectionOrder(shop, sections) {
+  const list = Array.isArray(sections) ? [...sections] : [];
+
+  if (!shouldShowPromoBanner(shop)) {
+    return list.filter((section) => section !== "promo" && !isLegacyPromoLikeSection(section));
+  }
+
+  const withoutPromo = list.filter((section) => section !== "promo" && !isLegacyPromoLikeSection(section));
+
+  // In the current template order, "categories" appears right after the featured section.
+  // So inserting promo before categories places it directly below Produk/Menu/Layanan Unggulan.
+  const categoriesIndex = withoutPromo.indexOf("categories");
+  if (categoriesIndex >= 0) {
+    withoutPromo.splice(categoriesIndex, 0, "promo");
+    return withoutPromo;
+  }
+
+  // Fallback: put promo before the full product/menu listing.
+  const fullListingKeys = [
+    "all_products",
+    "products",
+    "product_grid",
+    "product_list",
+    "menu",
+    "menu_grid",
+    "services",
+    "service_grid",
+  ];
+
+  for (const key of fullListingKeys) {
+    const index = withoutPromo.indexOf(key);
+    if (index >= 0) {
+      withoutPromo.splice(index, 0, "promo");
+      return withoutPromo;
+    }
+  }
+
+  // Fallback: before story/about/contact.
+  const storyKeys = ["about", "brand_story", "story", "about_us", "contact"];
+  for (const key of storyKeys) {
+    const index = withoutPromo.indexOf(key);
+    if (index >= 0) {
+      withoutPromo.splice(index, 0, "promo");
+      return withoutPromo;
+    }
+  }
+
+  withoutPromo.push("promo");
+  return withoutPromo;
+}
+
+
+function PromoBannerSection({ shop }) {
   return (
-    <section className="ltr-contact">
+    <section className="ltr-promo-banner" data-testid="storefront-promo-banner">
       <div>
-        <span>{mode === "services" ? "Konsultasi" : "Order via WhatsApp"}</span>
-        <h2>Hubungi {shopName}</h2>
-        <p>
-          {address ||
-            "Klik tombol di bawah untuk bertanya, cek stok, pesan produk, atau konsultasi langsung."}
-        </p>
-        <div data-testid="storefront-contact-socials">
-          <SocialLinks shop={shop} />
-        </div>
+        <span>Promo</span>
+        <h2>{getPromoTitle(shop)}</h2>
+        <p>{getPromoText(shop)}</p>
       </div>
 
       <a href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
-        {getValue(shop, ["storefront_cta_label"], "") || (mode === "services" ? "Konsultasi Sekarang" : "Chat WhatsApp")}
+        {getPromoCtaLabel(shop)}
       </a>
     </section>
   );
 }
+
+
+
+function getStorefrontSocialLinks(shop) {
+  const links = [];
+
+  const instagram = String(shop?.instagram || "")
+    .trim()
+    .replace(/^@+/, "");
+  const tiktok = String(shop?.tiktok || "")
+    .trim()
+    .replace(/^@+/, "");
+
+  if (instagram) {
+    links.push({
+      key: "instagram",
+      label: "Instagram",
+      short: "IG",
+      href: `https://instagram.com/${instagram}`,
+    });
+  }
+
+  if (tiktok) {
+    links.push({
+      key: "tiktok",
+      label: "TikTok",
+      short: "TT",
+      href: `https://www.tiktok.com/@${tiktok}`,
+    });
+  }
+
+  return links;
+}
+
+function ContactSection({ shop, template }) {
+  const mode = getModeFromTemplate(template);
+  const socialLinks = getStorefrontSocialLinks(shop);
+  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
+  const address = getValue(shop, ["address", "location", "store_address"], "");
+  const ctaLabel =
+    getValue(shop, ["storefront_cta_label"], "") ||
+    (mode === "services" ? "Konsultasi Sekarang" : "Chat WhatsApp");
+
+  return (
+    <section className="ltr-contact" data-testid="storefront-contact-section">
+      <div>
+        <span>Order via WhatsApp</span>
+        <h2>Hubungi {shopName}</h2>
+
+        {address && <p>{address}</p>}
+
+        <div data-testid="storefront-contact-socials">
+          {socialLinks.length > 0 && (
+            <div className="ltr-social-links">
+              {socialLinks.map((item) => (
+                <a
+                  key={item.key}
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span>{item.short}</span> {item.label}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <a href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
+        {ctaLabel}
+      </a>
+    </section>
+  );
+}
+
+
 
 function FaqSection({ template }) {
   const mode = getModeFromTemplate(template);
@@ -947,6 +1109,9 @@ function renderSection(section, context) {
 
     case "faq":
       return <FaqSection key={section} template={template} />;
+
+    case "promo":
+      return <PromoBannerSection shop={shop} />;
 
     case "contact":
       return <ContactSection key={section} shop={shop} template={template} />;
@@ -1117,9 +1282,75 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     }
   }
 
+  if (shouldShowPromoBanner(shop)) {
+    for (let i = sections.length - 1; i >= 0; i -= 1) {
+      if (isLegacyPromoLikeSection(sections[i])) {
+        sections.splice(i, 1);
+      }
+    }
+  }
+
+  if (shouldShowPromoBanner(shop) && !sections.includes("promo")) {
+    const productLikeKeys = [
+      "featured",
+      "featured_products",
+      "featuredProducts",
+      "featured_products_section",
+      "products",
+      "all_products",
+      "product_grid",
+      "product_list",
+      "menu",
+      "menu_grid",
+      "services",
+      "service_grid",
+    ];
+
+    let productIndex = -1;
+
+    for (const key of productLikeKeys) {
+      const index = sections.indexOf(key);
+      if (index > productIndex) {
+        productIndex = index;
+      }
+    }
+
+    if (productIndex >= 0) {
+      sections.splice(productIndex + 1, 0, "promo");
+    } else {
+      const beforeStoryKeys = [
+        "about",
+        "brand_story",
+        "story",
+        "about_us",
+        "contact",
+      ];
+
+      let beforeStoryIndex = -1;
+
+      for (const key of beforeStoryKeys) {
+        const index = sections.indexOf(key);
+        if (index >= 0 && (beforeStoryIndex === -1 || index < beforeStoryIndex)) {
+          beforeStoryIndex = index;
+        }
+      }
+
+      if (beforeStoryIndex >= 0) {
+        sections.splice(beforeStoryIndex, 0, "promo");
+      } else {
+        sections.push("promo");
+      }
+    }
+  }
+
   if (!sections.includes("contact")) {
     sections.push("contact");
   }
+
+  const finalSections = normalizePromoFinalSectionOrder(
+    shop,
+    sections
+  );
 
   return (
     <main
@@ -1137,7 +1368,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       <div className="ltr-background-orb ltr-background-orb-two" />
 
       <div className="ltr-container">
-        {sections.map((section) => renderSection(section, { shop, products, template, onAddToCart: addToCart }))}
+        {finalSections.map((section) => renderSection(section, { shop, products, template, onAddToCart: addToCart }))}
       </div>
 
       <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
