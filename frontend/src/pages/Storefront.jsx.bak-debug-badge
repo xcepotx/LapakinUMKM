@@ -100,24 +100,14 @@ export default function Storefront({ tenantSlug = null }) {
     root.style.setProperty("--lapakin-template-ink", activeStorefrontTemplate.tokens.ink);
     root.style.setProperty("--lapakin-template-muted", activeStorefrontTemplate.tokens.muted);
 
-    const templateDebugEnabled =
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("debugTemplate") === "1";
-
-    if (templateDebugEnabled) {
-      let badge = document.getElementById("lapakin-storefront-mode-style-badge");
-
-      if (!badge) {
-        badge = document.createElement("div");
-        badge.id = "lapakin-storefront-mode-style-badge";
-        document.body.appendChild(badge);
-      }
-
-      badge.textContent = `${activeStorefrontTemplate.label} · ${activeStorefrontTemplate.mood}`;
-    } else {
-      const currentBadge = document.getElementById("lapakin-storefront-mode-style-badge");
-      if (currentBadge) currentBadge.remove();
+    let badge = document.getElementById("lapakin-storefront-mode-style-badge");
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.id = "lapakin-storefront-mode-style-badge";
+      document.body.appendChild(badge);
     }
+
+    badge.textContent = `${activeStorefrontTemplate.label} · ${activeStorefrontTemplate.mood}`;
 
     return () => {
       root.removeAttribute("data-lapakin-storefront-mode");

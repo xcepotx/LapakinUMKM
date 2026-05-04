@@ -124,96 +124,6 @@ function buildWhatsappLink(shop, product) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
-
-function normalizeSocialUrl(value, platform) {
-  if (!value) return "";
-
-  let raw = String(value).trim();
-  if (!raw) return "";
-
-  if (raw.startsWith("http://") || raw.startsWith("https://")) {
-    return raw;
-  }
-
-  raw = raw.replace(/^@+/, "");
-
-  if (platform === "instagram") {
-    return `https://instagram.com/${raw}`;
-  }
-
-  if (platform === "tiktok") {
-    return `https://www.tiktok.com/@${raw}`;
-  }
-
-  return raw;
-}
-
-function getSocialLinks(shop) {
-  const socials = shop?.socials || shop?.social_links || {};
-
-  const instagram = getValue(
-    {
-      ...shop,
-      instagram_from_socials: socials.instagram,
-      instagram_url_from_socials: socials.instagram_url,
-      ig_from_socials: socials.ig,
-    },
-    [
-      "instagram_url",
-      "instagram",
-      "ig_url",
-      "ig",
-      "social_instagram",
-      "instagram_handle",
-      "instagram_from_socials",
-      "instagram_url_from_socials",
-      "ig_from_socials",
-    ],
-    ""
-  );
-
-  const tiktok = getValue(
-    {
-      ...shop,
-      tiktok_from_socials: socials.tiktok,
-      tiktok_url_from_socials: socials.tiktok_url,
-    },
-    [
-      "tiktok_url",
-      "tiktok",
-      "tik_tok",
-      "social_tiktok",
-      "tiktok_handle",
-      "tiktok_from_socials",
-      "tiktok_url_from_socials",
-    ],
-    ""
-  );
-
-  return [
-    {
-      key: "instagram",
-      label: "Instagram",
-      url: normalizeSocialUrl(instagram, "instagram"),
-    },
-    {
-      key: "tiktok",
-      label: "TikTok",
-      url: normalizeSocialUrl(tiktok, "tiktok"),
-    },
-  ].filter((item) => item.url);
-}
-
-function hasAboutContent(shop) {
-  return Boolean(
-    getValue(
-      shop,
-      ["about", "description", "bio", "tagline", "story", "business_description"],
-      ""
-    )
-  );
-}
-
 function getCategories(products) {
   return Array.from(
     new Set(
@@ -322,29 +232,6 @@ function CategoryChips({ products, template }) {
   );
 }
 
-
-function SocialLinks({ shop }) {
-  const links = getSocialLinks(shop);
-
-  if (!links.length) return null;
-
-  return (
-    <div className="ltr-social-links">
-      {links.map((link) => (
-        <a
-          key={link.key}
-          href={link.url}
-          target="_blank"
-          rel="noreferrer"
-          className={`ltr-social-link ltr-social-${link.key}`}
-        >
-          {link.label}
-        </a>
-      ))}
-    </div>
-  );
-}
-
 function HeroSection({ shop, products, template }) {
   const mode = getModeFromTemplate(template);
   const copy = getHeroCopy(mode, template);
@@ -367,6 +254,7 @@ function HeroSection({ shop, products, template }) {
           <a className="ltr-primary-cta" href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
             {copy.cta}
           </a>
+          <span className="ltr-template-pill">{template.label}</span>
         </div>
 
         <div className="ltr-hero-stats">
@@ -514,16 +402,15 @@ function BrandStory({ shop, template }) {
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
   const about = getValue(
     shop,
-    ["about", "description", "bio", "tagline", "story", "business_description"],
+    ["about", "description", "bio", "tagline"],
     `${shopName} hadir untuk membantu pelanggan menemukan pilihan terbaik dengan proses order yang mudah.`
   );
 
   return (
-    <section className="ltr-story" data-testid="storefront-about-section">
-      <span>Tentang Kami</span>
-      <h2>Kenal lebih dekat dengan {shopName}</h2>
+    <section className="ltr-story">
+      <span>{template.mood}</span>
+      <h2>Cerita {shopName}</h2>
       <p>{about}</p>
-      <SocialLinks shop={shop} />
     </section>
   );
 }
@@ -570,9 +457,6 @@ function ContactSection({ shop, template }) {
           {address ||
             "Klik tombol di bawah untuk bertanya, cek stok, pesan produk, atau konsultasi langsung."}
         </p>
-        <div data-testid="storefront-contact-socials">
-          <SocialLinks shop={shop} />
-        </div>
       </div>
 
       <a href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
@@ -691,28 +575,9 @@ export default function StorefrontTemplateRenderer({ data, template }) {
   const shop = getShop(data);
   const products = getProducts(data);
   const mode = getModeFromTemplate(template);
-  const baseSections = template?.sectionOrder?.length
-    ? [...template.sectionOrder]
+  const sections = template?.sectionOrder?.length
+    ? template.sectionOrder
     : ["hero", "categories", "all_products", "contact"];
-
-  const sections = [...baseSections];
-
-  if (
-    hasAboutContent(shop) &&
-    !sections.includes("about") &&
-    !sections.includes("brand_story")
-  ) {
-    const contactIndex = sections.indexOf("contact");
-    if (contactIndex >= 0) {
-      sections.splice(contactIndex, 0, "about");
-    } else {
-      sections.push("about");
-    }
-  }
-
-  if (!sections.includes("contact")) {
-    sections.push("contact");
-  }
 
   return (
     <main
