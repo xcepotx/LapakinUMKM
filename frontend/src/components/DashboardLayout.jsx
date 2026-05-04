@@ -11,6 +11,7 @@ import {
   BookOpen,
   Settings,
   LogOut,
+  ChevronDown,
   ExternalLink,
   MessageSquare,
   CreditCard,
@@ -52,10 +53,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     { to: "/dashboard/analytics", icon: BarChart3, label: "Analitik", tid: "nav-analytics" },
   ];
 
-  const secondaryItems = isStaff ? [] : [
-    { to: "/dashboard/settings", icon: Settings, label: "Pengaturan", tid: "nav-settings" },
-    { to: "/dashboard/billing", icon: CreditCard, label: "Akun", tid: "nav-billing" },
-  ];
+  const secondaryItems = [];
 
   const items = [...mainItems, ...secondaryItems];
 
@@ -182,24 +180,70 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
               {badgeLabel}
             </Link>
 
-            <Link
-              to="/dashboard/billing"
-              className="hidden h-9 w-9 rounded-full bg-brand-off text-brand grid place-items-center text-xs font-extrabold ring-1 ring-brand-line hover:bg-brand-sand sm:grid"
-              title={user?.name || "Akun"}
-            >
-              {(user?.name || "U")[0].toUpperCase()}
-            </Link>
+            <div className="relative hidden sm:block">
+              <details className="group">
+                <summary
+                  className="h-10 rounded-2xl bg-brand-off text-brand flex items-center gap-2 px-3 text-xs font-extrabold ring-1 ring-brand-line hover:bg-brand-sand cursor-pointer select-none list-none"
+                  title={user?.name || "Akun"}
+                  data-testid="account-menu-trigger"
+                  style={{ listStyle: "none" }}
+                >
+                  <span className="w-7 h-7 rounded-full bg-white grid place-items-center ring-1 ring-brand-line">
+                    {(user?.name || "U")[0].toUpperCase()}
+                  </span>
+                  <span className="hidden xl:inline">Akun</span>
+                  <ChevronDown className="w-3.5 h-3.5 transition group-open:rotate-180" />
+                </summary>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLogout}
-              className="rounded-2xl text-brand-mute hover:bg-brand-off hover:text-brand"
-              data-testid="dashboard-logout-btn"
-              title="Keluar"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
+                <div className="absolute right-0 mt-2 w-60 rounded-2xl border border-brand-line bg-white shadow-card overflow-hidden z-50 py-2">
+                  <div className="px-4 py-3 border-b border-brand-line">
+                    <div className="font-bold text-sm truncate">{user?.name || "Akun"}</div>
+                    <div className="text-xs text-brand-mute truncate">{user?.email}</div>
+                  </div>
+
+                  <Link
+                    to="/dashboard/manual"
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
+                    data-testid="account-menu-manual"
+                  >
+                    <BookOpen className="w-4 h-4 text-brand-mute" />
+                    Manual Penggunaan
+                  </Link>
+
+                  {!isStaff && (
+                    <Link
+                      to="/dashboard/settings"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
+                      data-testid="account-menu-settings"
+                    >
+                      <Settings className="w-4 h-4 text-brand-mute" />
+                      Pengaturan Toko
+                    </Link>
+                  )}
+
+                  {!isStaff && (
+                    <Link
+                      to="/dashboard/billing"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
+                      data-testid="account-menu-billing"
+                    >
+                      <CreditCard className="w-4 h-4 text-brand-mute" />
+                      Akun & Billing
+                    </Link>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left hover:bg-red-50 text-red-700"
+                    data-testid="account-menu-logout"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Keluar
+                  </button>
+                </div>
+              </details>
+            </div>
           </div>
         </div>
         {user?.subscription_status === "suspended" && (

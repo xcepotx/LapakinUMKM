@@ -252,6 +252,49 @@ async def create_branch_shop(data: ShopIn, request: Request):
     return {k: v for k, v in doc.items() if k != "_id"}
 
 
+
+
+
+@router.patch("/shops/me/open-status")
+async def update_my_shop_open_status(request: Request):
+    """Allow owner/staff to manually open/close the active shop.
+
+    This is separate from full shop settings because staff may need operational
+    access to close/reopen the shop without editing core settings.
+    """
+    user = await require_user(request)
+
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+
+    payload = await request.json()
+    is_open = bool(payload.get("is_open"))
+
+    shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    update = {
+        "is_open": is_open,
+        "manual_open_override": True,
+        "manual_open_override_by": user.get("user_id"),
+        "manual_open_override_at": now,
+        "updated_at": now,
+    }
+
+    # Kalau dibuka kembali, override tetap dicatat tapi status kembali buka.
+    # Jadwal otomatis tetap tersimpan dan tidak dimatikan.
+    await db.shops.update_one(
+        {"shop_id": user["shop_id"]},
+        {"$set": update},
+    )
+
+    updated = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    return updated
+
+
 @router.get("/shops/by-slug/{slug}")
 async def get_shop_public(slug: str):
     shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
@@ -261,7 +304,7 @@ async def get_shop_public(slug: str):
         raise HTTPException(status_code=404, detail="Toko tidak tersedia")
     products = await db.products.find({"shop_id": shop["shop_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
     schedule_status = compute_schedule_status(shop)
-    if schedule_status.get("auto"):
+    if schedule_status.get("auto") and not shop.get("manual_open_override"):
         shop["is_open"] = bool(schedule_status.get("is_open_now"))
     shop["schedule_status"] = schedule_status
     owner = await db.users.find_one({"user_id": shop.get("owner_user_id")}, {"_id": 0, "tier": 1})

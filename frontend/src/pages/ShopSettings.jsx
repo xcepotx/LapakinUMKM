@@ -272,14 +272,22 @@ export default function ShopSettings() {
                       </div>
                       <div className="text-xs text-brand-mute mt-0.5">
                         {shop.auto_schedule_enabled
-                          ? "Status otomatis dari jadwal di bawah. Manual toggle dinonaktifkan."
+                          ? "Jadwal otomatis tetap aktif. Owner/staff tetap bisa tutup toko sementara saat jadwal sedang buka."
                           : "Toggle ini juga ada di Beranda untuk akses cepat."}
                       </div>
                     </div>
                     <button type="button"
-                      disabled={!!shop.auto_schedule_enabled}
-                      onClick={() => update("is_open", !(shop.is_open !== false))}
-                      className={`px-4 py-2 rounded-xl font-bold text-sm ${shop.is_open !== false ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"} disabled:opacity-40 disabled:cursor-not-allowed`}
+                      onClick={async () => {
+                        const nextOpen = !(shop.is_open !== false);
+                        try {
+                          const { data } = await api.patch("/shops/me/open-status", { is_open: nextOpen });
+                          setShop((prev) => ({ ...prev, ...data }));
+                          toast.success(nextOpen ? "Toko dibuka kembali" : "Toko ditutup sementara");
+                        } catch (e) {
+                          toast.error(formatApiError(e.response?.data?.detail) || "Gagal mengubah status toko");
+                        }
+                      }}
+                      className={`px-4 py-2 rounded-xl font-bold text-sm ${shop.is_open !== false ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}`}
                       data-testid="settings-toggle-open">
                       {shop.is_open !== false ? "Tutup Toko" : "Buka Toko"}
                     </button>

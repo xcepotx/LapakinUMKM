@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 import SalesBook from "./pages/SalesBook";
 import Landing from "@/pages/Landing";
+import Manual from "@/pages/Manual";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -73,13 +74,17 @@ function AppRouter() {
       {tenantSlug ? (
         <Route path="/" element={<Storefront tenantSlug={tenantSlug} />} />
       ) : (
-        <Route path="/" element={<Landing />} />
+        <>
+          <Route path="/" element={<Landing />} />
+          <Route path="/manual" element={<Manual />} />
+        </>
       )}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/dashboard/manual" element={<ProtectedRoute><Manual /></ProtectedRoute>} />
       <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
       <Route path="/dashboard/ai-studio" element={<ProtectedRoute><AIStudio /></ProtectedRoute>} />
       <Route path="/dashboard/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
