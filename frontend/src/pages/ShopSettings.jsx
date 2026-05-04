@@ -212,6 +212,41 @@ export default function ShopSettings() {
 
   const update = (k, v) => setShop((s) => ({ ...s, [k]: v }));
 
+
+  const resetStorefrontTemplateContent = () => {
+
+    const ok = window.confirm(
+
+      "Reset konten template ke otomatis? Judul, subtitle, CTA, judul section, dan produk unggulan pilihan akan dikosongkan. Mode, style, renderer, dan data toko tidak berubah."
+
+    );
+
+  
+
+    if (!ok) return;
+
+  
+
+    setShop((prev) => ({
+
+      ...prev,
+
+      storefront_hero_title: "",
+
+      storefront_hero_subtitle: "",
+
+      storefront_cta_label: "",
+
+      storefront_featured_title: "",
+
+      storefront_about_title: "",
+
+      storefront_featured_product_ids: [],
+
+    }));
+
+  };
+
   const getStorefrontTemplateFeatureConfig = (tierValue) => {
     const normalizedTier = String(tierValue || "free").toLowerCase();
 
@@ -1505,6 +1540,16 @@ export default function ShopSettings() {
                     data-testid="storefront-ai-enhance-copy-btn"
                   >
                     {enhancingStorefrontCopy ? "AI menulis..." : storefrontAiLocked ? "AI Pro" : "AI Enhance"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={resetStorefrontTemplateContent}
+                    disabled={storefrontEditorLocked}
+                    className="inline-flex items-center justify-center rounded-full border border-brand-line bg-white px-3 py-1 text-xs font-extrabold text-brand-ink shadow-sm transition hover:bg-brand-off disabled:cursor-not-allowed disabled:opacity-60"
+                    data-testid="storefront-reset-template-content-btn"
+                  >
+                    Reset Konten
                   </button>
                 </div>
               </div>
