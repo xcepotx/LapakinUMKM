@@ -29,7 +29,6 @@ const COVER_STYLES = [
 export default function ShopSettings() {
   const navigate = useNavigate();
   const [shop, setShop] = useState(null);
-  const [enhancingStorefrontCopy, setEnhancingStorefrontCopy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generatingAbout, setGeneratingAbout] = useState(false);
   const [generatingCover, setGeneratingCover] = useState(false);
@@ -160,84 +159,6 @@ export default function ShopSettings() {
   }
 
   const update = (k, v) => setShop((s) => ({ ...s, [k]: v }));
-
-
-
-  const enhanceStorefrontCopy = async () => {
-
-    if (enhancingStorefrontCopy) return;
-
-
-    setEnhancingStorefrontCopy(true);
-
-
-    try {
-
-      const response = await api.post("/shops/storefront-copy-ai", {
-
-        shop_name: shop.name || shop.shop_name || "",
-
-        shop_description: shop.description || shop.bio || shop.about || "",
-
-        business_category: shop.business_category || shop.category || "",
-
-        instagram: shop.instagram || "",
-
-        tiktok: shop.tiktok || "",
-
-        storefront_mode: shop.storefront_mode || "catalog",
-
-        storefront_style: shop.storefront_style || "classic",
-
-        current: {
-
-          storefront_hero_title: shop.storefront_hero_title || "",
-
-          storefront_hero_subtitle: shop.storefront_hero_subtitle || "",
-
-          storefront_cta_label: shop.storefront_cta_label || "",
-
-          storefront_featured_title: shop.storefront_featured_title || "",
-
-          storefront_about_title: shop.storefront_about_title || "",
-
-        },
-
-      });
-
-
-      const copy = response?.data?.copy || {};
-
-
-      setShop((prev) => ({
-
-        ...prev,
-
-        storefront_hero_title: copy.storefront_hero_title || prev.storefront_hero_title || "",
-
-        storefront_hero_subtitle: copy.storefront_hero_subtitle || prev.storefront_hero_subtitle || "",
-
-        storefront_cta_label: copy.storefront_cta_label || prev.storefront_cta_label || "",
-
-        storefront_featured_title: copy.storefront_featured_title || prev.storefront_featured_title || "",
-
-        storefront_about_title: copy.storefront_about_title || prev.storefront_about_title || "",
-
-      }));
-
-    } catch (err) {
-
-      console.error("AI storefront copy failed", err);
-
-      alert("AI Enhance belum berhasil. Coba lagi beberapa saat lagi.");
-
-    } finally {
-
-      setEnhancingStorefrontCopy(false);
-
-    }
-
-  };
 
   const onCoverFile = (e) => {
     const f = e.target.files?.[0];
@@ -1213,112 +1134,6 @@ export default function ShopSettings() {
                 </div>
               );
             })()}
-
-
-            <div
-              className="mt-4 rounded-3xl border border-brand-line bg-white p-5 shadow-sm"
-              data-testid="storefront-template-mini-editor"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h4 className="text-base font-black text-brand-ink">
-                    Editor Konten Template
-                  </h4>
-                  <p className="mt-1 text-sm leading-relaxed text-brand-mute">
-                    Atur teks utama untuk template baru. Kosongkan field jika ingin memakai teks otomatis dari sistem.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">
-                    Opsional
-                  </span>
-                  <button
-                    type="button"
-                    onClick={enhanceStorefrontCopy}
-                    disabled={enhancingStorefrontCopy}
-                    className="inline-flex items-center justify-center rounded-full bg-brand px-3 py-1 text-xs font-extrabold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                    data-testid="storefront-ai-enhance-copy-btn"
-                  >
-                    {enhancingStorefrontCopy ? "AI menulis..." : "AI Enhance"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <label className="block md:col-span-2">
-                  <span className="text-sm font-bold text-brand-ink">Judul Hero</span>
-                  <input
-                    value={shop.storefront_hero_title || ""}
-                    onChange={(e) => update("storefront_hero_title", e.target.value)}
-                    placeholder="Contoh: Fashion lokal Bandung untuk gaya harianmu"
-                    maxLength={90}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
-                    data-testid="storefront-hero-title-input"
-                  />
-                  <span className="mt-1 block text-xs text-brand-mute">
-                    Akan menggantikan judul besar di bagian atas website toko.
-                  </span>
-                </label>
-
-                <label className="block md:col-span-2">
-                  <span className="text-sm font-bold text-brand-ink">Subtitle Hero</span>
-                  <textarea
-                    value={shop.storefront_hero_subtitle || ""}
-                    onChange={(e) => update("storefront_hero_subtitle", e.target.value)}
-                    placeholder="Contoh: Pilih produk favorit, cek harga, lalu order langsung lewat WhatsApp."
-                    maxLength={220}
-                    rows={3}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
-                    data-testid="storefront-hero-subtitle-input"
-                  />
-                  <span className="mt-1 block text-xs text-brand-mute">
-                    Deskripsi pendek di bawah judul hero.
-                  </span>
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-bold text-brand-ink">Teks Tombol CTA</span>
-                  <input
-                    value={shop.storefront_cta_label || ""}
-                    onChange={(e) => update("storefront_cta_label", e.target.value)}
-                    placeholder="Contoh: Chat & Order Sekarang"
-                    maxLength={36}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
-                    data-testid="storefront-cta-label-input"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-bold text-brand-ink">Judul Section Unggulan</span>
-                  <input
-                    value={shop.storefront_featured_title || ""}
-                    onChange={(e) => update("storefront_featured_title", e.target.value)}
-                    placeholder="Contoh: Produk Favorit Minggu Ini"
-                    maxLength={60}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
-                    data-testid="storefront-featured-title-input"
-                  />
-                </label>
-
-                <label className="block md:col-span-2">
-                  <span className="text-sm font-bold text-brand-ink">Judul Tentang Kami</span>
-                  <input
-                    value={shop.storefront_about_title || ""}
-                    onChange={(e) => update("storefront_about_title", e.target.value)}
-                    placeholder="Contoh: Cerita di balik Kain Kita Bandung"
-                    maxLength={80}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
-                    data-testid="storefront-about-title-input"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-4 rounded-2xl bg-brand-off p-4 text-xs leading-relaxed text-brand-mute">
-                Tips: gunakan kata yang spesifik sesuai toko. Untuk makanan, bisa pakai “Menu favorit hari ini”.
-                Untuk jasa, bisa pakai “Konsultasikan kebutuhanmu”.
-              </div>
-            </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {[

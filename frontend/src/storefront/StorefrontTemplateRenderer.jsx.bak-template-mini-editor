@@ -349,12 +349,8 @@ function HeroSection({ shop, products, template }) {
   const mode = getModeFromTemplate(template);
   const copy = getHeroCopy(mode, template);
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
-  const customHeroTitle = getValue(shop, ["storefront_hero_title"], "");
   const description =
-    getValue(shop, ["storefront_hero_subtitle"], "") ||
-    getValue(shop, ["description", "tagline", "bio", "about"], "") ||
-    copy.subtitle;
-  const ctaLabel = getValue(shop, ["storefront_cta_label"], "") || copy.cta;
+    getValue(shop, ["description", "tagline", "bio", "about"], "") || copy.subtitle;
   const logo = getValue(shop, ["logo_url", "logo", "avatar_url", "image_url"], "");
   const featured = products[0];
 
@@ -363,19 +359,13 @@ function HeroSection({ shop, products, template }) {
       <div className="ltr-hero-content">
         <div className="ltr-eyebrow">{copy.eyebrow}</div>
         <h1>
-          {customHeroTitle ? (
-            customHeroTitle
-          ) : (
-            <>
-              {copy.titlePrefix} <span>{shopName}</span>
-            </>
-          )}
+          {copy.titlePrefix} <span>{shopName}</span>
         </h1>
         <p>{description}</p>
 
         <div className="ltr-hero-actions">
           <a className="ltr-primary-cta" href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
-            {ctaLabel}
+            {copy.cta}
           </a>
         </div>
 
@@ -460,16 +450,15 @@ function ProductCard({ product, shop, template, index }) {
   );
 }
 
-function ProductSection({ title, products, shop, template, limit, titleOverride }) {
+function ProductSection({ title, products, shop, template, limit }) {
   const visibleProducts = (products || []).slice(0, limit || products.length);
-  const finalTitle = titleOverride || title;
 
   if (!visibleProducts.length) {
     return (
       <section className="ltr-section">
         <div className="ltr-section-heading">
           <span>Segera hadir</span>
-          <h2>{finalTitle}</h2>
+          <h2>{title}</h2>
           <p>Belum ada item yang ditampilkan untuk bagian ini.</p>
         </div>
       </section>
@@ -480,7 +469,7 @@ function ProductSection({ title, products, shop, template, limit, titleOverride 
     <section className="ltr-section">
       <div className="ltr-section-heading">
         <span>{template.label}</span>
-        <h2>{finalTitle}</h2>
+        <h2>{title}</h2>
         <p>{template.description}</p>
       </div>
 
@@ -532,7 +521,7 @@ function BrandStory({ shop, template }) {
   return (
     <section className="ltr-story" data-testid="storefront-about-section">
       <span>Tentang Kami</span>
-      <h2>{getValue(shop, ["storefront_about_title"], "") || `Kenal lebih dekat dengan ${shopName}`}</h2>
+      <h2>Kenal lebih dekat dengan {shopName}</h2>
       <p>{about}</p>
       <SocialLinks shop={shop} />
     </section>
@@ -587,7 +576,7 @@ function ContactSection({ shop, template }) {
       </div>
 
       <a href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
-        {getValue(shop, ["storefront_cta_label"], "") || (mode === "services" ? "Konsultasi Sekarang" : "Chat WhatsApp")}
+        {mode === "services" ? "Konsultasi Sekarang" : "Chat WhatsApp"}
       </a>
     </section>
   );
@@ -659,7 +648,6 @@ function renderSection(section, context) {
           shop={shop}
           template={template}
           limit={4}
-          titleOverride={getValue(shop, ["storefront_featured_title"], "")}
         />
       );
 

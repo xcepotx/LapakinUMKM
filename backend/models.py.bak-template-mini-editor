@@ -42,11 +42,6 @@ class ShopIn(BaseModel):
     storefront_mode: Optional[str] = None
     storefront_style: Optional[str] = None
     storefront_renderer: Optional[str] = None
-    storefront_hero_title: Optional[str] = ""
-    storefront_hero_subtitle: Optional[str] = ""
-    storefront_cta_label: Optional[str] = ""
-    storefront_featured_title: Optional[str] = ""
-    storefront_about_title: Optional[str] = ""
     name: str
     tagline: Optional[str] = ""
     description: Optional[str] = ""

@@ -29,7 +29,6 @@ const COVER_STYLES = [
 export default function ShopSettings() {
   const navigate = useNavigate();
   const [shop, setShop] = useState(null);
-  const [enhancingStorefrontCopy, setEnhancingStorefrontCopy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generatingAbout, setGeneratingAbout] = useState(false);
   const [generatingCover, setGeneratingCover] = useState(false);
@@ -160,84 +159,6 @@ export default function ShopSettings() {
   }
 
   const update = (k, v) => setShop((s) => ({ ...s, [k]: v }));
-
-
-
-  const enhanceStorefrontCopy = async () => {
-
-    if (enhancingStorefrontCopy) return;
-
-
-    setEnhancingStorefrontCopy(true);
-
-
-    try {
-
-      const response = await api.post("/shops/storefront-copy-ai", {
-
-        shop_name: shop.name || shop.shop_name || "",
-
-        shop_description: shop.description || shop.bio || shop.about || "",
-
-        business_category: shop.business_category || shop.category || "",
-
-        instagram: shop.instagram || "",
-
-        tiktok: shop.tiktok || "",
-
-        storefront_mode: shop.storefront_mode || "catalog",
-
-        storefront_style: shop.storefront_style || "classic",
-
-        current: {
-
-          storefront_hero_title: shop.storefront_hero_title || "",
-
-          storefront_hero_subtitle: shop.storefront_hero_subtitle || "",
-
-          storefront_cta_label: shop.storefront_cta_label || "",
-
-          storefront_featured_title: shop.storefront_featured_title || "",
-
-          storefront_about_title: shop.storefront_about_title || "",
-
-        },
-
-      });
-
-
-      const copy = response?.data?.copy || {};
-
-
-      setShop((prev) => ({
-
-        ...prev,
-
-        storefront_hero_title: copy.storefront_hero_title || prev.storefront_hero_title || "",
-
-        storefront_hero_subtitle: copy.storefront_hero_subtitle || prev.storefront_hero_subtitle || "",
-
-        storefront_cta_label: copy.storefront_cta_label || prev.storefront_cta_label || "",
-
-        storefront_featured_title: copy.storefront_featured_title || prev.storefront_featured_title || "",
-
-        storefront_about_title: copy.storefront_about_title || prev.storefront_about_title || "",
-
-      }));
-
-    } catch (err) {
-
-      console.error("AI storefront copy failed", err);
-
-      alert("AI Enhance belum berhasil. Coba lagi beberapa saat lagi.");
-
-    } finally {
-
-      setEnhancingStorefrontCopy(false);
-
-    }
-
-  };
 
   const onCoverFile = (e) => {
     const f = e.target.files?.[0];
@@ -1229,20 +1150,9 @@ export default function ShopSettings() {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">
-                    Opsional
-                  </span>
-                  <button
-                    type="button"
-                    onClick={enhanceStorefrontCopy}
-                    disabled={enhancingStorefrontCopy}
-                    className="inline-flex items-center justify-center rounded-full bg-brand px-3 py-1 text-xs font-extrabold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-                    data-testid="storefront-ai-enhance-copy-btn"
-                  >
-                    {enhancingStorefrontCopy ? "AI menulis..." : "AI Enhance"}
-                  </button>
-                </div>
+                <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">
+                  Opsional
+                </span>
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">

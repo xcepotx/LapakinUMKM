@@ -1,3 +1,4 @@
+import json
 """
 Lapakin Backend - AI-powered CMS for Indonesian SMEs (UMKM)
 
@@ -16,6 +17,7 @@ from deps import db, client, logger, hash_password, verify_password
 from routes.whatsapp import _parse_product_text  # noqa: F401
 
 from routes import ALL_ROUTERS
+from pydantic import BaseModel
 
 
 app = FastAPI(title="Lapakin API")
@@ -101,3 +103,140 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     client.close()
+
+
+class ServerStorefrontCopyAIIn(BaseModel):
+    shop_name: str = ""
+    shop_description: str = ""
+    business_category: str = ""
+    instagram: str = ""
+    tiktok: str = ""
+    storefront_mode: str = "catalog"
+    storefront_style: str = "classic"
+    current: dict = {}
+
+
+def _server_clean_storefront_copy(value, max_len=220):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    value = " ".join(value.split())
+    return value[:max_len]
+
+
+def _server_fallback_storefront_copy(data: ServerStorefrontCopyAIIn):
+    shop_name = _server_clean_storefront_copy(data.shop_name, 80) or "Toko Kamu"
+    mode = data.storefront_mode or "catalog"
+    style = data.storefront_style or "classic"
+    description = _server_clean_storefront_copy(data.shop_description, 160)
+
+    if mode == "food_menu":
+        hero_title = f"Menu favorit {shop_name}, siap menemani harimu"
+        hero_subtitle = description or "Pilih menu favorit, cek harga, lalu pesan langsung lewat WhatsApp."
+        cta_label = "Pesan Menu Sekarang"
+        featured_title = "Menu Favorit Hari Ini"
+        about_title = f"Cerita rasa dari {shop_name}"
+    elif mode == "services":
+        hero_title = f"Layanan terpercaya dari {shop_name}"
+        hero_subtitle = description or "Lihat pilihan layanan, konsultasikan kebutuhanmu, lalu hubungi kami lewat WhatsApp."
+        cta_label = "Konsultasi Sekarang"
+        featured_title = "Layanan Unggulan"
+        about_title = f"Kenal lebih dekat dengan {shop_name}"
+    else:
+        hero_title = f"Pilihan terbaik dari {shop_name}"
+        hero_subtitle = description or "Lihat produk pilihan, cek detail dan harga, lalu order langsung lewat WhatsApp."
+        cta_label = "Chat & Order Sekarang"
+        featured_title = "Produk Favorit"
+        about_title = f"Cerita di balik {shop_name}"
+
+    if style == "premium":
+        hero_title = hero_title.replace("Pilihan terbaik", "Koleksi pilihan")
+        cta_label = "Konsultasi & Order"
+    elif style == "playful":
+        if mode == "food_menu":
+            hero_title = f"Menu enak dari {shop_name}, siap bikin harimu lebih seru"
+        elif mode == "catalog":
+            hero_title = f"Temukan produk favoritmu di {shop_name}"
+    elif style == "compact":
+        hero_subtitle = hero_subtitle[:140]
+
+    return {
+        "storefront_hero_title": _server_clean_storefront_copy(hero_title, 90),
+        "storefront_hero_subtitle": _server_clean_storefront_copy(hero_subtitle, 220),
+        "storefront_cta_label": _server_clean_storefront_copy(cta_label, 36),
+        "storefront_featured_title": _server_clean_storefront_copy(featured_title, 60),
+        "storefront_about_title": _server_clean_storefront_copy(about_title, 80),
+    }
+
+
+async def _server_generate_storefront_copy(data: ServerStorefrontCopyAIIn):
+    fallback = _server_fallback_storefront_copy(data)
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+
+    if not api_key:
+        return fallback, "fallback"
+
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key)
+
+        system_prompt = (
+            "Kamu adalah copywriter UX untuk Lapakin, platform storefront UMKM Indonesia. "
+            "Tulis copy pendek, jelas, natural, dan siap dipakai di website toko. "
+            "Bahasa Indonesia. Jangan pakai tanda kutip. Jangan terlalu bombastis. "
+            "Output wajib JSON valid dengan key: storefront_hero_title, storefront_hero_subtitle, "
+            "storefront_cta_label, storefront_featured_title, storefront_about_title."
+        )
+
+        user_prompt = {
+            "shop_name": data.shop_name,
+            "shop_description": data.shop_description,
+            "business_category": data.business_category,
+            "instagram": data.instagram,
+            "tiktok": data.tiktok,
+            "storefront_mode": data.storefront_mode,
+            "storefront_style": data.storefront_style,
+            "current": data.current or {},
+            "rules": {
+                "storefront_hero_title": "maksimal 90 karakter",
+                "storefront_hero_subtitle": "maksimal 220 karakter",
+                "storefront_cta_label": "maksimal 36 karakter",
+                "storefront_featured_title": "maksimal 60 karakter",
+                "storefront_about_title": "maksimal 80 karakter",
+            },
+        }
+
+        response = client.chat.completions.create(
+            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.75,
+            max_tokens=500,
+        )
+
+        parsed = json.loads(response.choices[0].message.content or "{}")
+
+        return {
+            "storefront_hero_title": _server_clean_storefront_copy(parsed.get("storefront_hero_title") or fallback["storefront_hero_title"], 90),
+            "storefront_hero_subtitle": _server_clean_storefront_copy(parsed.get("storefront_hero_subtitle") or fallback["storefront_hero_subtitle"], 220),
+            "storefront_cta_label": _server_clean_storefront_copy(parsed.get("storefront_cta_label") or fallback["storefront_cta_label"], 36),
+            "storefront_featured_title": _server_clean_storefront_copy(parsed.get("storefront_featured_title") or fallback["storefront_featured_title"], 60),
+            "storefront_about_title": _server_clean_storefront_copy(parsed.get("storefront_about_title") or fallback["storefront_about_title"], 80),
+        }, "ai"
+    except Exception:
+        return fallback, "fallback"
+
+
+@app.post("/api/shops/storefront-copy-ai")
+async def server_storefront_copy_ai(data: ServerStorefrontCopyAIIn):
+    copy, source = await _server_generate_storefront_copy(data)
+    return {
+        "copy": copy,
+        "source": source,
+    }
+
+

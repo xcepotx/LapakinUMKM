@@ -1098,14 +1098,3 @@
     bottom: 0.55rem;
   }
 }
-
-
-/* Hide top template badge in hero */
-.ltr-eyebrow {
-  display: none !important;
-}
-
-/* Hide social links inside About section only */
-.ltr-story .ltr-social-links {
-  display: none !important;
-}
