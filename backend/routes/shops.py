@@ -25,6 +25,7 @@ def _with_storefront_defaults(shop):
         return shop
     shop.setdefault("storefront_mode", "catalog")
     shop.setdefault("storefront_style", "classic")
+    shop.setdefault("storefront_featured_product_ids", [])
     shop.setdefault("storefront_renderer", "legacy")
     return shop
 
@@ -392,11 +393,66 @@ def _storefront_features_for_tier(tier):
     }
 
 
+
+
+def _sanitize_storefront_featured_product_ids(payload, features):
+    if not payload:
+        return payload
+
+    field = "storefront_featured_product_ids"
+
+    if field not in payload:
+        return payload
+
+    if not features.get("templates"):
+        payload.pop(field, None)
+        return payload
+
+    raw_ids = payload.get(field)
+
+    if raw_ids in (None, ""):
+        payload[field] = []
+        return payload
+
+    if not isinstance(raw_ids, list):
+        raise HTTPException(status_code=400, detail="Produk unggulan template tidak valid")
+
+    max_items = int(features.get("featured_limit", 0) or 0)
+
+    cleaned = []
+    seen = set()
+
+    for item in raw_ids:
+        value = str(item or "").strip()
+        if not value or value in seen:
+            continue
+
+        seen.add(value)
+        cleaned.append(value)
+
+    if max_items <= 0 and cleaned:
+        raise HTTPException(status_code=403, detail="Produk unggulan template tersedia mulai paket Starter")
+
+    if max_items > 0 and len(cleaned) > max_items:
+        cleaned = cleaned[:max_items]
+
+    payload[field] = cleaned
+    return payload
+
+
 def _apply_storefront_tier_guard(payload, user):
     if not payload:
         return payload
 
-    features = _storefront_features_for_tier(_normalize_storefront_tier(user))
+    tier_for_featured_products = _normalize_storefront_tier(user)
+    features = dict(_storefront_features_for_tier(tier_for_featured_products))
+    featured_limits_by_tier = {
+        "free": 0,
+        "starter": 3,
+        "pro": 6,
+        "business": 12,
+    }
+    features["featured_limit"] = featured_limits_by_tier.get(tier_for_featured_products, 0)
     editable_copy_fields = [
         "storefront_hero_title",
         "storefront_hero_subtitle",
@@ -409,6 +465,7 @@ def _apply_storefront_tier_guard(payload, user):
         payload["storefront_renderer"] = "legacy"
         payload["storefront_mode"] = "catalog"
         payload["storefront_style"] = "classic"
+        payload.pop("storefront_featured_product_ids", None)
 
         for field in editable_copy_fields:
             payload.pop(field, None)
@@ -423,7 +480,30 @@ def _apply_storefront_tier_guard(payload, user):
         for field in editable_copy_fields:
             payload.pop(field, None)
 
+    payload = _sanitize_storefront_featured_product_ids(payload, features)
+
     return payload
+
+
+
+def _normalize_featured_product_ids(value, max_items=12):
+    if value in (None, ""):
+        return []
+
+    if not isinstance(value, list):
+        raise HTTPException(status_code=400, detail="Produk unggulan template tidak valid")
+
+    cleaned = []
+    seen = set()
+
+    for item in value:
+        product_id = str(item or "").strip()
+        if not product_id or product_id in seen:
+            continue
+        seen.add(product_id)
+        cleaned.append(product_id)
+
+    return cleaned[:max_items]
 
 
 @router.post("/storefront-copy-ai")
@@ -459,6 +539,24 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     user = await require_user(request)
     now = datetime.now(timezone.utc).isoformat()
     payload = data.model_dump()
+    # featured_picker_persist_guard
+    if "storefront_featured_product_ids" in payload:
+        current_tier_for_featured = (locals().get("user") or {}).get("tier") or "free"
+        featured_limit_by_tier = {
+            "free": 0,
+            "starter": 3,
+            "pro": 6,
+            "business": 12,
+        }
+        featured_limit = featured_limit_by_tier.get(str(current_tier_for_featured).lower(), 0)
+        if featured_limit <= 0:
+            payload.pop("storefront_featured_product_ids", None)
+        else:
+            payload["storefront_featured_product_ids"] = _normalize_featured_product_ids(
+                payload.get("storefront_featured_product_ids"),
+                featured_limit,
+            )
+
     raw_storefront_mode = payload.get("storefront_mode")
     raw_storefront_style = payload.get("storefront_style")
     raw_storefront_renderer = payload.get("storefront_renderer")
@@ -510,6 +608,7 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     }
     doc.setdefault("storefront_mode", "catalog")
     doc.setdefault("storefront_style", "classic")
+    doc.setdefault("storefront_featured_product_ids", [])
     doc.setdefault("storefront_renderer", "legacy")
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})
@@ -669,6 +768,24 @@ async def create_branch_shop(data: ShopIn, request: Request):
 
     now = datetime.now(timezone.utc).isoformat()
     payload = data.model_dump()
+
+    # featured_picker_persist_guard
+    if "storefront_featured_product_ids" in payload:
+        current_tier_for_featured = (locals().get("user") or {}).get("tier") or "free"
+        featured_limit_by_tier = {
+            "free": 0,
+            "starter": 3,
+            "pro": 6,
+            "business": 12,
+        }
+        featured_limit = featured_limit_by_tier.get(str(current_tier_for_featured).lower(), 0)
+        if featured_limit <= 0:
+            payload.pop("storefront_featured_product_ids", None)
+        else:
+            payload["storefront_featured_product_ids"] = _normalize_featured_product_ids(
+                payload.get("storefront_featured_product_ids"),
+                featured_limit,
+            )
 
     if payload.get("sells_by") in (None, "", "stock"):
         bt = (payload.get("business_type") or "").lower()

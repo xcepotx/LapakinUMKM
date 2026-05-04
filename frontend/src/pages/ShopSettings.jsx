@@ -29,6 +29,34 @@ const COVER_STYLES = [
 export default function ShopSettings() {
   const navigate = useNavigate();
   const [shop, setShop] = useState(null);
+  const [storefrontPickerProducts, setStorefrontPickerProducts] = useState([]);
+  // storefront-featured-products-loader
+  useEffect(() => {
+    let alive = true;
+
+    api.get("/products")
+      .then((response) => {
+        const data = response?.data;
+        const items = Array.isArray(data)
+          ? data
+          : data?.products || data?.items || data?.data || [];
+
+        if (alive) {
+          setStorefrontPickerProducts(Array.isArray(items) ? items : []);
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setStorefrontPickerProducts([]);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+
   const [settingsCurrentUserForTier, setSettingsCurrentUserForTier] = useState(null);
   // settings-current-user-tier-loader
   useEffect(() => {
@@ -196,6 +224,7 @@ export default function ShopSettings() {
         advanced: true,
         allowedStyles: ["classic", "modern", "compact", "premium", "playful"],
         aiLimit: 200,
+        featuredLimit: 12,
       };
     }
 
@@ -208,6 +237,7 @@ export default function ShopSettings() {
         advanced: false,
         allowedStyles: ["classic", "modern", "compact", "premium", "playful"],
         aiLimit: 30,
+        featuredLimit: 6,
       };
     }
 
@@ -220,6 +250,7 @@ export default function ShopSettings() {
         advanced: false,
         allowedStyles: ["classic", "modern", "compact"],
         aiLimit: 0,
+        featuredLimit: 3,
       };
     }
 
@@ -231,6 +262,7 @@ export default function ShopSettings() {
       advanced: false,
       allowedStyles: ["classic"],
       aiLimit: 0,
+      featuredLimit: 0,
     };
   };
 
@@ -251,6 +283,43 @@ export default function ShopSettings() {
   const storefrontTemplateLocked = !storefrontTemplateFeatures.templates;
   const storefrontEditorLocked = !storefrontTemplateFeatures.editor;
   const storefrontAiLocked = !storefrontTemplateFeatures.ai;
+
+  const storefrontFeaturedLimit = storefrontTemplateFeatures.featuredLimit || 0;
+  const selectedFeaturedProductIds = Array.isArray(shop.storefront_featured_product_ids)
+    ? shop.storefront_featured_product_ids
+    : [];
+  const selectedFeaturedProductSet = new Set(selectedFeaturedProductIds);
+
+  const getStorefrontProductId = (product) =>
+    String(product?.product_id || product?.id || product?._id || "");
+
+  const toggleStorefrontFeaturedProduct = (productId) => {
+    if (!productId || storefrontTemplateLocked || storefrontFeaturedLimit <= 0) return;
+
+    setShop((prev) => {
+      const current = Array.isArray(prev.storefront_featured_product_ids)
+        ? prev.storefront_featured_product_ids
+        : [];
+      const exists = current.includes(productId);
+
+      if (exists) {
+        return {
+          ...prev,
+          storefront_featured_product_ids: current.filter((id) => id !== productId),
+        };
+      }
+
+      if (current.length >= storefrontFeaturedLimit) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        storefront_featured_product_ids: [...current, productId],
+      };
+    });
+  };
+
 
 
   const enhanceStorefrontCopy = async () => {
@@ -1441,6 +1510,83 @@ export default function ShopSettings() {
                     data-testid="storefront-about-title-input"
                   />
                 </label>
+              </div>
+
+
+              <div
+                className={`mt-5 rounded-2xl border p-4 ${
+                  storefrontFeaturedLimit > 0
+                    ? "border-brand-line bg-brand-off"
+                    : "border-amber-200 bg-amber-50"
+                }`}
+                data-testid="storefront-featured-product-picker"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-brand-ink">
+                      Produk/Menu/Layanan Unggulan
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                      Pilih item yang ingin ditonjolkan di section unggulan template. Jika kosong,
+                      sistem akan memilih otomatis dari daftar produk.
+                    </p>
+                  </div>
+
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-extrabold text-brand-ink shadow-sm">
+                    {selectedFeaturedProductIds.length}/{storefrontFeaturedLimit || 0}
+                  </span>
+                </div>
+
+                {storefrontFeaturedLimit <= 0 ? (
+                  <div className="mt-3 rounded-xl bg-white/80 p-3 text-xs leading-relaxed text-amber-800">
+                    Pilih produk unggulan tersedia mulai paket Starter.
+                  </div>
+                ) : storefrontPickerProducts.length ? (
+                  <div className="mt-4 grid gap-2 md:grid-cols-2">
+                    {storefrontPickerProducts.slice(0, 80).map((product) => {
+                      const productId = getStorefrontProductId(product);
+                      const checked = selectedFeaturedProductSet.has(productId);
+                      const disabled =
+                        storefrontTemplateLocked ||
+                        (!checked && selectedFeaturedProductIds.length >= storefrontFeaturedLimit);
+                      const productName = product.name || product.title || "Produk";
+                      const price = Number(product.price || product.price_idr || 0);
+
+                      return (
+                        <label
+                          key={productId || productName}
+                          className={`flex items-start gap-3 rounded-xl border bg-white p-3 text-sm ${
+                            checked
+                              ? "border-brand text-brand-ink shadow-sm"
+                              : "border-brand-line text-brand-ink"
+                          } ${disabled ? "opacity-60" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={disabled}
+                            onChange={() => toggleStorefrontFeaturedProduct(productId)}
+                            className="mt-1 h-4 w-4"
+                            data-testid="storefront-featured-product-checkbox"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-extrabold">
+                              {productName}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-brand-mute">
+                              {product.category || product.product_category || "Tanpa kategori"}
+                              {price > 0 ? ` · Rp ${price.toLocaleString("id-ID")}` : ""}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-xl bg-white p-3 text-xs leading-relaxed text-brand-mute">
+                    Belum ada produk/menu/layanan yang bisa dipilih.
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 rounded-2xl bg-brand-off p-4 text-xs leading-relaxed text-brand-mute">

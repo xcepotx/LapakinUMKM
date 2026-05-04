@@ -664,8 +664,57 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
   );
 }
 
-function ProductSection({ title, products, shop, template, limit, titleOverride, onAddToCart }) {
-  const visibleProducts = (products || []).slice(0, limit || products.length);
+
+function getSelectedFeaturedProductIds(shop) {
+  const ids = shop?.storefront_featured_product_ids;
+
+  if (!Array.isArray(ids)) return [];
+
+  return ids
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+}
+
+function getSelectedFeaturedProducts(shop, products) {
+  const selectedIds = getSelectedFeaturedProductIds(shop);
+  if (!selectedIds.length) return [];
+
+  const selectedSet = new Set(selectedIds);
+  const selectedProducts = [];
+
+  (products || []).forEach((product, index) => {
+    const possibleIds = [
+      getProductId(product, index),
+      product?.product_id,
+      product?.id,
+      product?._id,
+    ].map((item) => String(item || "").trim()).filter(Boolean);
+
+    if (possibleIds.some((id) => selectedSet.has(id))) {
+      selectedProducts.push(product);
+    }
+  });
+
+  selectedProducts.sort((a, b) => {
+    const aId = String(a?.product_id || a?.id || a?._id || "").trim();
+    const bId = String(b?.product_id || b?.id || b?._id || "").trim();
+
+    return selectedIds.indexOf(aId) - selectedIds.indexOf(bId);
+  });
+
+  return selectedProducts;
+}
+
+
+function ProductSection({ title, products, shop, template, limit, titleOverride, onAddToCart, preferSelectedFeatured = false }) {
+  const pickedFeaturedProducts = preferSelectedFeatured
+    ? getSelectedFeaturedProducts(shop, products)
+    : [];
+  const sourceProducts = pickedFeaturedProducts.length ? pickedFeaturedProducts : (products || []);
+  const computedLimit = pickedFeaturedProducts.length
+    ? pickedFeaturedProducts.length
+    : (limit || sourceProducts.length);
+  const visibleProducts = sourceProducts.slice(0, computedLimit);
   const finalTitle = titleOverride || title;
 
   if (!visibleProducts.length) {
@@ -866,6 +915,7 @@ function renderSection(section, context) {
           onAddToCart={onAddToCart}
           limit={4}
           titleOverride={getValue(shop, ["storefront_featured_title"], "")}
+          preferSelectedFeatured={true}
         />
       );
 

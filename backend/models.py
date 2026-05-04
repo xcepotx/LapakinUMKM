@@ -46,6 +46,7 @@ class ShopIn(BaseModel):
     storefront_hero_subtitle: Optional[str] = ""
     storefront_cta_label: Optional[str] = ""
     storefront_featured_title: Optional[str] = ""
+    storefront_featured_product_ids: Optional[List[str]] = None
     storefront_about_title: Optional[str] = ""
     name: str
     tagline: Optional[str] = ""
