@@ -211,29 +211,38 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
                     Manual Penggunaan
                   </Link>
 
-                  {!isStaff && (
-                    <Link
-                      to="/dashboard/settings"
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
-                      data-testid="account-menu-settings"
-                    >
-                      <Settings className="w-4 h-4 text-brand-mute" />
-                      Pengaturan Toko
-                    </Link>
+                                                      {!isStaff && (
+                    <>
+                      <Link
+                        to="/dashboard/website"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
+                        data-testid="account-menu-website"
+                      >
+                        <span className="w-4 h-4 text-brand-mute">🌐</span>
+                        Tampilan Website
+                      </Link>
+
+                      <Link
+                        to="/dashboard/settings"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
+                        data-testid="account-menu-settings"
+                      >
+                        <Settings className="w-4 h-4 text-brand-mute" />
+                        Pengaturan Toko
+                      </Link>
+
+                      <Link
+                        to="/dashboard/billing"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
+                        data-testid="account-menu-billing"
+                      >
+                        <CreditCard className="w-4 h-4 text-brand-mute" />
+                        Akun & Billing
+                      </Link>
+                    </>
                   )}
 
-                  {!isStaff && (
-                    <Link
-                      to="/dashboard/billing"
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
-                      data-testid="account-menu-billing"
-                    >
-                      <CreditCard className="w-4 h-4 text-brand-mute" />
-                      Akun & Billing
-                    </Link>
-                  )}
-
-                  <button
+<button
                     type="button"
                     onClick={handleLogout}
                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left hover:bg-red-50 text-red-700"

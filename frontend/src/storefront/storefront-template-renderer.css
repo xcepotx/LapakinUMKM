@@ -1472,6 +1472,7 @@
 
 /* Simple promo banner */
 .ltr-promo-banner {
+  scroll-margin-top: 90px;
   display: flex;
   align-items: center;
   justify-content: space-between;

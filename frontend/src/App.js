@@ -90,6 +90,7 @@ function AppRouter() {
       <Route path="/dashboard/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
       <Route path="/dashboard/whatsapp" element={<ProtectedRoute><WhatsAppConnect /></ProtectedRoute>} />
       <Route path="/dashboard/settings" element={<ProtectedRoute><ShopSettings /></ProtectedRoute>} />
+      <Route path="/dashboard/website" element={<ProtectedRoute><ShopSettings settingsView="website" /></ProtectedRoute>} />
       <Route path="/dashboard/qr" element={<ProtectedRoute><ShopQR /></ProtectedRoute>} />
       <Route path="/dashboard/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
       <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />

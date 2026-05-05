@@ -1,3 +1,4 @@
+import re
 import json
 """Shops routes: CRUD, public fetch, toggle-open, custom domain."""
 import os
@@ -30,6 +31,7 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_promo_title", "")
     shop.setdefault("storefront_promo_text", "")
     shop.setdefault("storefront_promo_cta_label", "")
+    shop.setdefault("storefront_promo_slug", "")
     shop.setdefault("storefront_renderer", "legacy")
     return shop
 
@@ -454,6 +456,19 @@ def _clean_storefront_promo_text(value, max_len=180):
     return value[:max_len]
 
 
+
+
+def _clean_storefront_promo_slug(value, max_len=48):
+    if value is None:
+        return ""
+
+    value = str(value).strip().lower()
+    value = re.sub(r"[^a-z0-9]+", "-", value)
+    value = re.sub(r"-+", "-", value).strip("-")
+
+    return value[:max_len]
+
+
 def _sanitize_storefront_promo_payload(payload, features):
     if not payload:
         return payload
@@ -463,6 +478,7 @@ def _sanitize_storefront_promo_payload(payload, features):
         "storefront_promo_title",
         "storefront_promo_text",
         "storefront_promo_cta_label",
+        "storefront_promo_slug",
     ]
 
     if not features.get("templates") or not features.get("promo"):
@@ -489,6 +505,12 @@ def _sanitize_storefront_promo_payload(payload, features):
         payload["storefront_promo_cta_label"] = _clean_storefront_promo_text(
             payload.get("storefront_promo_cta_label"),
             36,
+        )
+
+    if "storefront_promo_slug" in payload:
+        payload["storefront_promo_slug"] = _clean_storefront_promo_slug(
+            payload.get("storefront_promo_slug"),
+            48,
         )
 
     return payload
@@ -670,6 +692,7 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_promo_title", "")
     doc.setdefault("storefront_promo_text", "")
     doc.setdefault("storefront_promo_cta_label", "")
+    doc.setdefault("storefront_promo_slug", "")
     doc.setdefault("storefront_renderer", "legacy")
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})

@@ -140,6 +140,21 @@ function shouldShowPromoBanner(shop) {
   return Boolean(shop?.storefront_show_promo);
 }
 
+
+function getPromoSlug(shop) {
+  const raw =
+    String(shop?.storefront_promo_slug || "").trim() ||
+    String(shop?.storefront_promo_title || "").trim() ||
+    "promo";
+
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48) || "promo";
+}
+
 function getPromoTitle(shop) {
   return String(shop?.storefront_promo_title || "").trim() || "Promo Spesial";
 }
@@ -918,7 +933,7 @@ function normalizePromoFinalSectionOrder(shop, sections) {
 
 function PromoBannerSection({ shop }) {
   return (
-    <section className="ltr-promo-banner" data-testid="storefront-promo-banner">
+    <section id="promo" className="ltr-promo-banner" data-testid="storefront-promo-banner" data-campaign-slug={getPromoSlug(shop)}>
       <div>
         <span>Promo</span>
         <h2>{getPromoTitle(shop)}</h2>

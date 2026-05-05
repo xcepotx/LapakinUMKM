@@ -26,9 +26,10 @@ const COVER_STYLES = [
   { id: "vibrant", label: "Cerah / Vibrant" },
 ];
 
-export default function ShopSettings() {
+export default function ShopSettings({ settingsView = "shop" } = {}) {
   const navigate = useNavigate();
   const [shop, setShop] = useState(null);
+  const isWebsiteSettings = settingsView === "website";
   const [storefrontPickerProducts, setStorefrontPickerProducts] = useState([]);
   // storefront-featured-products-loader
   useEffect(() => {
@@ -207,7 +208,7 @@ export default function ShopSettings() {
   };
 
   if (!shop) {
-    return <DashboardLayout title="Pengaturan Toko"><div className="text-brand-mute">Memuat…</div></DashboardLayout>;
+    return <DashboardLayout title={isWebsiteSettings ? "Tampilan Website" : "Pengaturan Toko"}><div className="text-brand-mute">Memuat…</div></DashboardLayout>;
   }
 
   const update = (k, v) => setShop((s) => ({ ...s, [k]: v }));
@@ -815,614 +816,16 @@ export default function ShopSettings() {
     finally { setSaving(false); }
   };
 
-  return (
-    <DashboardLayout shop={shop} title="Pengaturan Toko" subtitle="Lengkapi profil toko biar pelanggan makin percaya."
-      actions={
-        <Button onClick={() => navigate("/dashboard/qr")}
-          variant="outline"
-          className="rounded-xl border-brand-line"
-          data-testid="settings-qr-btn">
-          <QrCode className="w-4 h-4 mr-2" /> QR Lapak Saya
-        </Button>
-      }>
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Main */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* MODE TOKO — Iteration 7 */}
-          <Section title="Mode Jualan" desc="Pilih cara tokomu jualan. Sistem akan menyesuaikan tampilan stok & status buka.">
-            <div className="grid sm:grid-cols-3 gap-3">
-              {[
-                { id: "stock",  emoji: "📦", title: "Stok",        desc: "Pakai jumlah stok per produk. Cocok fashion, kerajinan, aksesoris." },
-                { id: "hours",  emoji: "🍜", title: "Jam Buka",    desc: "Tidak pakai stok. Toko bisa BUKA/TUTUP. Cocok kuliner, kopi, warteg." },
-                { id: "always", emoji: "♾️", title: "Selalu Ada",  desc: "Tidak pakai stok & jam buka. Cocok jasa, digital, pre-order." },
-              ].map((m) => (
-                <button key={m.id} type="button"
-                  onClick={() => update("sells_by", m.id)}
-                  className={`text-left p-4 rounded-xl border-2 transition ${
-                    (shop.sells_by || "stock") === m.id
-                      ? "bg-brand text-white border-brand"
-                      : "bg-white border-brand-line hover:border-brand"
-                  }`}
-                  data-testid={`mode-${m.id}`}>
-                  <div className="text-2xl">{m.emoji}</div>
-                  <div className="font-bold mt-1">{m.title}</div>
-                  <div className={`text-xs mt-1 leading-snug ${(shop.sells_by || "stock") === m.id ? "text-white/85" : "text-brand-mute"}`}>{m.desc}</div>
-                </button>
-              ))}
-            </div>
-            {(shop.sells_by || "stock") === "hours" && (
-              <>
-                <div className="mt-4 p-4 rounded-xl bg-brand-off border border-brand-line">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="font-semibold flex items-center gap-2">
-                        Status Toko Sekarang:{" "}
-                        <span className={shop.is_open !== false ? "text-green-700" : "text-red-700"}>
-                          {shop.is_open !== false ? "BUKA" : "TUTUP"}
-                        </span>
-                      </div>
-                      <div className="text-xs text-brand-mute mt-0.5">
-                        {shop.auto_schedule_enabled
-                          ? "Jadwal otomatis tetap aktif. Owner/staff tetap bisa tutup toko sementara saat jadwal sedang buka."
-                          : "Toggle ini juga ada di Beranda untuk akses cepat."}
-                      </div>
-                    </div>
-                    <button type="button"
-                      onClick={async () => {
-                        const nextOpen = !(shop.is_open !== false);
-                        try {
-                          const { data } = await api.patch("/shops/me/open-status", { is_open: nextOpen });
-                          setShop((prev) => ({ ...prev, ...data }));
-                          toast.success(nextOpen ? "Toko dibuka kembali" : "Toko ditutup sementara");
-                        } catch (e) {
-                          toast.error(formatApiError(e.response?.data?.detail) || "Gagal mengubah status toko");
-                        }
-                      }}
-                      className={`px-4 py-2 rounded-xl font-bold text-sm ${shop.is_open !== false ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}`}
-                      data-testid="settings-toggle-open">
-                      {shop.is_open !== false ? "Tutup Toko" : "Buka Toko"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* AUTO-SCHEDULE EDITOR */}
-                <div className="mt-4 p-4 rounded-xl bg-white border border-brand-line" data-testid="schedule-editor">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input type="checkbox" className="mt-1 w-4 h-4 accent-brand"
-                      checked={!!shop.auto_schedule_enabled}
-                      onChange={(e) => update("auto_schedule_enabled", e.target.checked)}
-                      data-testid="auto-schedule-toggle" />
-                    <div>
-                      <div className="font-semibold">Auto Buka/Tutup Sesuai Jadwal ⏰</div>
-                      <div className="text-xs text-brand-mute mt-0.5">
-                        Toko otomatis BUKA dan TUTUP berdasarkan jadwal di bawah (zona waktu WIB / Jakarta).
-                      </div>
-                    </div>
-                  </label>
-
-                  <div className={`mt-4 space-y-2 ${shop.auto_schedule_enabled ? "" : "opacity-50 pointer-events-none"}`}>
-                    {[
-                      { idx: 0, label: "Senin" },
-                      { idx: 1, label: "Selasa" },
-                      { idx: 2, label: "Rabu" },
-                      { idx: 3, label: "Kamis" },
-                      { idx: 4, label: "Jumat" },
-                      { idx: 5, label: "Sabtu" },
-                      { idx: 6, label: "Minggu" },
-                    ].map((day) => {
-                      const entry = (shop.schedule || [])[day.idx];
-                      // Normalize to shifts array (legacy {open,close} → 1-shift)
-                      const shifts = (() => {
-                        if (!entry) return [];
-                        if (Array.isArray(entry.shifts) && entry.shifts.length) return entry.shifts;
-                        if (entry.open && entry.close) return [{ open: entry.open, close: entry.close }];
-                        return [];
-                      })();
-                      const isOpenDay = shifts.length > 0;
-                      const writeShifts = (next) => {
-                        const arr = [...(shop.schedule || [])];
-                        while (arr.length < 7) arr.push(null);
-                        if (!next || next.length === 0) {
-                          arr[day.idx] = null;
-                        } else if (next.length === 1) {
-                          // Keep legacy single-shift format for backward compat
-                          arr[day.idx] = { open: next[0].open, close: next[0].close };
-                        } else {
-                          arr[day.idx] = { shifts: next };
-                        }
-                        update("schedule", arr);
-                      };
-                      const setShift = (i, key, val) => {
-                        const next = [...shifts];
-                        next[i] = { ...next[i], [key]: val };
-                        writeShifts(next);
-                      };
-                      const addShift = () => writeShifts([...shifts, { open: "17:00", close: "21:00" }]);
-                      const removeShift = (i) => writeShifts(shifts.filter((_, idx) => idx !== i));
-
-                      return (
-                        <div key={day.idx} className="rounded-lg border border-brand-line bg-white/60 p-2.5" data-testid={`schedule-row-${day.idx}`}>
-                          <div className="flex items-center gap-2 sm:gap-3">
-                            <div className="w-20 sm:w-24 font-semibold text-sm">{day.label}</div>
-                            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                              <input type="checkbox" className="w-3.5 h-3.5 accent-brand"
-                                checked={isOpenDay}
-                                onChange={(e) => writeShifts(e.target.checked ? [{ open: "08:00", close: "21:00" }] : [])}
-                                data-testid={`schedule-open-${day.idx}`} />
-                              Buka
-                            </label>
-                            {!isOpenDay && <span className="text-xs text-brand-mute italic">Libur</span>}
-                          </div>
-                          {isOpenDay && (
-                            <div className="mt-2 ml-22 sm:ml-26 space-y-1.5">
-                              {shifts.map((sh, i) => (
-                                <div key={i} className="flex items-center gap-2 flex-wrap" data-testid={`schedule-shift-${day.idx}-${i}`}>
-                                  <span className="text-[10px] uppercase tracking-wider font-bold text-brand-mute w-12">
-                                    {shifts.length > 1 ? (i === 0 ? "Shift 1" : `Shift ${i + 1}`) : "Jam"}
-                                  </span>
-                                  <input type="time"
-                                    value={sh.open || ""}
-                                    onChange={(e) => setShift(i, "open", e.target.value)}
-                                    className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white"
-                                    data-testid={`schedule-open-time-${day.idx}${i > 0 ? `-${i}` : ""}`} />
-                                  <span className="text-brand-mute text-sm">–</span>
-                                  <input type="time"
-                                    value={sh.close || ""}
-                                    onChange={(e) => setShift(i, "close", e.target.value)}
-                                    className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white"
-                                    data-testid={`schedule-close-time-${day.idx}${i > 0 ? `-${i}` : ""}`} />
-                                  {shifts.length > 1 && (
-                                    <button type="button" onClick={() => removeShift(i)}
-                                      className="text-xs text-red-500 hover:text-red-700 font-semibold"
-                                      data-testid={`schedule-remove-shift-${day.idx}-${i}`}>
-                                      Hapus
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                              {shifts.length < 2 && (
-                                <button type="button" onClick={addShift}
-                                  className="text-xs text-brand font-semibold hover:underline ml-14"
-                                  data-testid={`schedule-add-shift-${day.idx}`}>
-                                  + Tambah shift kedua (mis. dinner)
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* PRE-ORDER CUTOFF */}
-                  <div className="mt-5 pt-4 border-t border-brand-line">
-                    <label className="block">
-                      <div className="font-semibold text-sm">⏱️ Last Order Sebelum Tutup</div>
-                      <div className="text-xs text-brand-mute mt-0.5 mb-2">
-                        Stop terima order N menit sebelum jam tutup. Contoh: tutup 21:00, last order 30 menit = stop pesanan jam 20:30.
-                        Berguna biar dapur sempat siap-siap.
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {[0, 15, 30, 45, 60].map((m) => (
-                          <button key={m} type="button"
-                            onClick={() => update("last_order_minutes_before_close", m)}
-                            className={`rounded-lg px-3 h-9 text-sm font-semibold border transition ${
-                              (shop.last_order_minutes_before_close || 0) === m
-                                ? "bg-brand text-white border-brand"
-                                : "bg-white text-brand-ink border-brand-line hover:bg-brand-sand"
-                            }`}
-                            data-testid={`last-order-cutoff-${m}`}>
-                            {m === 0 ? "Tidak" : `${m} mnt`}
-                          </button>
-                        ))}
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              </>
-            )}
-          </Section>
-
-          {/* COVER BANNER */}
-          <Section title="Cover Banner" desc="Foto besar di puncak toko (16:6). Upload sendiri atau biarkan AI bikin.">
-            <div className="aspect-[16/6] rounded-xl bg-brand-off border border-brand-line overflow-hidden relative">
-              {shop.cover_image ? (
-                <>
-                  <img src={shop.cover_image} alt="cover" className="w-full h-full object-cover" data-testid="cover-preview" />
-                  <button onClick={() => update("cover_image", "")}
-                    className="absolute top-2 right-2 bg-white/90 rounded-full p-1.5 hover:bg-white"
-                    data-testid="cover-remove-btn">
-                    <X className="w-4 h-4" />
-                  </button>
-                </>
-              ) : (
-                <div className="w-full h-full grid place-items-center text-brand-mute">
-                  Belum ada cover
-                </div>
-              )}
-            </div>
-            <div className="mt-3">
-              <Label className="text-xs">Gaya Cover AI</Label>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {COVER_STYLES.map((s) => (
-                  <button key={s.id} type="button" onClick={() => setCoverStyle(s.id)}
-                    className={`text-xs font-semibold rounded-full px-3 py-1.5 border ${coverStyle === s.id ? "bg-brand text-white border-brand" : "bg-white border-brand-line"}`}
-                    data-testid={`cover-style-${s.id}`}>{s.label}</button>
-                ))}
-              </div>
-            </div>
-            <div className="mt-3 flex gap-2 flex-wrap">
-              <Button onClick={generateCover} disabled={generatingCover}
-                className="bg-brand hover:bg-brand-hover text-white rounded-xl btn-press"
-                data-testid="cover-generate-btn">
-                {generatingCover ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> AI bikin cover…</> : <><Wand2 className="w-4 h-4 mr-2" /> Generate Cover dengan AI</>}
-              </Button>
-              <label className="rounded-xl border border-brand-line bg-white px-4 py-2 cursor-pointer text-sm font-semibold flex items-center gap-2 hover:bg-brand-off">
-                <Upload className="w-4 h-4" /> Upload Sendiri
-                <input type="file" accept="image/*" className="hidden" onChange={onCoverFile} data-testid="cover-upload-input" />
-              </label>
-            </div>
-          </Section>
-
-          {/* IDENTITY */}
-          <Section title="Identitas Toko" desc="Info dasar yang tampil di header & meta.">
-            <div className="space-y-4">
-              <div>
-                <Label>Nama Toko</Label>
-                <Input value={shop.name} onChange={(e) => update("name", e.target.value)}
-                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-name" />
-              </div>
-              <div>
-                <Label>Tagline</Label>
-                <Input value={shop.tagline || ""} onChange={(e) => update("tagline", e.target.value)}
-                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-tagline" />
-              </div>
-              <div>
-                <Label>Deskripsi Singkat</Label>
-                <Textarea rows={2} value={shop.description || ""} onChange={(e) => update("description", e.target.value)}
-                  className="mt-1 rounded-xl border-brand-line" data-testid="settings-description" />
-              </div>
-              <div>
-                <Label>Jenis Bisnis</Label>
-                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {BUSINESS_TYPES.map((b) => (
-                    <button key={b.id} type="button" onClick={() => update("business_type", b.id)}
-                      className={`text-sm font-semibold rounded-xl px-4 py-3 border ${shop.business_type === b.id ? "bg-brand text-white border-brand" : "bg-white text-brand-ink border-brand-line hover:border-brand"}`}>
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Section>
-
-          {/* ABOUT US */}
-          <Section title="Tentang Kami" desc="Cerita singkat tentang toko. Klik AI biar dibuatkan otomatis.">
-            <Textarea rows={5} value={shop.about || ""} onChange={(e) => update("about", e.target.value)}
-              placeholder="Cerita toko kamu… atau klik 'AI Tulis Cerita' di bawah."
-              className="rounded-xl border-brand-line" data-testid="settings-about" />
-            <Button onClick={generateAbout} disabled={generatingAbout || !shop.name}
-              variant="outline"
-              className="mt-3 rounded-xl border-brand bg-brand-off text-brand hover:bg-brand hover:text-white btn-press"
-              data-testid="about-generate-btn">
-              {generatingAbout ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> AI menulis…</> : <><Wand2 className="w-4 h-4 mr-2" /> AI Tulis Cerita</>}
-            </Button>
-          </Section>
-
-          {/* SHOP STORY REEL */}
-          <Section title="Shop Story Reel" desc="3-5 foto behind-the-scenes (proses, suasana, kru). Tampil seperti IG Stories di toko.">
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-              {(shop.story || []).map((s, i) => (
-                <div key={i} className="space-y-2" data-testid={`story-item-${i}`}>
-                  <div className="relative aspect-[3/4] rounded-xl overflow-hidden border border-brand-line">
-                    <img src={s.image} alt="" className="w-full h-full object-cover" />
-                    <button onClick={() => removeStory(i)}
-                      className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"
-                      data-testid={`story-remove-${i}`}>
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <Input value={s.caption} onChange={(e) => setStoryCaption(i, e.target.value)}
-                    placeholder="Caption…" maxLength={60}
-                    className="rounded-lg border-brand-line h-8 text-xs" />
-                </div>
-              ))}
-              {(shop.story?.length || 0) < 5 && (
-                <label className="aspect-[3/4] rounded-xl border-2 border-dashed border-brand-line bg-brand-off/40 cursor-pointer flex flex-col items-center justify-center text-brand-mute hover:border-brand hover:text-brand">
-                  <ImagePlus className="w-6 h-6" />
-                  <span className="text-xs mt-1">Tambah</span>
-                  <input type="file" multiple accept="image/*" className="hidden" onChange={onStoryFile} data-testid="story-add-input" />
-                </label>
-              )}
-            </div>
-          </Section>
-          {/* Cabang / Multi-toko */}
-          <Section
-            title="Cabang / Multi-toko"
-            desc="Kelola beberapa toko atau cabang. Semua data dashboard mengikuti cabang aktif."
-          >
-            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-              <div className="text-sm text-brand-mute">
-                {branchInfo ? (
-                  <span>
-                    {branchInfo.used} dari {branchInfo.limit === "unlimited" ? "∞" : branchInfo.limit} cabang terpakai
-                  </span>
-                ) : (
-                  <span>Memuat data cabang…</span>
-                )}
-              </div>
-              {branchInfo?.tier && (
-                <span className="text-xs font-bold uppercase rounded-full bg-brand-off border border-brand-line px-3 py-1 text-brand-mute">
-                  Paket {branchInfo.tier}
-                </span>
-              )}
-            </div>
-
-            <div className="divide-y divide-brand-line rounded-xl border border-brand-line bg-white overflow-hidden mb-4">
-              {(branchInfo?.shops || []).map((b) => (
-                <div key={b.shop_id} className="flex items-center justify-between gap-3 p-4" data-testid={`branch-row-${b.shop_id}`}>
-                  <div className="min-w-0">
-                    <div className="font-bold truncate">{b.name}</div>
-                    <div className="text-xs text-brand-mute truncate">/{b.slug}</div>
-                  </div>
-                  <span className={`text-xs font-bold rounded-full px-2.5 py-1 border ${
-                    b.shop_id === branchInfo.active_shop_id
-                      ? "bg-brand-off text-brand border-brand-line"
-                      : "bg-white text-brand-mute border-brand-line"
-                  }`}>
-                    {b.shop_id === branchInfo.active_shop_id ? "Aktif" : "Cabang"}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {branchInfo?.can_create ? (
-              <div className="grid sm:grid-cols-[1fr_auto] gap-2">
-                <Input
-                  value={branchName}
-                  onChange={(e) => setBranchName(e.target.value)}
-                  placeholder="Nama cabang baru, misal: Lapakin Bu Sari - Dago"
-                  className="rounded-xl border-brand-line h-12"
-                  data-testid="branch-name-input"
-                />
-                <Button
-                  type="button"
-                  onClick={createBranch}
-                  disabled={creatingBranch}
-                  className="bg-brand hover:bg-brand-hover text-white rounded-xl h-12 font-bold"
-                  data-testid="branch-create-btn"
-                >
-                  {creatingBranch ? "Membuat…" : "Tambah Cabang"}
-                </Button>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                Limit cabang paket ini sudah penuh. Upgrade ke paket yang lebih tinggi untuk menambah cabang.
-              </div>
-            )}
-          </Section>
-
-          {/* Anggota Tim */}
-          <Section
-            title="Anggota Tim"
-            desc="Undang anggota untuk ikut mengelola toko. Kalau belum punya akun, mereka cukup daftar dengan email yang diundang."
-          >
-            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-              <div className="flex items-center gap-2 text-sm text-brand-mute">
-                <Users className="w-4 h-4 text-brand" />
-                {teamLoading ? (
-                  <span>Memuat anggota…</span>
-                ) : team ? (
-                  <span>
-                    {team.used} dari {team.limit === "unlimited" ? "∞" : team.limit} anggota terpakai
-                  </span>
-                ) : (
-                  <span>Belum ada data anggota</span>
-                )}
-              </div>
-              {team?.tier && (
-                <span className="text-xs font-bold uppercase rounded-full bg-brand-off border border-brand-line px-3 py-1 text-brand-mute">
-                  Paket {team.tier}
-                </span>
-              )}
-            </div>
-
-            {teamLoading ? (
-              <div className="mb-4 rounded-xl border border-brand-line bg-brand-off/50 p-3 text-sm text-brand-mute">
-                Memuat data anggota tim…
-              </div>
-            ) : teamError ? (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 flex items-center justify-between gap-3">
-                <span>{teamError}</span>
-                <Button type="button" variant="outline" size="sm" onClick={loadTeam} className="rounded-xl border-red-200">
-                  Coba lagi
-                </Button>
-              </div>
-            ) : team?.is_owner ? (
-              <div className="grid sm:grid-cols-[1fr_auto] gap-2 mb-4">
-                <Input
-                  type="email"
-                  value={teamEmail}
-                  onChange={(e) => setTeamEmail(e.target.value)}
-                  placeholder="email-anggota@contoh.com"
-                  className="rounded-xl border-brand-line h-12"
-                  data-testid="team-email-input"
-                />
-                <Button
-                  type="button"
-                  onClick={addTeamMember}
-                  disabled={addingMember || (team && team.remaining === 0)}
-                  className="bg-brand hover:bg-brand-hover text-white rounded-xl h-12 font-bold"
-                  data-testid="team-add-btn"
-                >
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  {addingMember ? "Menambah…" : "Tambah"}
-                </Button>
-              </div>
-            ) : (
-              <div className="mb-4 rounded-xl border border-brand-line bg-brand-off/50 p-3 text-sm text-brand-mute">
-                Hanya owner toko yang bisa menambah atau menghapus anggota.
-              </div>
-            )}
-
-            {team && team.remaining === 0 && team.limit !== "unlimited" && team.is_owner && (
-              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                Limit anggota tim paket ini sudah penuh. Upgrade paket untuk menambah anggota lagi.
-              </div>
-            )}
-
-            <div className="divide-y divide-brand-line rounded-xl border border-brand-line bg-white overflow-hidden">
-              {(team?.members || []).map((member) => (
-                <div key={member.user_id} className="flex items-center justify-between gap-3 p-4" data-testid={`team-member-${member.user_id}`}>
-                  <div className="min-w-0">
-                    <div className="font-bold truncate">{member.name || member.email}</div>
-                    <div className="text-xs text-brand-mute truncate">{member.email}</div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`inline-flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 border ${
-                      member.role === "owner"
-                        ? "bg-brand-off text-brand border-brand-line"
-                        : "bg-white text-brand-mute border-brand-line"
-                    }`}>
-                      {member.role === "owner" && <ShieldCheck className="w-3 h-3" />}
-                      {member.role === "owner" ? "Owner" : "Staff"}
-                    </span>
-                    {team?.is_owner && member.role !== "owner" && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeTeamMember(member)}
-                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                        data-testid={`team-remove-${member.user_id}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {(team?.pending_invites || []).map((invite) => (
-                <div key={invite.invite_id} className="flex items-center justify-between gap-3 p-4 bg-amber-50/60" data-testid={`team-invite-${invite.invite_id}`}>
-                  <div className="min-w-0">
-                    <div className="font-bold truncate">{invite.email}</div>
-                    <div className="text-xs text-amber-800 truncate">Menunggu daftar / login dengan email ini</div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="inline-flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 border bg-amber-100 text-amber-900 border-amber-200">
-                      Pending
-                    </span>
-                    {team?.is_owner && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => revokeTeamInvite(invite)}
-                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                        data-testid={`team-revoke-${invite.invite_id}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {team && team.members.length === 0 && (team.pending_invites || []).length === 0 && (
-                <div className="p-6 text-center text-sm text-brand-mute">
-                  Belum ada anggota tim.
-                </div>
-              )}
-            </div>
-          </Section>
-        </div>
-
-        {/* Sidebar */}
+  
+  if (isWebsiteSettings) {
+    return (
+      <DashboardLayout
+        shop={shop}
+        title="Tampilan Website"
+        subtitle="Atur tampilan website publik, template, produk unggulan, promo, dan link campaign."
+      >
         <div className="space-y-6">
-          <Section title="Kontak & Sosial" desc="">
-            <div className="space-y-4">
-              <div>
-                <Label>WhatsApp</Label>
-                <Input value={shop.whatsapp || ""} onChange={(e) => update("whatsapp", e.target.value)}
-                  placeholder="08xxxxxxxxxx" className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-whatsapp" />
-              </div>
-              <div>
-                <Label>Instagram</Label>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-mute">@</span>
-                  <Input value={shop.instagram || ""} onChange={(e) => update("instagram", e.target.value.replace(/^@/, ""))}
-                    placeholder="namatoko" className="pl-7 rounded-xl border-brand-line h-12" data-testid="settings-instagram" />
-                </div>
-              </div>
-              <div>
-                <Label>TikTok</Label>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-mute">@</span>
-                  <Input value={shop.tiktok || ""} onChange={(e) => update("tiktok", e.target.value.replace(/^@/, ""))}
-                    placeholder="namatoko" className="pl-7 rounded-xl border-brand-line h-12" data-testid="settings-tiktok" />
-                </div>
-              </div>
-              <div>
-                <Label>Shopee URL</Label>
-                <Input value={shop.shopee || ""} onChange={(e) => update("shopee", e.target.value)}
-                  placeholder="https://shopee.co.id/..." className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-shopee" />
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Lokasi & Jam">
-            <div className="space-y-4">
-              <div>
-                <Label>Alamat / Area</Label>
-                <Input value={shop.address || ""} onChange={(e) => update("address", e.target.value)}
-                  placeholder="Jl. Asia Afrika No.123, Bandung"
-                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-address" />
-              </div>
-              <div>
-                <Label>Jam Buka</Label>
-                <Input value={shop.hours || ""} onChange={(e) => update("hours", e.target.value)}
-                  placeholder="Senin-Sabtu 08:00-21:00"
-                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-hours" />
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Banner Promo" desc="Tampil di atas grid produk kalau aktif.">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={!!shop.promo_active}
-                onChange={(e) => update("promo_active", e.target.checked)}
-                className="w-4 h-4 accent-brand" data-testid="promo-active-toggle" />
-              <span className="text-sm font-semibold">Aktifkan Promo</span>
-            </label>
-            <div className={`mt-3 space-y-3 ${shop.promo_active ? "" : "opacity-50 pointer-events-none"}`}>
-              <Input value={shop.promo_title || ""} onChange={(e) => update("promo_title", e.target.value)}
-                placeholder="Judul: Diskon Pembeli Pertama"
-                className="rounded-xl border-brand-line h-11" data-testid="promo-title" maxLength={60} />
-              <Textarea rows={2} value={shop.promo_description || ""} onChange={(e) => update("promo_description", e.target.value)}
-                placeholder="Detail singkat promo"
-                className="rounded-xl border-brand-line" data-testid="promo-description" maxLength={150} />
-              <Input value={shop.promo_code || ""} onChange={(e) => update("promo_code", e.target.value.toUpperCase())}
-                placeholder="Kode: HALOKOPI"
-                className="rounded-xl border-brand-line h-11 font-mono" data-testid="promo-code" maxLength={20} />
-            </div>
-          </Section>
-
-          <Section title="Tampilan">
-            <Label>Warna Brand</Label>
-            <div className="mt-1 flex items-center gap-3">
-              <input type="color" value={shop.brand_color || "#C04A3B"}
-                onChange={(e) => update("brand_color", e.target.value)}
-                className="w-14 h-12 rounded-xl border border-brand-line cursor-pointer" data-testid="settings-color" />
-              <Input value={shop.brand_color || "#C04A3B"} onChange={(e) => update("brand_color", e.target.value)}
-                className="rounded-xl border-brand-line h-12" />
-            </div>
-            <div className="mt-3 text-xs text-brand-mute font-mono break-all">URL: {window.location.origin}/toko/{shop.slug}</div>
-          </Section>
-        </div>
-      </div>
-
-          <Section title="Tampilan Website" desc="Pilih mode dan gaya visual website publik toko.">
+<Section title="Tampilan Website" desc="Pilih mode dan gaya visual website publik toko.">
             <div className="grid md:grid-cols-2 gap-4">
               <label className="block">
                 <span className="text-sm font-bold text-brand-ink">Mode Website</span>
@@ -2200,6 +1603,637 @@ export default function ShopSettings() {
               ))}
             </div>
           </Section>
+        
+          <div className="sticky bottom-4 z-20 mt-6 rounded-2xl border border-brand-line bg-white/95 p-4 shadow-xl backdrop-blur">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm leading-relaxed text-brand-mute">
+                Setelah mengubah tampilan website, klik simpan agar perubahan tampil di website publik.
+              </p>
+
+              <Button
+                type="button"
+                onClick={save}
+                disabled={saving}
+                className="w-full sm:w-auto"
+                data-testid="website-settings-save-btn"
+              >
+                {saving ? "Menyimpan..." : "Simpan Semua Perubahan"}
+              </Button>
+            </div>
+          </div>
+</div>
+      </DashboardLayout>
+    );
+  }
+
+return (
+    <DashboardLayout shop={shop} title="Pengaturan Toko" subtitle="Lengkapi profil toko biar pelanggan makin percaya."
+      actions={
+        <Button onClick={() => navigate("/dashboard/qr")}
+          variant="outline"
+          className="rounded-xl border-brand-line"
+          data-testid="settings-qr-btn">
+          <QrCode className="w-4 h-4 mr-2" /> QR Lapak Saya
+        </Button>
+      }>
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Main */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* MODE TOKO — Iteration 7 */}
+          <Section title="Mode Jualan" desc="Pilih cara tokomu jualan. Sistem akan menyesuaikan tampilan stok & status buka.">
+            <div className="grid sm:grid-cols-3 gap-3">
+              {[
+                { id: "stock",  emoji: "📦", title: "Stok",        desc: "Pakai jumlah stok per produk. Cocok fashion, kerajinan, aksesoris." },
+                { id: "hours",  emoji: "🍜", title: "Jam Buka",    desc: "Tidak pakai stok. Toko bisa BUKA/TUTUP. Cocok kuliner, kopi, warteg." },
+                { id: "always", emoji: "♾️", title: "Selalu Ada",  desc: "Tidak pakai stok & jam buka. Cocok jasa, digital, pre-order." },
+              ].map((m) => (
+                <button key={m.id} type="button"
+                  onClick={() => update("sells_by", m.id)}
+                  className={`text-left p-4 rounded-xl border-2 transition ${
+                    (shop.sells_by || "stock") === m.id
+                      ? "bg-brand text-white border-brand"
+                      : "bg-white border-brand-line hover:border-brand"
+                  }`}
+                  data-testid={`mode-${m.id}`}>
+                  <div className="text-2xl">{m.emoji}</div>
+                  <div className="font-bold mt-1">{m.title}</div>
+                  <div className={`text-xs mt-1 leading-snug ${(shop.sells_by || "stock") === m.id ? "text-white/85" : "text-brand-mute"}`}>{m.desc}</div>
+                </button>
+              ))}
+            </div>
+            {(shop.sells_by || "stock") === "hours" && (
+              <>
+                <div className="mt-4 p-4 rounded-xl bg-brand-off border border-brand-line">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-semibold flex items-center gap-2">
+                        Status Toko Sekarang:{" "}
+                        <span className={shop.is_open !== false ? "text-green-700" : "text-red-700"}>
+                          {shop.is_open !== false ? "BUKA" : "TUTUP"}
+                        </span>
+                      </div>
+                      <div className="text-xs text-brand-mute mt-0.5">
+                        {shop.auto_schedule_enabled
+                          ? "Jadwal otomatis tetap aktif. Owner/staff tetap bisa tutup toko sementara saat jadwal sedang buka."
+                          : "Toggle ini juga ada di Beranda untuk akses cepat."}
+                      </div>
+                    </div>
+                    <button type="button"
+                      onClick={async () => {
+                        const nextOpen = !(shop.is_open !== false);
+                        try {
+                          const { data } = await api.patch("/shops/me/open-status", { is_open: nextOpen });
+                          setShop((prev) => ({ ...prev, ...data }));
+                          toast.success(nextOpen ? "Toko dibuka kembali" : "Toko ditutup sementara");
+                        } catch (e) {
+                          toast.error(formatApiError(e.response?.data?.detail) || "Gagal mengubah status toko");
+                        }
+                      }}
+                      className={`px-4 py-2 rounded-xl font-bold text-sm ${shop.is_open !== false ? "bg-green-600 hover:bg-green-700 text-white" : "bg-red-600 hover:bg-red-700 text-white"}`}
+                      data-testid="settings-toggle-open">
+                      {shop.is_open !== false ? "Tutup Toko" : "Buka Toko"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* AUTO-SCHEDULE EDITOR */}
+                <div className="mt-4 p-4 rounded-xl bg-white border border-brand-line" data-testid="schedule-editor">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" className="mt-1 w-4 h-4 accent-brand"
+                      checked={!!shop.auto_schedule_enabled}
+                      onChange={(e) => update("auto_schedule_enabled", e.target.checked)}
+                      data-testid="auto-schedule-toggle" />
+                    <div>
+                      <div className="font-semibold">Auto Buka/Tutup Sesuai Jadwal ⏰</div>
+                      <div className="text-xs text-brand-mute mt-0.5">
+                        Toko otomatis BUKA dan TUTUP berdasarkan jadwal di bawah (zona waktu WIB / Jakarta).
+                      </div>
+                    </div>
+                  </label>
+
+                  <div className={`mt-4 space-y-2 ${shop.auto_schedule_enabled ? "" : "opacity-50 pointer-events-none"}`}>
+                    {[
+                      { idx: 0, label: "Senin" },
+                      { idx: 1, label: "Selasa" },
+                      { idx: 2, label: "Rabu" },
+                      { idx: 3, label: "Kamis" },
+                      { idx: 4, label: "Jumat" },
+                      { idx: 5, label: "Sabtu" },
+                      { idx: 6, label: "Minggu" },
+                    ].map((day) => {
+                      const entry = (shop.schedule || [])[day.idx];
+                      // Normalize to shifts array (legacy {open,close} → 1-shift)
+                      const shifts = (() => {
+                        if (!entry) return [];
+                        if (Array.isArray(entry.shifts) && entry.shifts.length) return entry.shifts;
+                        if (entry.open && entry.close) return [{ open: entry.open, close: entry.close }];
+                        return [];
+                      })();
+                      const isOpenDay = shifts.length > 0;
+                      const writeShifts = (next) => {
+                        const arr = [...(shop.schedule || [])];
+                        while (arr.length < 7) arr.push(null);
+                        if (!next || next.length === 0) {
+                          arr[day.idx] = null;
+                        } else if (next.length === 1) {
+                          // Keep legacy single-shift format for backward compat
+                          arr[day.idx] = { open: next[0].open, close: next[0].close };
+                        } else {
+                          arr[day.idx] = { shifts: next };
+                        }
+                        update("schedule", arr);
+                      };
+                      const setShift = (i, key, val) => {
+                        const next = [...shifts];
+                        next[i] = { ...next[i], [key]: val };
+                        writeShifts(next);
+                      };
+                      const addShift = () => writeShifts([...shifts, { open: "17:00", close: "21:00" }]);
+                      const removeShift = (i) => writeShifts(shifts.filter((_, idx) => idx !== i));
+
+                      return (
+                        <div key={day.idx} className="rounded-lg border border-brand-line bg-white/60 p-2.5" data-testid={`schedule-row-${day.idx}`}>
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="w-20 sm:w-24 font-semibold text-sm">{day.label}</div>
+                            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                              <input type="checkbox" className="w-3.5 h-3.5 accent-brand"
+                                checked={isOpenDay}
+                                onChange={(e) => writeShifts(e.target.checked ? [{ open: "08:00", close: "21:00" }] : [])}
+                                data-testid={`schedule-open-${day.idx}`} />
+                              Buka
+                            </label>
+                            {!isOpenDay && <span className="text-xs text-brand-mute italic">Libur</span>}
+                          </div>
+                          {isOpenDay && (
+                            <div className="mt-2 ml-22 sm:ml-26 space-y-1.5">
+                              {shifts.map((sh, i) => (
+                                <div key={i} className="flex items-center gap-2 flex-wrap" data-testid={`schedule-shift-${day.idx}-${i}`}>
+                                  <span className="text-[10px] uppercase tracking-wider font-bold text-brand-mute w-12">
+                                    {shifts.length > 1 ? (i === 0 ? "Shift 1" : `Shift ${i + 1}`) : "Jam"}
+                                  </span>
+                                  <input type="time"
+                                    value={sh.open || ""}
+                                    onChange={(e) => setShift(i, "open", e.target.value)}
+                                    className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white"
+                                    data-testid={`schedule-open-time-${day.idx}${i > 0 ? `-${i}` : ""}`} />
+                                  <span className="text-brand-mute text-sm">–</span>
+                                  <input type="time"
+                                    value={sh.close || ""}
+                                    onChange={(e) => setShift(i, "close", e.target.value)}
+                                    className="rounded-lg border border-brand-line h-9 px-2 text-sm bg-white"
+                                    data-testid={`schedule-close-time-${day.idx}${i > 0 ? `-${i}` : ""}`} />
+                                  {shifts.length > 1 && (
+                                    <button type="button" onClick={() => removeShift(i)}
+                                      className="text-xs text-red-500 hover:text-red-700 font-semibold"
+                                      data-testid={`schedule-remove-shift-${day.idx}-${i}`}>
+                                      Hapus
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {shifts.length < 2 && (
+                                <button type="button" onClick={addShift}
+                                  className="text-xs text-brand font-semibold hover:underline ml-14"
+                                  data-testid={`schedule-add-shift-${day.idx}`}>
+                                  + Tambah shift kedua (mis. dinner)
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* PRE-ORDER CUTOFF */}
+                  <div className="mt-5 pt-4 border-t border-brand-line">
+                    <label className="block">
+                      <div className="font-semibold text-sm">⏱️ Last Order Sebelum Tutup</div>
+                      <div className="text-xs text-brand-mute mt-0.5 mb-2">
+                        Stop terima order N menit sebelum jam tutup. Contoh: tutup 21:00, last order 30 menit = stop pesanan jam 20:30.
+                        Berguna biar dapur sempat siap-siap.
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {[0, 15, 30, 45, 60].map((m) => (
+                          <button key={m} type="button"
+                            onClick={() => update("last_order_minutes_before_close", m)}
+                            className={`rounded-lg px-3 h-9 text-sm font-semibold border transition ${
+                              (shop.last_order_minutes_before_close || 0) === m
+                                ? "bg-brand text-white border-brand"
+                                : "bg-white text-brand-ink border-brand-line hover:bg-brand-sand"
+                            }`}
+                            data-testid={`last-order-cutoff-${m}`}>
+                            {m === 0 ? "Tidak" : `${m} mnt`}
+                          </button>
+                        ))}
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </>
+            )}
+          </Section>
+
+          {/* COVER BANNER */}
+          <Section title="Cover Banner" desc="Foto besar di puncak toko (16:6). Upload sendiri atau biarkan AI bikin.">
+            <div className="aspect-[16/6] rounded-xl bg-brand-off border border-brand-line overflow-hidden relative">
+              {shop.cover_image ? (
+                <>
+                  <img src={shop.cover_image} alt="cover" className="w-full h-full object-cover" data-testid="cover-preview" />
+                  <button onClick={() => update("cover_image", "")}
+                    className="absolute top-2 right-2 bg-white/90 rounded-full p-1.5 hover:bg-white"
+                    data-testid="cover-remove-btn">
+                    <X className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <div className="w-full h-full grid place-items-center text-brand-mute">
+                  Belum ada cover
+                </div>
+              )}
+            </div>
+            <div className="mt-3">
+              <Label className="text-xs">Gaya Cover AI</Label>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {COVER_STYLES.map((s) => (
+                  <button key={s.id} type="button" onClick={() => setCoverStyle(s.id)}
+                    className={`text-xs font-semibold rounded-full px-3 py-1.5 border ${coverStyle === s.id ? "bg-brand text-white border-brand" : "bg-white border-brand-line"}`}
+                    data-testid={`cover-style-${s.id}`}>{s.label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3 flex gap-2 flex-wrap">
+              <Button onClick={generateCover} disabled={generatingCover}
+                className="bg-brand hover:bg-brand-hover text-white rounded-xl btn-press"
+                data-testid="cover-generate-btn">
+                {generatingCover ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> AI bikin cover…</> : <><Wand2 className="w-4 h-4 mr-2" /> Generate Cover dengan AI</>}
+              </Button>
+              <label className="rounded-xl border border-brand-line bg-white px-4 py-2 cursor-pointer text-sm font-semibold flex items-center gap-2 hover:bg-brand-off">
+                <Upload className="w-4 h-4" /> Upload Sendiri
+                <input type="file" accept="image/*" className="hidden" onChange={onCoverFile} data-testid="cover-upload-input" />
+              </label>
+            </div>
+          </Section>
+
+          {/* IDENTITY */}
+          <Section title="Identitas Toko" desc="Info dasar yang tampil di header & meta.">
+            <div className="space-y-4">
+              <div>
+                <Label>Nama Toko</Label>
+                <Input value={shop.name} onChange={(e) => update("name", e.target.value)}
+                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-name" />
+              </div>
+              <div>
+                <Label>Tagline</Label>
+                <Input value={shop.tagline || ""} onChange={(e) => update("tagline", e.target.value)}
+                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-tagline" />
+              </div>
+              <div>
+                <Label>Deskripsi Singkat</Label>
+                <Textarea rows={2} value={shop.description || ""} onChange={(e) => update("description", e.target.value)}
+                  className="mt-1 rounded-xl border-brand-line" data-testid="settings-description" />
+              </div>
+              <div>
+                <Label>Jenis Bisnis</Label>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {BUSINESS_TYPES.map((b) => (
+                    <button key={b.id} type="button" onClick={() => update("business_type", b.id)}
+                      className={`text-sm font-semibold rounded-xl px-4 py-3 border ${shop.business_type === b.id ? "bg-brand text-white border-brand" : "bg-white text-brand-ink border-brand-line hover:border-brand"}`}>
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Section>
+
+          {/* ABOUT US */}
+          <Section title="Tentang Kami" desc="Cerita singkat tentang toko. Klik AI biar dibuatkan otomatis.">
+            <Textarea rows={5} value={shop.about || ""} onChange={(e) => update("about", e.target.value)}
+              placeholder="Cerita toko kamu… atau klik 'AI Tulis Cerita' di bawah."
+              className="rounded-xl border-brand-line" data-testid="settings-about" />
+            <Button onClick={generateAbout} disabled={generatingAbout || !shop.name}
+              variant="outline"
+              className="mt-3 rounded-xl border-brand bg-brand-off text-brand hover:bg-brand hover:text-white btn-press"
+              data-testid="about-generate-btn">
+              {generatingAbout ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> AI menulis…</> : <><Wand2 className="w-4 h-4 mr-2" /> AI Tulis Cerita</>}
+            </Button>
+          </Section>
+
+          {/* SHOP STORY REEL */}
+          <Section title="Shop Story Reel" desc="3-5 foto behind-the-scenes (proses, suasana, kru). Tampil seperti IG Stories di toko.">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+              {(shop.story || []).map((s, i) => (
+                <div key={i} className="space-y-2" data-testid={`story-item-${i}`}>
+                  <div className="relative aspect-[3/4] rounded-xl overflow-hidden border border-brand-line">
+                    <img src={s.image} alt="" className="w-full h-full object-cover" />
+                    <button onClick={() => removeStory(i)}
+                      className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1"
+                      data-testid={`story-remove-${i}`}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <Input value={s.caption} onChange={(e) => setStoryCaption(i, e.target.value)}
+                    placeholder="Caption…" maxLength={60}
+                    className="rounded-lg border-brand-line h-8 text-xs" />
+                </div>
+              ))}
+              {(shop.story?.length || 0) < 5 && (
+                <label className="aspect-[3/4] rounded-xl border-2 border-dashed border-brand-line bg-brand-off/40 cursor-pointer flex flex-col items-center justify-center text-brand-mute hover:border-brand hover:text-brand">
+                  <ImagePlus className="w-6 h-6" />
+                  <span className="text-xs mt-1">Tambah</span>
+                  <input type="file" multiple accept="image/*" className="hidden" onChange={onStoryFile} data-testid="story-add-input" />
+                </label>
+              )}
+            </div>
+          </Section>
+          {/* Cabang / Multi-toko */}
+          <Section
+            title="Cabang / Multi-toko"
+            desc="Kelola beberapa toko atau cabang. Semua data dashboard mengikuti cabang aktif."
+          >
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+              <div className="text-sm text-brand-mute">
+                {branchInfo ? (
+                  <span>
+                    {branchInfo.used} dari {branchInfo.limit === "unlimited" ? "∞" : branchInfo.limit} cabang terpakai
+                  </span>
+                ) : (
+                  <span>Memuat data cabang…</span>
+                )}
+              </div>
+              {branchInfo?.tier && (
+                <span className="text-xs font-bold uppercase rounded-full bg-brand-off border border-brand-line px-3 py-1 text-brand-mute">
+                  Paket {branchInfo.tier}
+                </span>
+              )}
+            </div>
+
+            <div className="divide-y divide-brand-line rounded-xl border border-brand-line bg-white overflow-hidden mb-4">
+              {(branchInfo?.shops || []).map((b) => (
+                <div key={b.shop_id} className="flex items-center justify-between gap-3 p-4" data-testid={`branch-row-${b.shop_id}`}>
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">{b.name}</div>
+                    <div className="text-xs text-brand-mute truncate">/{b.slug}</div>
+                  </div>
+                  <span className={`text-xs font-bold rounded-full px-2.5 py-1 border ${
+                    b.shop_id === branchInfo.active_shop_id
+                      ? "bg-brand-off text-brand border-brand-line"
+                      : "bg-white text-brand-mute border-brand-line"
+                  }`}>
+                    {b.shop_id === branchInfo.active_shop_id ? "Aktif" : "Cabang"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {branchInfo?.can_create ? (
+              <div className="grid sm:grid-cols-[1fr_auto] gap-2">
+                <Input
+                  value={branchName}
+                  onChange={(e) => setBranchName(e.target.value)}
+                  placeholder="Nama cabang baru, misal: Lapakin Bu Sari - Dago"
+                  className="rounded-xl border-brand-line h-12"
+                  data-testid="branch-name-input"
+                />
+                <Button
+                  type="button"
+                  onClick={createBranch}
+                  disabled={creatingBranch}
+                  className="bg-brand hover:bg-brand-hover text-white rounded-xl h-12 font-bold"
+                  data-testid="branch-create-btn"
+                >
+                  {creatingBranch ? "Membuat…" : "Tambah Cabang"}
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Limit cabang paket ini sudah penuh. Upgrade ke paket yang lebih tinggi untuk menambah cabang.
+              </div>
+            )}
+          </Section>
+
+          {/* Anggota Tim */}
+          <Section
+            title="Anggota Tim"
+            desc="Undang anggota untuk ikut mengelola toko. Kalau belum punya akun, mereka cukup daftar dengan email yang diundang."
+          >
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+              <div className="flex items-center gap-2 text-sm text-brand-mute">
+                <Users className="w-4 h-4 text-brand" />
+                {teamLoading ? (
+                  <span>Memuat anggota…</span>
+                ) : team ? (
+                  <span>
+                    {team.used} dari {team.limit === "unlimited" ? "∞" : team.limit} anggota terpakai
+                  </span>
+                ) : (
+                  <span>Belum ada data anggota</span>
+                )}
+              </div>
+              {team?.tier && (
+                <span className="text-xs font-bold uppercase rounded-full bg-brand-off border border-brand-line px-3 py-1 text-brand-mute">
+                  Paket {team.tier}
+                </span>
+              )}
+            </div>
+
+            {teamLoading ? (
+              <div className="mb-4 rounded-xl border border-brand-line bg-brand-off/50 p-3 text-sm text-brand-mute">
+                Memuat data anggota tim…
+              </div>
+            ) : teamError ? (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 flex items-center justify-between gap-3">
+                <span>{teamError}</span>
+                <Button type="button" variant="outline" size="sm" onClick={loadTeam} className="rounded-xl border-red-200">
+                  Coba lagi
+                </Button>
+              </div>
+            ) : team?.is_owner ? (
+              <div className="grid sm:grid-cols-[1fr_auto] gap-2 mb-4">
+                <Input
+                  type="email"
+                  value={teamEmail}
+                  onChange={(e) => setTeamEmail(e.target.value)}
+                  placeholder="email-anggota@contoh.com"
+                  className="rounded-xl border-brand-line h-12"
+                  data-testid="team-email-input"
+                />
+                <Button
+                  type="button"
+                  onClick={addTeamMember}
+                  disabled={addingMember || (team && team.remaining === 0)}
+                  className="bg-brand hover:bg-brand-hover text-white rounded-xl h-12 font-bold"
+                  data-testid="team-add-btn"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  {addingMember ? "Menambah…" : "Tambah"}
+                </Button>
+              </div>
+            ) : (
+              <div className="mb-4 rounded-xl border border-brand-line bg-brand-off/50 p-3 text-sm text-brand-mute">
+                Hanya owner toko yang bisa menambah atau menghapus anggota.
+              </div>
+            )}
+
+            {team && team.remaining === 0 && team.limit !== "unlimited" && team.is_owner && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Limit anggota tim paket ini sudah penuh. Upgrade paket untuk menambah anggota lagi.
+              </div>
+            )}
+
+            <div className="divide-y divide-brand-line rounded-xl border border-brand-line bg-white overflow-hidden">
+              {(team?.members || []).map((member) => (
+                <div key={member.user_id} className="flex items-center justify-between gap-3 p-4" data-testid={`team-member-${member.user_id}`}>
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">{member.name || member.email}</div>
+                    <div className="text-xs text-brand-mute truncate">{member.email}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`inline-flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 border ${
+                      member.role === "owner"
+                        ? "bg-brand-off text-brand border-brand-line"
+                        : "bg-white text-brand-mute border-brand-line"
+                    }`}>
+                      {member.role === "owner" && <ShieldCheck className="w-3 h-3" />}
+                      {member.role === "owner" ? "Owner" : "Staff"}
+                    </span>
+                    {team?.is_owner && member.role !== "owner" && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeTeamMember(member)}
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        data-testid={`team-remove-${member.user_id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {(team?.pending_invites || []).map((invite) => (
+                <div key={invite.invite_id} className="flex items-center justify-between gap-3 p-4 bg-amber-50/60" data-testid={`team-invite-${invite.invite_id}`}>
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">{invite.email}</div>
+                    <div className="text-xs text-amber-800 truncate">Menunggu daftar / login dengan email ini</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 border bg-amber-100 text-amber-900 border-amber-200">
+                      Pending
+                    </span>
+                    {team?.is_owner && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => revokeTeamInvite(invite)}
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        data-testid={`team-revoke-${invite.invite_id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {team && team.members.length === 0 && (team.pending_invites || []).length === 0 && (
+                <div className="p-6 text-center text-sm text-brand-mute">
+                  Belum ada anggota tim.
+                </div>
+              )}
+            </div>
+          </Section>
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          <Section title="Kontak & Sosial" desc="">
+            <div className="space-y-4">
+              <div>
+                <Label>WhatsApp</Label>
+                <Input value={shop.whatsapp || ""} onChange={(e) => update("whatsapp", e.target.value)}
+                  placeholder="08xxxxxxxxxx" className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-whatsapp" />
+              </div>
+              <div>
+                <Label>Instagram</Label>
+                <div className="relative mt-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-mute">@</span>
+                  <Input value={shop.instagram || ""} onChange={(e) => update("instagram", e.target.value.replace(/^@/, ""))}
+                    placeholder="namatoko" className="pl-7 rounded-xl border-brand-line h-12" data-testid="settings-instagram" />
+                </div>
+              </div>
+              <div>
+                <Label>TikTok</Label>
+                <div className="relative mt-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-mute">@</span>
+                  <Input value={shop.tiktok || ""} onChange={(e) => update("tiktok", e.target.value.replace(/^@/, ""))}
+                    placeholder="namatoko" className="pl-7 rounded-xl border-brand-line h-12" data-testid="settings-tiktok" />
+                </div>
+              </div>
+              <div>
+                <Label>Shopee URL</Label>
+                <Input value={shop.shopee || ""} onChange={(e) => update("shopee", e.target.value)}
+                  placeholder="https://shopee.co.id/..." className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-shopee" />
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Lokasi & Jam">
+            <div className="space-y-4">
+              <div>
+                <Label>Alamat / Area</Label>
+                <Input value={shop.address || ""} onChange={(e) => update("address", e.target.value)}
+                  placeholder="Jl. Asia Afrika No.123, Bandung"
+                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-address" />
+              </div>
+              <div>
+                <Label>Jam Buka</Label>
+                <Input value={shop.hours || ""} onChange={(e) => update("hours", e.target.value)}
+                  placeholder="Senin-Sabtu 08:00-21:00"
+                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-hours" />
+              </div>
+            </div>
+          </Section>
+
+          <Section title="Banner Promo" desc="Tampil di atas grid produk kalau aktif.">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={!!shop.promo_active}
+                onChange={(e) => update("promo_active", e.target.checked)}
+                className="w-4 h-4 accent-brand" data-testid="promo-active-toggle" />
+              <span className="text-sm font-semibold">Aktifkan Promo</span>
+            </label>
+            <div className={`mt-3 space-y-3 ${shop.promo_active ? "" : "opacity-50 pointer-events-none"}`}>
+              <Input value={shop.promo_title || ""} onChange={(e) => update("promo_title", e.target.value)}
+                placeholder="Judul: Diskon Pembeli Pertama"
+                className="rounded-xl border-brand-line h-11" data-testid="promo-title" maxLength={60} />
+              <Textarea rows={2} value={shop.promo_description || ""} onChange={(e) => update("promo_description", e.target.value)}
+                placeholder="Detail singkat promo"
+                className="rounded-xl border-brand-line" data-testid="promo-description" maxLength={150} />
+              <Input value={shop.promo_code || ""} onChange={(e) => update("promo_code", e.target.value.toUpperCase())}
+                placeholder="Kode: HALOKOPI"
+                className="rounded-xl border-brand-line h-11 font-mono" data-testid="promo-code" maxLength={20} />
+            </div>
+          </Section>
+
+          <Section title="Tampilan">
+            <Label>Warna Brand</Label>
+            <div className="mt-1 flex items-center gap-3">
+              <input type="color" value={shop.brand_color || "#C04A3B"}
+                onChange={(e) => update("brand_color", e.target.value)}
+                className="w-14 h-12 rounded-xl border border-brand-line cursor-pointer" data-testid="settings-color" />
+              <Input value={shop.brand_color || "#C04A3B"} onChange={(e) => update("brand_color", e.target.value)}
+                className="rounded-xl border-brand-line h-12" />
+            </div>
+            <div className="mt-3 text-xs text-brand-mute font-mono break-all">URL: {window.location.origin}/toko/{shop.slug}</div>
+          </Section>
+        </div>
+      </div>
+
+          
 
 
       {/* CUSTOM DOMAIN — BISNIS tier */}
