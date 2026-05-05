@@ -20,6 +20,7 @@ import WhatsAppConnect from "@/pages/WhatsAppConnect";
 import Storefront from "@/pages/Storefront";
 import Pricing from "@/pages/Pricing";
 import Billing from "@/pages/Billing";
+import StorefrontLeads from "@/pages/StorefrontLeads";
 import Analytics from "@/pages/Analytics";
 import Cerita from "@/pages/Cerita";
 import CeritaDetail from "@/pages/CeritaDetail";
@@ -37,6 +38,8 @@ import AdminAudit from "@/pages/admin/AdminAudit";
 import AdminStories from "@/pages/admin/AdminStories";
 import AdminHealth from "@/pages/admin/AdminHealth";
 import AdminServerMonitor from "@/pages/admin/AdminServerMonitor";
+import AdminManualPayments from "@/pages/admin/AdminManualPayments";
+import AdminManualActivation from "@/pages/admin/AdminManualActivation";
 
 import { detectTenantSlug } from "@/lib/tenant";
 
@@ -94,6 +97,7 @@ function AppRouter() {
       <Route path="/dashboard/qr" element={<ProtectedRoute><ShopQR /></ProtectedRoute>} />
       <Route path="/dashboard/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
       <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+      <Route path="/dashboard/leads" element={<ProtectedRoute><StorefrontLeads /></ProtectedRoute>} />
       <Route path="/dashboard/content-studio" element={<ProtectedRoute><ContentStudio /></ProtectedRoute>} />
       <Route path="/dashboard/daily-menu" element={<ProtectedRoute><DailyMenu /></ProtectedRoute>} />
       <Route path="/dashboard/sales" element={<SalesBook />} />
@@ -112,6 +116,8 @@ function AppRouter() {
       <Route path="/admin/stories" element={<AdminRoute><AdminStories /></AdminRoute>} />
       <Route path="/admin/health" element={<AdminRoute><AdminHealth /></AdminRoute>} />
       <Route path="/admin/server" element={<AdminRoute><AdminServerMonitor /></AdminRoute>} />
+      <Route path="/admin/manual-payments" element={<AdminRoute><AdminManualPayments /></AdminRoute>} />
+      <Route path="/admin/manual-activation" element={<AdminRoute><AdminManualActivation /></AdminRoute>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

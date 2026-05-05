@@ -5,6 +5,7 @@ import os
 import re as _re
 import uuid
 from datetime import datetime, timezone, timedelta
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -32,6 +33,16 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_promo_text", "")
     shop.setdefault("storefront_promo_cta_label", "")
     shop.setdefault("storefront_promo_slug", "")
+    shop.setdefault("storefront_show_payment_instruction", False)
+    shop.setdefault("storefront_payment_method_label", "")
+    shop.setdefault("storefront_payment_instruction", "")
+    shop.setdefault("storefront_qris_image", "")
+    shop.setdefault("storefront_payment_confirmation_text", "")
+    shop.setdefault("storefront_show_location_map", False)
+    shop.setdefault("storefront_location_title", "")
+    shop.setdefault("storefront_location_address", "")
+    shop.setdefault("storefront_google_maps_url", "")
+    shop.setdefault("storefront_location_embed_url", "")
     shop.setdefault("storefront_renderer", "legacy")
     return shop
 
@@ -516,6 +527,177 @@ def _sanitize_storefront_promo_payload(payload, features):
     return payload
 
 
+
+
+def _clean_storefront_payment_text(value, max_len=500):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    value = " ".join(value.split())
+    return value[:max_len]
+
+
+def _clean_storefront_qris_image(value):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    if not value:
+        return ""
+    # Allow either base64 data URL uploaded from dashboard or an existing https image URL.
+    if value.startswith("data:image/"):
+        # Keep payload bounded; QRIS image should be compressed client-side before upload.
+        return value[:1200000]
+    if value.startswith("https://") or value.startswith("http://"):
+        return value[:1000]
+    return ""
+
+
+def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
+    if not payload:
+        return payload
+
+    payment_fields = [
+        "storefront_show_payment_instruction",
+        "storefront_payment_method_label",
+        "storefront_payment_instruction",
+        "storefront_qris_image",
+        "storefront_payment_confirmation_text",
+    ]
+
+    if not templates_enabled:
+        for field in payment_fields:
+            payload.pop(field, None)
+        return payload
+
+    if "storefront_show_payment_instruction" in payload:
+        payload["storefront_show_payment_instruction"] = bool(payload.get("storefront_show_payment_instruction"))
+
+    if "storefront_payment_method_label" in payload:
+        payload["storefront_payment_method_label"] = _clean_storefront_payment_text(
+            payload.get("storefront_payment_method_label"),
+            80,
+        )
+
+    if "storefront_payment_instruction" in payload:
+        payload["storefront_payment_instruction"] = _clean_storefront_payment_text(
+            payload.get("storefront_payment_instruction"),
+            500,
+        )
+
+    if "storefront_payment_confirmation_text" in payload:
+        payload["storefront_payment_confirmation_text"] = _clean_storefront_payment_text(
+            payload.get("storefront_payment_confirmation_text"),
+            160,
+        )
+
+    if "storefront_qris_image" in payload:
+        payload["storefront_qris_image"] = _clean_storefront_qris_image(
+            payload.get("storefront_qris_image"),
+        )
+
+    return payload
+
+
+
+
+def _clean_storefront_location_text(value, max_len=300):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    value = " ".join(value.split())
+    return value[:max_len]
+
+
+def _is_allowed_google_maps_url(value):
+    if not value:
+        return False
+    value = str(value).strip()
+    if not (value.startswith("https://") or value.startswith("http://")):
+        return False
+    lowered = value.lower()
+    return (
+        "google.com/maps" in lowered
+        or "maps.google." in lowered
+        or "maps.app.goo.gl" in lowered
+        or "goo.gl/maps" in lowered
+    )
+
+
+def _clean_google_maps_url(value, max_len=1000):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    if not value:
+        return ""
+    if not _is_allowed_google_maps_url(value):
+        return ""
+    return value[:max_len]
+
+
+def _clean_google_maps_embed_url(value, max_len=1000):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    if not value:
+        return ""
+    lowered = value.lower()
+    allowed = (
+        value.startswith("https://www.google.com/maps/embed")
+        or value.startswith("https://maps.google.com/maps")
+        or value.startswith("http://maps.google.com/maps")
+        or "google.com/maps/embed" in lowered
+    )
+    if not allowed:
+        return ""
+    return value[:max_len]
+
+
+def _make_google_maps_search_embed_url(address):
+    address = _clean_storefront_location_text(address, 300)
+    if not address:
+        return ""
+    return "https://maps.google.com/maps?q=" + quote_plus(address) + "&output=embed"
+
+
+def _sanitize_storefront_location_payload(payload):
+    if not payload:
+        return payload
+
+    if "storefront_show_location_map" in payload:
+        payload["storefront_show_location_map"] = bool(payload.get("storefront_show_location_map"))
+
+    if "storefront_location_title" in payload:
+        payload["storefront_location_title"] = _clean_storefront_location_text(
+            payload.get("storefront_location_title"),
+            80,
+        )
+
+    if "storefront_location_address" in payload:
+        payload["storefront_location_address"] = _clean_storefront_location_text(
+            payload.get("storefront_location_address"),
+            300,
+        )
+
+    if "storefront_google_maps_url" in payload:
+        payload["storefront_google_maps_url"] = _clean_google_maps_url(
+            payload.get("storefront_google_maps_url"),
+            1000,
+        )
+
+    if "storefront_location_embed_url" in payload:
+        payload["storefront_location_embed_url"] = _clean_google_maps_embed_url(
+            payload.get("storefront_location_embed_url"),
+            1000,
+        )
+
+    if not payload.get("storefront_location_embed_url") and payload.get("storefront_location_address"):
+        payload["storefront_location_embed_url"] = _make_google_maps_search_embed_url(
+            payload.get("storefront_location_address")
+        )
+
+    return payload
+
+
 def _apply_storefront_tier_guard(payload, user):
     if not payload:
         return payload
@@ -560,6 +742,10 @@ def _apply_storefront_tier_guard(payload, user):
     payload = _sanitize_storefront_featured_product_ids(payload, features)
 
     payload = _sanitize_storefront_promo_payload(payload, features)
+
+    payload = _sanitize_storefront_payment_payload(payload, features.get("templates"))
+
+    payload = _sanitize_storefront_location_payload(payload)
 
     return payload
 
@@ -661,6 +847,12 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     else:
         payload["storefront_renderer"] = raw_storefront_renderer
 
+    payload = _sanitize_storefront_payment_payload(
+        payload,
+        templates_enabled=(payload.get("storefront_renderer") or "template") != "legacy" or bool(user.get("shop_id")),
+    )
+    payload = _sanitize_storefront_location_payload(payload)
+
     if user.get("shop_id"):
         # update
         await db.shops.update_one(
@@ -693,6 +885,16 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_promo_text", "")
     doc.setdefault("storefront_promo_cta_label", "")
     doc.setdefault("storefront_promo_slug", "")
+    doc.setdefault("storefront_show_payment_instruction", False)
+    doc.setdefault("storefront_payment_method_label", "")
+    doc.setdefault("storefront_payment_instruction", "")
+    doc.setdefault("storefront_qris_image", "")
+    doc.setdefault("storefront_payment_confirmation_text", "")
+    doc.setdefault("storefront_show_location_map", False)
+    doc.setdefault("storefront_location_title", "")
+    doc.setdefault("storefront_location_address", "")
+    doc.setdefault("storefront_google_maps_url", "")
+    doc.setdefault("storefront_location_embed_url", "")
     doc.setdefault("storefront_renderer", "legacy")
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})

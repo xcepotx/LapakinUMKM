@@ -58,6 +58,90 @@ const STOREFRONT_STYLE_OPTIONS = {
 };
 
 
+
+
+// LAPAKIN_GROWTH_SPRINT_V2_SEO_HELPERS
+function setLapakinMeta(selector, createAttrs, content) {
+  if (!content || typeof document === "undefined") return;
+  let tag = document.head.querySelector(selector);
+  if (!tag) {
+    tag = document.createElement("meta");
+    Object.entries(createAttrs).forEach(([key, value]) => tag.setAttribute(key, value));
+    tag.setAttribute("data-lapakin-seo", "1");
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute("content", content);
+}
+
+function getStorefrontSeo(shop, products = []) {
+  const shopName = shop?.name || shop?.shop_name || "Toko";
+  const firstProductImage = products.find((item) => item?.image_data || item?.image_url || item?.images?.[0]);
+  const rawImage =
+    shop?.seo_image ||
+    shop?.cover_image ||
+    shop?.logo_url ||
+    firstProductImage?.image_url ||
+    firstProductImage?.image_data ||
+    firstProductImage?.images?.[0] ||
+    "";
+
+  const image = rawImage && !String(rawImage).startsWith("data:") && !String(rawImage).startsWith("http")
+    ? `data:image/png;base64,${rawImage}`
+    : rawImage;
+
+  return {
+    title: shop?.seo_title || shop?.storefront_hero_title || `${shopName} - Pesan Online di Lapakin`,
+    description:
+      shop?.seo_description ||
+      shop?.storefront_hero_subtitle ||
+      shop?.tagline ||
+      shop?.description ||
+      "Lihat produk, promo, dan pesan langsung via WhatsApp.",
+    image,
+  };
+}
+
+function applyStorefrontSeo(shop, products = []) {
+  if (!shop || typeof document === "undefined") return;
+  const seo = getStorefrontSeo(shop, products);
+  document.title = seo.title;
+  setLapakinMeta('meta[name="description"]', { name: "description" }, seo.description);
+  setLapakinMeta('meta[property="og:title"]', { property: "og:title" }, seo.title);
+  setLapakinMeta('meta[property="og:description"]', { property: "og:description" }, seo.description);
+  setLapakinMeta('meta[property="og:type"]', { property: "og:type" }, "website");
+  setLapakinMeta('meta[property="og:url"]', { property: "og:url" }, window.location.href);
+  setLapakinMeta('meta[name="twitter:card"]', { name: "twitter:card" }, seo.image ? "summary_large_image" : "summary");
+  setLapakinMeta('meta[name="twitter:title"]', { name: "twitter:title" }, seo.title);
+  setLapakinMeta('meta[name="twitter:description"]', { name: "twitter:description" }, seo.description);
+  if (seo.image) {
+    setLapakinMeta('meta[property="og:image"]', { property: "og:image" }, seo.image);
+    setLapakinMeta('meta[name="twitter:image"]', { name: "twitter:image" }, seo.image);
+  }
+}
+
+function getStorefrontCampaignSlug() {
+  if (typeof window === "undefined") return "";
+  try { return new URLSearchParams(window.location.search).get("promo") || ""; } catch { return ""; }
+}
+
+function getStorefrontTrafficSource() {
+  if (typeof window === "undefined") return "direct";
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const utm = params.get("utm_source");
+    if (utm) return utm;
+    if (!document.referrer) return "direct";
+    const host = new URL(document.referrer).hostname.toLowerCase();
+    if (host.includes("instagram")) return "instagram";
+    if (host.includes("tiktok")) return "tiktok";
+    if (host.includes("facebook") || host.includes("fb.")) return "facebook";
+    if (host.includes("whatsapp") || host.includes("wa.me")) return "whatsapp";
+    if (host.includes("google")) return "google";
+    return host.replace(/^www\./, "");
+  } catch { return "direct"; }
+}
+// /LAPAKIN_GROWTH_SPRINT_V2_SEO_HELPERS
+
 export default function Storefront({ tenantSlug = null }) {
   // Slug resolution priority:
   // 1) URL param /toko/:slug (main-domain route)
@@ -175,8 +259,18 @@ export default function Storefront({ tenantSlug = null }) {
       try {
         const r = await api.get(`/shops/by-slug/${slug}`);
         setData(r.data);
-        // Fire-and-forget analytics: track shop view
+        // Fire-and-forget analytics: track shop view + growth campaign page view
         try { api.post("/analytics/track", { event: "view_shop", slug }); } catch (_) { /* ignore */ }
+        try {
+          api.post("/storefront/events", {
+            event_type: "page_view",
+            shop_slug: slug,
+            shop_id: r.data?.shop?.shop_id,
+            campaign_slug: getStorefrontCampaignSlug() || undefined,
+            source: getStorefrontTrafficSource(),
+            metadata: { renderer: new URLSearchParams(window.location.search).get("renderer") || undefined },
+          });
+        } catch (_) { /* ignore */ }
       } catch (e) {
         setError(e.response?.status === 404 ? "Toko tidak ditemukan" : "Gagal memuat toko");
       } finally { setLoading(false); }
@@ -196,6 +290,13 @@ export default function Storefront({ tenantSlug = null }) {
       .map(([pid, qty]) => ({ product: productMap[pid], qty }))
       .filter((it) => it.product && it.qty > 0);
   }, [cart, productMap]);
+
+
+  // LAPAKIN_GROWTH_SPRINT_V2_SEO_EFFECT
+  useEffect(() => {
+    if (!data?.shop) return;
+    applyStorefrontSeo(data.shop, products);
+  }, [data, products]);
 
   if (loading) return <div className="min-h-screen grid place-items-center text-brand-mute">Memuat toko…</div>;
   if (error) return (

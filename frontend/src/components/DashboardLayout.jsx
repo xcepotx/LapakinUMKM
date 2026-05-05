@@ -52,6 +52,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     { to: "/dashboard/sales", icon: BookOpen, label: "Buku Jualan", tid: "nav-sales" },
     { to: "/dashboard/whatsapp", icon: MessageSquare, label: "WhatsApp", tid: "nav-whatsapp" },
     { to: "/dashboard/analytics", icon: BarChart3, label: "Analitik", tid: "nav-analytics" },
+    { to: "/dashboard/leads", icon: MessageSquare, label: "Leads", tid: "nav-leads" },
   ];
 
   const secondaryItems = [];

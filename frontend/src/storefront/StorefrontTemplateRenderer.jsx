@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState } from "react";
 import "./storefront-template-renderer.css";
 
 function cx(...classes) {
@@ -167,6 +167,31 @@ function getPromoCtaLabel(shop) {
   return String(shop?.storefront_promo_cta_label || "").trim() || "Chat Sekarang";
 }
 
+function shouldShowPaymentInstruction(shop) {
+  return Boolean(
+    shop?.storefront_show_payment_instruction &&
+    (shop?.storefront_payment_instruction || shop?.storefront_qris_image || shop?.storefront_payment_method_label)
+  );
+}
+
+function getPaymentMethodLabel(shop) {
+  return String(shop?.storefront_payment_method_label || "QRIS / Transfer Manual").trim();
+}
+
+function getPaymentInstruction(shop) {
+  return String(
+    shop?.storefront_payment_instruction ||
+    "Silakan lakukan pembayaran sesuai instruksi toko, lalu kirim bukti pembayaran melalui WhatsApp."
+  ).trim();
+}
+
+function getPaymentConfirmationText(shop) {
+  return String(
+    shop?.storefront_payment_confirmation_text ||
+    "Saya akan kirim bukti pembayaran via WhatsApp setelah checkout."
+  ).trim();
+}
+
 
 function buildWhatsappLink(shop, product) {
   const phone = normalizeWhatsapp(
@@ -191,6 +216,68 @@ function buildWhatsappLink(shop, product) {
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
+
+
+
+// LAPAKIN_GROWTH_SPRINT_V2_TEMPLATE_HELPERS
+function getApiBaseUrl() {
+  const raw = String(process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+  if (!raw) return "/api";
+  return raw.endsWith("/api") ? raw : `${raw}/api`;
+}
+
+function postStorefrontJson(path, payload) {
+  if (typeof window === "undefined") return Promise.resolve({ ok: true });
+  const url = `${getApiBaseUrl()}${path}`;
+  try {
+    const body = JSON.stringify(payload || {});
+    if (navigator.sendBeacon && path === "/storefront/events") {
+      const blob = new Blob([body], { type: "application/json" });
+      navigator.sendBeacon(url, blob);
+      return Promise.resolve({ ok: true });
+    }
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => ({ ok: true }));
+  } catch { return Promise.resolve({ ok: true }); }
+}
+function getCampaignSlugFromUrl() { try { return new URLSearchParams(window.location.search).get("promo") || ""; } catch { return ""; } }
+function getTrafficSourceFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const utm = params.get("utm_source");
+    if (utm) return utm;
+    if (!document.referrer) return "direct";
+    const host = new URL(document.referrer).hostname.toLowerCase();
+    if (host.includes("instagram")) return "instagram";
+    if (host.includes("tiktok")) return "tiktok";
+    if (host.includes("facebook") || host.includes("fb.")) return "facebook";
+    if (host.includes("whatsapp") || host.includes("wa.me")) return "whatsapp";
+    if (host.includes("google")) return "google";
+    return host.replace(/^www\./, "");
+  } catch { return "direct"; }
+}
+function getShopId(shop) { return getValue(shop, ["shop_id", "id", "_id"], ""); }
+function getAnalyticsBasePayload(shop) {
+  return { shop_id: getShopId(shop) || undefined, shop_slug: getShopSlug(shop) || undefined, campaign_slug: getCampaignSlugFromUrl() || undefined, source: getTrafficSourceFromUrl() };
+}
+function trackTemplateEvent(shop, event_type, extra = {}) {
+  return postStorefrontJson("/storefront/events", { ...getAnalyticsBasePayload(shop), event_type, ...extra, metadata: extra.metadata || {} });
+}
+function enrichWhatsappHrefWithLead(href, form) {
+  if (!href || href === "#") return href;
+  try {
+    const url = new URL(href);
+    const currentText = url.searchParams.get("text") || "";
+    const extraLines = ["", "Data pelanggan:", form.customer_name ? `Nama: ${form.customer_name}` : "", form.customer_phone ? `No HP: ${form.customer_phone}` : "", form.fulfillment_method ? `Metode: ${form.fulfillment_method}` : "", form.notes ? `Catatan: ${form.notes}` : ""].filter(Boolean);
+    url.searchParams.set("text", `${currentText}${extraLines.join("\n")}`);
+    return url.toString();
+  } catch { return href; }
+}
+function openWhatsappHref(href) {
+  if (!href || href === "#") return;
+  const opened = window.open(href, "_blank", "noopener,noreferrer");
+  if (!opened) window.location.href = href;
+}
+// /LAPAKIN_GROWTH_SPRINT_V2_TEMPLATE_HELPERS
 
 function normalizeSocialUrl(value, platform) {
   if (!value) return "";
@@ -406,6 +493,13 @@ function buildCartWhatsappLink(shop, cartItems) {
     }),
     "",
     `Total: ${formatPrice(getCartTotal(cartItems))}`,
+    ...(shouldShowPaymentInstruction(shop)
+      ? [
+          "",
+          `Metode pembayaran: ${getPaymentMethodLabel(shop)}`,
+          getPaymentConfirmationText(shop),
+        ]
+      : []),
   ];
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\\n"))}`;
@@ -544,6 +638,54 @@ function HeroSection({ shop, products, template }) {
 }
 
 
+function PaymentInstructionBox({ shop }) {
+  if (!shouldShowPaymentInstruction(shop)) return null;
+
+  const qrisImage = String(shop?.storefront_qris_image || "").trim();
+
+  return (
+    <div
+      className="ltr-payment-instruction"
+      data-testid="storefront-payment-instruction"
+      style={{
+        border: "1px solid rgba(192, 74, 59, 0.22)",
+        borderRadius: 18,
+        padding: 14,
+        background: "rgba(255, 248, 242, 0.95)",
+        display: "grid",
+        gap: 12,
+      }}
+    >
+      <div>
+        <span style={{ display: "block", fontSize: 12, fontWeight: 900, color: "#C04A3B", textTransform: "uppercase", letterSpacing: 0.6 }}>
+          Pembayaran Manual
+        </span>
+        <strong style={{ display: "block", marginTop: 2, color: "#1f2933" }}>
+          {getPaymentMethodLabel(shop)}
+        </strong>
+      </div>
+
+      {qrisImage ? (
+        <img
+          src={qrisImage}
+          alt={`QRIS ${getValue(shop, ["name", "shop_name", "store_name"], "toko")}`}
+          data-testid="storefront-qris-image"
+          style={{ width: "100%", maxWidth: 220, borderRadius: 16, border: "1px solid #eadfd2", background: "#fff", padding: 8 }}
+        />
+      ) : null}
+
+      <p style={{ margin: 0, color: "#475569", lineHeight: 1.5, whiteSpace: "pre-line" }}>
+        {getPaymentInstruction(shop)}
+      </p>
+
+      <small style={{ color: "#64748b", lineHeight: 1.45 }}>
+        {getPaymentConfirmationText(shop)}
+      </small>
+    </div>
+  );
+}
+
+
 function TemplateCartDrawer({
   shop,
   cartItems,
@@ -619,7 +761,9 @@ function TemplateCartDrawer({
                 <strong>{formatPrice(total)}</strong>
               </div>
 
-              <a href={checkoutHref} target="_blank" rel="noreferrer">
+              <PaymentInstructionBox shop={shop} />
+
+              <a href={checkoutHref} target="_blank" rel="noreferrer" data-testid="storefront-checkout-whatsapp-link">
                 Checkout WhatsApp
               </a>
 
@@ -667,6 +811,7 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
 
   return (
     <article
+      data-product-id={getProductId(product, index)}
       className={cx("ltr-product-card", `ltr-card-${variant}`, {
         "ltr-product-card-featured": index === 0,
       })}
@@ -980,6 +1125,97 @@ function getStorefrontSocialLinks(shop) {
   return links;
 }
 
+
+function getLocationTitle(shop) {
+  return String(shop?.storefront_location_title || "").trim() || `Lokasi ${getValue(shop, ["name", "shop_name", "store_name"], "Toko")}`;
+}
+
+function getLocationAddress(shop) {
+  return String(shop?.storefront_location_address || shop?.address || shop?.location || shop?.store_address || "").trim();
+}
+
+function getGoogleMapsUrl(shop) {
+  const explicit = String(shop?.storefront_google_maps_url || "").trim();
+  if (explicit && /^https?:\/\//i.test(explicit)) return explicit;
+  const address = getLocationAddress(shop);
+  if (!address) return "";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+function getLocationEmbedUrl(shop) {
+  const explicit = String(shop?.storefront_location_embed_url || "").trim();
+  if (explicit && /^https?:\/\//i.test(explicit)) return explicit;
+  const address = getLocationAddress(shop);
+  if (!address) return "";
+  return `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
+}
+
+function shouldShowLocationMap(shop) {
+  if (!shop?.storefront_show_location_map) return false;
+  return Boolean(getLocationAddress(shop) || getGoogleMapsUrl(shop) || getLocationEmbedUrl(shop));
+}
+
+function LocationMapSection({ shop }) {
+  if (!shouldShowLocationMap(shop)) return null;
+
+  const title = getLocationTitle(shop);
+  const address = getLocationAddress(shop);
+  const mapsUrl = getGoogleMapsUrl(shop);
+  const embedUrl = getLocationEmbedUrl(shop);
+
+  return (
+    <section
+      className="ltr-section ltr-location-map"
+      data-testid="storefront-location-map-section"
+      style={{ display: "grid", gap: 18 }}
+    >
+      <div className="ltr-section-heading">
+        <span>Lokasi</span>
+        <h2>{title}</h2>
+        {address ? <p>{address}</p> : null}
+      </div>
+
+      {embedUrl ? (
+        <div
+          style={{
+            overflow: "hidden",
+            borderRadius: 24,
+            border: "1px solid rgba(15, 23, 42, 0.12)",
+            background: "#fff",
+            minHeight: 260,
+          }}
+          data-testid="storefront-google-map-embed"
+        >
+          <iframe
+            title={title}
+            src={embedUrl}
+            width="100%"
+            height="320"
+            style={{ border: 0, display: "block" }}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            allowFullScreen
+          />
+        </div>
+      ) : null}
+
+      {mapsUrl ? (
+        <a
+          href={mapsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="ltr-template-btn"
+          data-testid="storefront-google-maps-link"
+          style={{ justifySelf: "start" }}
+        >
+          Buka Google Maps
+        </a>
+      ) : null}
+    </section>
+  );
+}
+
+
 function ContactSection({ shop, template }) {
   const mode = getModeFromTemplate(template);
   const socialLinks = getStorefrontSocialLinks(shop);
@@ -1128,6 +1364,9 @@ function renderSection(section, context) {
     case "promo":
       return <PromoBannerSection shop={shop} />;
 
+    case "location_map":
+      return <LocationMapSection key={section} shop={shop} />;
+
     case "contact":
       return <ContactSection key={section} shop={shop} template={template} />;
 
@@ -1163,6 +1402,87 @@ function MobileStickyOrderBar({ shop, template, cartCount, onOpenCart }) {
           Chat
         </a>
       )}
+    </div>
+  );
+}
+
+
+
+function LeadCaptureModal({ open, onSkip, onContinue }) {
+  const [form, setForm] = useState({ customer_name: "", customer_phone: "", fulfillment_method: "discuss", notes: "" });
+  useEffect(() => { if (open) setForm({ customer_name: "", customer_phone: "", fulfillment_method: "discuss", notes: "" }); }, [open]);
+  if (!open) return null;
+
+  const fieldStyle = {
+    width: "100%",
+    border: "1px solid #d8cfc3",
+    borderRadius: 14,
+    padding: "10px 12px",
+    font: "inherit",
+    color: "#1f2933",
+    background: "#fff",
+  };
+
+  return (
+    <div
+      data-testid="storefront-lead-capture-modal"
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        background: "rgba(15, 23, 42, 0.56)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 460,
+          borderRadius: 24,
+          background: "#fff",
+          padding: 22,
+          boxShadow: "0 24px 80px rgba(15, 23, 42, 0.28)",
+        }}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <span style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#C04A3B", letterSpacing: 0.8, textTransform: "uppercase" }}>Data Pesanan</span>
+          <h2 style={{ margin: "4px 0 6px", fontSize: 22, fontWeight: 900, color: "#1f2933" }}>Lengkapi sebelum lanjut WhatsApp</h2>
+          <p style={{ margin: 0, color: "#64748b", lineHeight: 1.45 }}>Biar penjual lebih mudah follow up pesanan kamu.</p>
+        </div>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
+            <span>Nama</span>
+            <input value={form.customer_name} onChange={(event) => setForm((prev) => ({ ...prev, customer_name: event.target.value }))} placeholder="Nama kamu" style={fieldStyle} />
+          </label>
+          <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
+            <span>Nomor HP opsional</span>
+            <input value={form.customer_phone} onChange={(event) => setForm((prev) => ({ ...prev, customer_phone: event.target.value }))} placeholder="08xxxxxxxxxx" style={fieldStyle} />
+          </label>
+          <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
+            <span>Metode</span>
+            <select value={form.fulfillment_method} onChange={(event) => setForm((prev) => ({ ...prev, fulfillment_method: event.target.value }))} style={fieldStyle}>
+              <option value="discuss">Diskusikan via WhatsApp</option>
+              <option value="pickup">Ambil di tempat</option>
+              <option value="delivery">Kirim/delivery</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
+            <span>Catatan opsional</span>
+            <textarea value={form.notes} onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))} placeholder="Contoh: kirim jam 5 sore, pedas sedang, dll." rows={3} style={{ ...fieldStyle, resize: "vertical" }} />
+          </label>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+          <button type="button" onClick={onSkip} data-testid="lead-capture-skip" style={{ border: "1px solid #d8cfc3", borderRadius: 999, padding: "10px 14px", background: "#fff", color: "#475569", fontWeight: 800, cursor: "pointer" }}>Lewati</button>
+          <button type="button" onClick={() => onContinue(form)} disabled={!form.customer_name.trim()} data-testid="lead-capture-continue-whatsapp" style={{ border: 0, borderRadius: 999, padding: "10px 16px", background: form.customer_name.trim() ? "#16a34a" : "#94a3b8", color: "#fff", fontWeight: 900, cursor: form.customer_name.trim() ? "pointer" : "not-allowed" }}>Lanjut WhatsApp</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1218,6 +1538,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       })
       .filter(Boolean);
   }, [cart, productMap]);
+
 
   const cartCount = cartItems.reduce((sum, item) => sum + Number(item.qty || 0), 0);
 
@@ -1358,6 +1679,15 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     }
   }
 
+  if (shouldShowLocationMap(shop) && !sections.includes("location_map")) {
+    const contactIndex = sections.indexOf("contact");
+    if (contactIndex >= 0) {
+      sections.splice(contactIndex, 0, "location_map");
+    } else {
+      sections.push("location_map");
+    }
+  }
+
   if (!sections.includes("contact")) {
     sections.push("contact");
   }
@@ -1366,6 +1696,52 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     shop,
     sections
   );
+
+  // LAPAKIN_GROWTH_SPRINT_V2_TEMPLATE_STATE
+  const promoViewedRef = useRef(false);
+  const [leadCapture, setLeadCapture] = useState({ open: false, href: "", context: {} });
+
+  useEffect(() => {
+    if (typeof document === "undefined" || promoViewedRef.current) return;
+    const promoNode = document.getElementById("promo") || document.querySelector('[data-testid="storefront-promo-banner"]');
+    if (!promoNode) return;
+    const markPromoViewed = () => { if (promoViewedRef.current) return; promoViewedRef.current = true; trackTemplateEvent(shop, "promo_view"); };
+    if (!("IntersectionObserver" in window)) { markPromoViewed(); return; }
+    const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) { markPromoViewed(); observer.disconnect(); } }, { threshold: 0.35 });
+    observer.observe(promoNode);
+    return () => observer.disconnect();
+  }, [shop, finalSections]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleClick = (event) => {
+      const target = event.target;
+      if (!target || !target.closest) return;
+      const productCard = target.closest(".ltr-product-card");
+      if (productCard) trackTemplateEvent(shop, "product_click", { product_id: productCard.getAttribute("data-product-id") || undefined, metadata: { label: String(productCard.textContent || "").trim().slice(0, 120) } });
+      const promoLink = target.closest('#promo a, #promo button, [data-testid="storefront-promo-banner"] a, [data-testid="storefront-promo-banner"] button');
+      if (promoLink) trackTemplateEvent(shop, "promo_cta_click");
+      const whatsappLink = target.closest('a[href*="wa.me"], a[href*="api.whatsapp.com"], a[href*="whatsapp.com/send"]');
+      if (!whatsappLink) return;
+      const href = whatsappLink.getAttribute("href");
+      if (!href || href === "#") return;
+      event.preventDefault();
+      trackTemplateEvent(shop, "whatsapp_checkout_click", { metadata: { label: String(whatsappLink.textContent || "").trim().slice(0, 120) } });
+      setLeadCapture({ open: true, href, context: { source_label: String(whatsappLink.textContent || "").trim().slice(0, 120) } });
+    };
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
+  }, [shop]);
+
+  const closeLeadAndOpenWhatsapp = (href) => { setLeadCapture({ open: false, href: "", context: {} }); openWhatsappHref(href); };
+  const continueLeadToWhatsapp = async (form) => {
+    const href = enrichWhatsappHrefWithLead(leadCapture.href, form);
+    try {
+      await postStorefrontJson("/storefront/leads", { ...getAnalyticsBasePayload(shop), customer_name: form.customer_name, customer_phone: form.customer_phone, fulfillment_method: form.fulfillment_method, notes: form.notes, items: cartItems.map((item) => ({ product_id: item.product?.id, name: item.product?.name, price: item.product?.price, qty: item.qty })), total: getCartTotal(cartItems), metadata: leadCapture.context || {} });
+    } catch { }
+    closeLeadAndOpenWhatsapp(href);
+  };
+
 
   return (
     <main
@@ -1397,6 +1773,13 @@ export default function StorefrontTemplateRenderer({ data, template }) {
         onDecrease={decreaseCartItem}
         onRemove={removeCartItem}
         onClear={() => setCart({})}
+      />
+
+
+      <LeadCaptureModal
+        open={leadCapture.open}
+        onSkip={() => closeLeadAndOpenWhatsapp(leadCapture.href)}
+        onContinue={continueLeadToWhatsapp}
       />
 
       <MobileStickyOrderBar

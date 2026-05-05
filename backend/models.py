@@ -52,6 +52,16 @@ class ShopIn(BaseModel):
     storefront_promo_text: Optional[str] = ""
     storefront_promo_cta_label: Optional[str] = ""
     storefront_promo_slug: Optional[str] = ""
+    storefront_show_payment_instruction: Optional[bool] = False
+    storefront_payment_method_label: Optional[str] = ""
+    storefront_payment_instruction: Optional[str] = ""
+    storefront_qris_image: Optional[str] = ""
+    storefront_payment_confirmation_text: Optional[str] = ""
+    storefront_show_location_map: Optional[bool] = False
+    storefront_location_title: Optional[str] = ""
+    storefront_location_address: Optional[str] = ""
+    storefront_google_maps_url: Optional[str] = ""
+    storefront_location_embed_url: Optional[str] = ""
     storefront_about_title: Optional[str] = ""
     name: str
     tagline: Optional[str] = ""
