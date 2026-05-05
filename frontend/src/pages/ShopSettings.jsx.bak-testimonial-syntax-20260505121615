@@ -284,13 +284,15 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
       storefront_about_title: "",
 
       storefront_featured_product_ids: [],
-      storefront_show_testimonials: false,
-      storefront_testimonials: [],
     storefront_show_promo: false,
+    'storefront_show_testimonials',
+    'storefront_testimonials',
     storefront_promo_title: "",
     storefront_promo_text: "",
     storefront_promo_cta_label: "",
     storefront_promo_slug: "",
+    "storefront_show_testimonials",
+    "storefront_testimonials",
 
     }));
 
@@ -535,10 +537,14 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
       storefront_about_title: aiCopy.storefront_about_title || aboutTitle,
       storefront_featured_product_ids: selectedProductIds,
       storefront_show_promo: true,
+      'storefront_show_testimonials',
+      'storefront_testimonials',
       storefront_promo_title: promoTitle,
       storefront_promo_text: promoText,
       storefront_promo_cta_label: promoCta,
       storefront_promo_slug: makeStorefrontCampaignSlug(promoTitle),
+      'storefront_show_testimonials',
+      'storefront_testimonials',
     }));
 
     alert("Template berhasil dibuat otomatis. Cek preview, lalu klik Simpan Semua Perubahan.");
@@ -634,11 +640,15 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
 
   const activeCampaignSlug =
     makeStorefrontCampaignSlug(shop.storefront_promo_slug) ||
+    'storefront_show_testimonials',
+    'storefront_testimonials',
     makeStorefrontCampaignSlug(shop.storefront_promo_title) ||
     "promo";
 
   const activeShopSlug = shop.slug || shop.shop_slug || shop.store_slug || "";
   const storefrontCampaignRenderer = shop.storefront_renderer || "legacy";
+  "storefront_show_testimonials",
+  "storefront_testimonials",
   const storefrontCampaignQuery =
     storefrontCampaignRenderer === "template"
       ? `?promo=${encodeURIComponent(activeCampaignSlug)}`
@@ -682,7 +692,11 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
 
   const storefrontFeaturedLimit = storefrontTemplateFeatures.featuredLimit || 0;
   const selectedFeaturedProductIds = Array.isArray(shop.storefront_featured_product_ids)
+  'storefront_show_testimonials',
+  'storefront_testimonials',
     ? shop.storefront_featured_product_ids
+    'storefront_show_testimonials',
+    'storefront_testimonials',
     : [];
   const selectedFeaturedProductSet = new Set(selectedFeaturedProductIds);
 
@@ -694,7 +708,11 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
 
     setShop((prev) => {
       const current = Array.isArray(prev.storefront_featured_product_ids)
+      'storefront_show_testimonials',
+      'storefront_testimonials',
         ? prev.storefront_featured_product_ids
+        'storefront_show_testimonials',
+        'storefront_testimonials',
         : [];
       const exists = current.includes(productId);
 
@@ -702,6 +720,8 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
         return {
           ...prev,
           storefront_featured_product_ids: current.filter((id) => id !== productId),
+          'storefront_show_testimonials',
+          'storefront_testimonials',
         };
       }
 
@@ -712,6 +732,8 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
       return {
         ...prev,
         storefront_featured_product_ids: [...current, productId],
+        'storefront_show_testimonials',
+        'storefront_testimonials',
       };
     });
   };
@@ -941,7 +963,11 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                 <span className="text-sm font-bold text-brand-ink">Renderer Website</span>
                 <select
                   value={shop.storefront_renderer || "legacy"}
+                  "storefront_show_testimonials",
+                  "storefront_testimonials",
                   onChange={(e) => update("storefront_renderer", e.target.value)}
+                  "storefront_show_testimonials",
+                  "storefront_testimonials",
                   className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
                   disabled={storefrontTemplateLocked}
                   data-testid="storefront-renderer-select"
@@ -990,6 +1016,8 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
 
             {(() => {
               const activeRenderer = shop.storefront_renderer || "legacy";
+              "storefront_show_testimonials",
+              "storefront_testimonials",
               const isTemplateActive = activeRenderer === "template";
               const activeSlug = shop.slug || shop.shop_slug || shop.store_slug || "";
 
@@ -1062,6 +1090,8 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
               const previewMode = shop.storefront_mode || "catalog";
               const previewStyle = shop.storefront_style || "classic";
               const previewRenderer = shop.storefront_renderer || "legacy";
+              "storefront_show_testimonials",
+              "storefront_testimonials",
               const previewTemplate = resolveStorefrontTemplate(previewMode, previewStyle);
               const previewTokens = previewTemplate.tokens || {};
               const previewSlug = shop.slug || shop.shop_slug || shop.store_slug || "";
@@ -1539,7 +1569,11 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                   <input
                     type="checkbox"
                     checked={Boolean(shop.storefront_show_promo)}
+                    'storefront_show_testimonials',
+                    'storefront_testimonials',
                     onChange={(e) => update("storefront_show_promo", e.target.checked)}
+                    "storefront_show_testimonials",
+                    "storefront_testimonials",
                     disabled={storefrontPromoLocked}
                     className="h-4 w-4"
                     data-testid="storefront-show-promo-toggle"
@@ -1592,9 +1626,13 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                     <span className="text-sm font-bold text-brand-ink">Slug Link Promo</span>
                     <input
                       value={shop.storefront_promo_slug || ""}
+                      "storefront_show_testimonials",
+                      "storefront_testimonials",
                       onChange={(e) =>
                         update(
                           "storefront_promo_slug",
+                          "storefront_show_testimonials",
+                          "storefront_testimonials",
                           String(e.target.value || "")
                             .toLowerCase()
                             .replace(/[^a-z0-9-]+/g, "-")
@@ -1669,7 +1707,11 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                 <input
                   type="checkbox"
                   checked={Boolean(shop.storefront_show_payment_instruction)}
+                  'storefront_show_testimonials',
+                  'storefront_testimonials',
                   onChange={(e) => update("storefront_show_payment_instruction", e.target.checked)}
+                  "storefront_show_testimonials",
+                  "storefront_testimonials",
                   disabled={storefrontTemplateLocked}
                   className="h-4 w-4"
                   data-testid="storefront-show-payment-instruction-toggle"
@@ -1707,7 +1749,11 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                   <span className="text-sm font-bold text-brand-ink">Instruksi Pembayaran</span>
                   <textarea
                     value={shop.storefront_payment_instruction || ""}
+                    "storefront_show_testimonials",
+                    "storefront_testimonials",
                     onChange={(e) => update("storefront_payment_instruction", e.target.value)}
+                    "storefront_show_testimonials",
+                    "storefront_testimonials",
                     disabled={storefrontTemplateLocked}
                     placeholder="Contoh: Scan QRIS di bawah, lalu kirim bukti pembayaran melalui WhatsApp. Pesanan diproses setelah pembayaran dikonfirmasi."
                     maxLength={500}
@@ -1893,7 +1939,11 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                 <input
                   type="checkbox"
                   checked={Boolean(shop.storefront_show_location_map)}
+                  'storefront_show_testimonials',
+                  'storefront_testimonials',
                   onChange={(e) => update("storefront_show_location_map", e.target.checked)}
+                  "storefront_show_testimonials",
+                  "storefront_testimonials",
                   className="h-4 w-4"
                   data-testid="storefront-show-location-map-toggle"
                 />
@@ -1945,7 +1995,11 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                   <span className="text-sm font-bold text-brand-ink">Embed URL Google Maps opsional</span>
                   <input
                     value={shop.storefront_location_embed_url || ""}
+                    "storefront_show_testimonials",
+                    "storefront_testimonials",
                     onChange={(e) => update("storefront_location_embed_url", e.target.value)}
+                    "storefront_show_testimonials",
+                    "storefront_testimonials",
                     placeholder="https://www.google.com/maps/embed?..."
                     maxLength={1000}
                     className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
@@ -1958,11 +2012,17 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
               </div>
 
               {(shop.storefront_show_location_map && (shop.storefront_location_address || shop.address || shop.storefront_google_maps_url || shop.storefront_location_embed_url)) ? (
+              'storefront_show_testimonials',
+              'storefront_testimonials',
                 <div className="mt-4 rounded-2xl border border-brand-line bg-brand-off p-4 text-sm text-brand-mute" data-testid="storefront-location-map-preview">
                   <b className="text-brand-ink">Preview Lokasi:</b> {shop.storefront_location_title || shop.name || "Lokasi Toko"}<br />
                   {(shop.storefront_location_address || shop.address) ? <span>{shop.storefront_location_address || shop.address}</span> : <span>Alamat belum diisi.</span>}
                   {shop.storefront_google_maps_url ? (
+                  'storefront_show_testimonials',
+                  'storefront_testimonials',
                     <a href={shop.storefront_google_maps_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex font-extrabold text-brand hover:underline">
+                    "storefront_show_testimonials",
+                    "storefront_testimonials",
                       Buka Google Maps
                     </a>
                   ) : null}
@@ -2019,6 +2079,8 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                 </div>
                 <div className="rounded-2xl bg-brand-off p-4 text-sm text-brand-mute">
                   Campaign aktif: <b className="text-brand-ink">{storefrontAnalytics?.campaign_slug || shop.storefront_promo_slug || "Belum ada"}</b><br />
+                  "storefront_show_testimonials",
+                  "storefront_testimonials",
                   Produk paling sering diklik: <b className="text-brand-ink">{storefrontAnalytics?.top_products?.[0]?.name || "Belum ada data"}</b>
                 </div>
                 {storefrontGrowthError && <div className="rounded-xl bg-yellow-50 p-3 text-sm font-semibold text-yellow-800">{storefrontGrowthError}</div>}

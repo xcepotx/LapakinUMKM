@@ -489,7 +489,7 @@ def _sanitize_storefront_featured_product_ids(payload, features):
 
 
 
-def _clean_storefront_promo_text(value, max_len=180, *extra_args):
+def _clean_storefront_promo_text(value, max_len=180):
     if value is None:
         return ""
     value = str(value).strip()
@@ -499,7 +499,7 @@ def _clean_storefront_promo_text(value, max_len=180, *extra_args):
 
 
 
-def _clean_storefront_promo_slug(value, max_len=48, *extra_args):
+def _clean_storefront_promo_slug(value, max_len=48):
     if value is None:
         return ""
 
@@ -561,32 +561,15 @@ def _sanitize_storefront_promo_payload(payload, features):
 
 
 
-def _clean_storefront_payment_text(value, max_len=500, *extra_args):
-    """Clean storefront payment text.
-
-    Defensive signature: older patch attempts may accidentally pass extra
-    positional args into this helper. Ignore non-integer extras and use the
-    first integer as max length when present.
-    """
-    for arg in (max_len, *extra_args):
-        if isinstance(arg, int):
-            max_len = arg
-            break
-    else:
-        max_len = 500
-
-    try:
-        text = str(value or "").strip()
-    except Exception:
-        text = ""
-
-    if max_len <= 0:
-        max_len = 500
-
-    return text[:max_len]
+def _clean_storefront_payment_text(value, max_len=500):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    value = " ".join(value.split())
+    return value[:max_len]
 
 
-def _clean_storefront_qris_image(value, *extra_args):
+def _clean_storefront_qris_image(value):
     if value is None:
         return ""
     value = str(value).strip()
@@ -655,7 +638,7 @@ def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
 
 
 
-def _clean_storefront_location_text(value, max_len=300, *extra_args):
+def _clean_storefront_location_text(value, max_len=300):
     if value is None:
         return ""
     value = str(value).strip()
@@ -678,7 +661,7 @@ def _is_allowed_google_maps_url(value):
     )
 
 
-def _clean_google_maps_url(value, max_len=1000, *extra_args):
+def _clean_google_maps_url(value, max_len=1000):
     if value is None:
         return ""
     value = str(value).strip()
@@ -689,7 +672,7 @@ def _clean_google_maps_url(value, max_len=1000, *extra_args):
     return value[:max_len]
 
 
-def _clean_google_maps_embed_url(value, max_len=1000, *extra_args):
+def _clean_google_maps_embed_url(value, max_len=1000):
     if value is None:
         return ""
     value = str(value).strip()
@@ -879,7 +862,12 @@ async def create_or_update_shop(data: ShopIn, request: Request):
             payload.pop("storefront_featured_product_ids", None)
         else:
             payload["storefront_featured_product_ids"] = _normalize_featured_product_ids(
-                payload.get("storefront_featured_product_ids", []),
+            "storefront_show_testimonials",
+            "storefront_testimonials",
+                payload.get("storefront_featured_product_ids"),
+                "storefront_show_testimonials",
+                "storefront_testimonials",
+                featured_limit,
             )
 
     raw_storefront_mode = payload.get("storefront_mode")

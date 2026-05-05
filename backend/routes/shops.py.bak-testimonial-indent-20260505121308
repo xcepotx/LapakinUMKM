@@ -73,7 +73,11 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_location_address", "")
     shop.setdefault("storefront_google_maps_url", "")
     shop.setdefault("storefront_location_embed_url", "")
+        "storefront_show_testimonials",
+        "storefront_testimonials",
     shop.setdefault("storefront_renderer", "legacy")
+    "storefront_show_testimonials",
+    "storefront_testimonials",
     return shop
 
 
@@ -443,10 +447,14 @@ def _storefront_features_for_tier(tier):
 
 
 def _sanitize_storefront_featured_product_ids(payload, features):
+'storefront_show_testimonials',
+'storefront_testimonials',
     if not payload:
         return payload
 
     field = "storefront_featured_product_ids"
+    "storefront_show_testimonials",
+    "storefront_testimonials",
 
     if field not in payload:
         return payload
@@ -489,7 +497,7 @@ def _sanitize_storefront_featured_product_ids(payload, features):
 
 
 
-def _clean_storefront_promo_text(value, max_len=180, *extra_args):
+def _clean_storefront_promo_text(value, max_len=180):
     if value is None:
         return ""
     value = str(value).strip()
@@ -499,7 +507,7 @@ def _clean_storefront_promo_text(value, max_len=180, *extra_args):
 
 
 
-def _clean_storefront_promo_slug(value, max_len=48, *extra_args):
+def _clean_storefront_promo_slug(value, max_len=48):
     if value is None:
         return ""
 
@@ -530,7 +538,11 @@ def _sanitize_storefront_promo_payload(payload, features):
         return payload
 
     if "storefront_show_promo" in payload:
+    "storefront_show_testimonials",
+    "storefront_testimonials",
         payload["storefront_show_promo"] = bool(payload.get("storefront_show_promo"))
+        "storefront_show_testimonials",
+        "storefront_testimonials",
 
     if "storefront_promo_title" in payload:
         payload["storefront_promo_title"] = _clean_storefront_promo_text(
@@ -561,32 +573,15 @@ def _sanitize_storefront_promo_payload(payload, features):
 
 
 
-def _clean_storefront_payment_text(value, max_len=500, *extra_args):
-    """Clean storefront payment text.
-
-    Defensive signature: older patch attempts may accidentally pass extra
-    positional args into this helper. Ignore non-integer extras and use the
-    first integer as max length when present.
-    """
-    for arg in (max_len, *extra_args):
-        if isinstance(arg, int):
-            max_len = arg
-            break
-    else:
-        max_len = 500
-
-    try:
-        text = str(value or "").strip()
-    except Exception:
-        text = ""
-
-    if max_len <= 0:
-        max_len = 500
-
-    return text[:max_len]
+def _clean_storefront_payment_text(value, max_len=500):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    value = " ".join(value.split())
+    return value[:max_len]
 
 
-def _clean_storefront_qris_image(value, *extra_args):
+def _clean_storefront_qris_image(value):
     if value is None:
         return ""
     value = str(value).strip()
@@ -621,7 +616,11 @@ def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
         return payload
 
     if "storefront_show_payment_instruction" in payload:
+    "storefront_show_testimonials",
+    "storefront_testimonials",
         payload["storefront_show_payment_instruction"] = bool(payload.get("storefront_show_payment_instruction"))
+        "storefront_show_testimonials",
+        "storefront_testimonials",
 
     if "storefront_payment_method_label" in payload:
         payload["storefront_payment_method_label"] = _clean_storefront_payment_text(
@@ -630,6 +629,8 @@ def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
         )
 
     if "storefront_payment_instruction" in payload:
+    "storefront_show_testimonials",
+    "storefront_testimonials",
         payload["storefront_payment_instruction"] = _clean_storefront_payment_text(
         "storefront_show_testimonials",
         "storefront_testimonials",
@@ -655,7 +656,7 @@ def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
 
 
 
-def _clean_storefront_location_text(value, max_len=300, *extra_args):
+def _clean_storefront_location_text(value, max_len=300):
     if value is None:
         return ""
     value = str(value).strip()
@@ -678,7 +679,7 @@ def _is_allowed_google_maps_url(value):
     )
 
 
-def _clean_google_maps_url(value, max_len=1000, *extra_args):
+def _clean_google_maps_url(value, max_len=1000):
     if value is None:
         return ""
     value = str(value).strip()
@@ -689,7 +690,7 @@ def _clean_google_maps_url(value, max_len=1000, *extra_args):
     return value[:max_len]
 
 
-def _clean_google_maps_embed_url(value, max_len=1000, *extra_args):
+def _clean_google_maps_embed_url(value, max_len=1000):
     if value is None:
         return ""
     value = str(value).strip()
@@ -740,6 +741,8 @@ def _sanitize_storefront_location_payload(payload):
         )
 
     if "storefront_location_embed_url" in payload:
+    "storefront_show_testimonials",
+    "storefront_testimonials",
         payload["storefront_location_embed_url"] = _clean_google_maps_embed_url(
         "storefront_show_testimonials",
         "storefront_testimonials",
@@ -750,6 +753,8 @@ def _sanitize_storefront_location_payload(payload):
         )
 
     if not payload.get("storefront_location_embed_url") and payload.get("storefront_location_address"):
+    "storefront_show_testimonials",
+    "storefront_testimonials",
         payload["storefront_location_embed_url"] = _make_google_maps_search_embed_url(
         "storefront_show_testimonials",
         "storefront_testimonials",
@@ -786,6 +791,8 @@ def _apply_storefront_tier_guard(payload, user):
         payload["storefront_mode"] = "catalog"
         payload["storefront_style"] = "classic"
         payload.pop("storefront_featured_product_ids", None)
+        "storefront_show_testimonials",
+        "storefront_testimonials",
 
         for field in editable_copy_fields:
             payload.pop(field, None)
@@ -801,6 +808,8 @@ def _apply_storefront_tier_guard(payload, user):
             payload.pop(field, None)
 
     payload = _sanitize_storefront_featured_product_ids(payload, features)
+    'storefront_show_testimonials',
+    'storefront_testimonials',
 
     payload = _sanitize_storefront_promo_payload(payload, features)
 
@@ -867,6 +876,8 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     payload = data.model_dump()
     # featured_picker_persist_guard
     if "storefront_featured_product_ids" in payload:
+    "storefront_show_testimonials",
+    "storefront_testimonials",
         current_tier_for_featured = (locals().get("user") or {}).get("tier") or "free"
         featured_limit_by_tier = {
             "free": 0,
@@ -877,14 +888,23 @@ async def create_or_update_shop(data: ShopIn, request: Request):
         featured_limit = featured_limit_by_tier.get(str(current_tier_for_featured).lower(), 0)
         if featured_limit <= 0:
             payload.pop("storefront_featured_product_ids", None)
+            "storefront_show_testimonials",
+            "storefront_testimonials",
         else:
             payload["storefront_featured_product_ids"] = _normalize_featured_product_ids(
-                payload.get("storefront_featured_product_ids", []),
+            "storefront_show_testimonials",
+            "storefront_testimonials",
+                payload.get("storefront_featured_product_ids"),
+                "storefront_show_testimonials",
+                "storefront_testimonials",
+                featured_limit,
             )
 
     raw_storefront_mode = payload.get("storefront_mode")
     raw_storefront_style = payload.get("storefront_style")
     raw_storefront_renderer = payload.get("storefront_renderer")
+    "storefront_show_testimonials",
+    "storefront_testimonials",
 
     if raw_storefront_mode in (None, ""):
         payload.pop("storefront_mode", None)
@@ -960,7 +980,11 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_location_address", "")
     doc.setdefault("storefront_google_maps_url", "")
     doc.setdefault("storefront_location_embed_url", "")
+    "storefront_show_testimonials",
+    "storefront_testimonials",
     doc.setdefault("storefront_renderer", "legacy")
+    "storefront_show_testimonials",
+    "storefront_testimonials",
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})
     return {k: v for k, v in doc.items() if k != "_id"}
@@ -1122,6 +1146,8 @@ async def create_branch_shop(data: ShopIn, request: Request):
 
     # featured_picker_persist_guard
     if "storefront_featured_product_ids" in payload:
+    "storefront_show_testimonials",
+    "storefront_testimonials",
         current_tier_for_featured = (locals().get("user") or {}).get("tier") or "free"
         featured_limit_by_tier = {
             "free": 0,
@@ -1132,6 +1158,8 @@ async def create_branch_shop(data: ShopIn, request: Request):
         featured_limit = featured_limit_by_tier.get(str(current_tier_for_featured).lower(), 0)
         if featured_limit <= 0:
             payload.pop("storefront_featured_product_ids", None)
+            "storefront_show_testimonials",
+            "storefront_testimonials",
         else:
             payload["storefront_featured_product_ids"] = _normalize_featured_product_ids(
             "storefront_show_testimonials",

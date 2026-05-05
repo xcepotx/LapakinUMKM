@@ -62,6 +62,9 @@ class ShopIn(BaseModel):
     storefront_location_address: Optional[str] = ""
     storefront_google_maps_url: Optional[str] = ""
     storefront_location_embed_url: Optional[str] = ""
+    # Storefront testimonials
+    storefront_show_testimonials: Optional[bool] = False
+    storefront_testimonials: Optional[List[dict]] = []
     storefront_about_title: Optional[str] = ""
     name: str
     tagline: Optional[str] = ""

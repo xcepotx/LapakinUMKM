@@ -489,7 +489,7 @@ def _sanitize_storefront_featured_product_ids(payload, features):
 
 
 
-def _clean_storefront_promo_text(value, max_len=180, *extra_args):
+def _clean_storefront_promo_text(value, max_len=180):
     if value is None:
         return ""
     value = str(value).strip()
@@ -499,7 +499,7 @@ def _clean_storefront_promo_text(value, max_len=180, *extra_args):
 
 
 
-def _clean_storefront_promo_slug(value, max_len=48, *extra_args):
+def _clean_storefront_promo_slug(value, max_len=48):
     if value is None:
         return ""
 
@@ -586,7 +586,7 @@ def _clean_storefront_payment_text(value, max_len=500, *extra_args):
     return text[:max_len]
 
 
-def _clean_storefront_qris_image(value, *extra_args):
+def _clean_storefront_qris_image(value):
     if value is None:
         return ""
     value = str(value).strip()
@@ -655,7 +655,7 @@ def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
 
 
 
-def _clean_storefront_location_text(value, max_len=300, *extra_args):
+def _clean_storefront_location_text(value, max_len=300):
     if value is None:
         return ""
     value = str(value).strip()
@@ -678,7 +678,7 @@ def _is_allowed_google_maps_url(value):
     )
 
 
-def _clean_google_maps_url(value, max_len=1000, *extra_args):
+def _clean_google_maps_url(value, max_len=1000):
     if value is None:
         return ""
     value = str(value).strip()
@@ -689,7 +689,7 @@ def _clean_google_maps_url(value, max_len=1000, *extra_args):
     return value[:max_len]
 
 
-def _clean_google_maps_embed_url(value, max_len=1000, *extra_args):
+def _clean_google_maps_embed_url(value, max_len=1000):
     if value is None:
         return ""
     value = str(value).strip()

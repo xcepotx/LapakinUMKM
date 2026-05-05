@@ -403,6 +403,7 @@ function getSectionTitle(section, mode) {
     testimonials: "Dipercaya Pelanggan",
     promo_banner: "Promo Spesial",
     faq: "Pertanyaan Umum",
+    business_hours: "Jam Operasional",
     contact: "Hubungi Toko",
   };
 
@@ -1126,6 +1127,281 @@ function getStorefrontSocialLinks(shop) {
 }
 
 
+
+// LAPAKIN_TEMPLATE_BUSINESS_HOURS_DISPLAY
+const LAPAKIN_DAYS = [
+  "Senin",
+  "Selasa",
+  "Rabu",
+  "Kamis",
+  "Jumat",
+  "Sabtu",
+  "Minggu",
+];
+
+function shouldShowBusinessHours(shop) {
+  return Boolean(
+    String(shop?.hours || "").trim() ||
+    shop?.sells_by === "hours" ||
+    shop?.auto_schedule_enabled ||
+    Array.isArray(shop?.schedule) ||
+    shop?.schedule_status
+  );
+}
+
+function formatScheduleTime(value) {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  return raw.slice(0, 5);
+}
+
+function getScheduleEntryLabel(entry) {
+  if (!entry) return "Tutup";
+
+  if (entry.closed === true || entry.is_closed === true || entry.open === false || entry.enabled === false) {
+    return "Tutup";
+  }
+
+  const shifts = Array.isArray(entry.shifts) ? entry.shifts : [];
+  if (shifts.length) {
+    const rendered = shifts
+      .map((shift) => {
+        const open = formatScheduleTime(shift.open || shift.start || shift.from || shift.open_time);
+        const close = formatScheduleTime(shift.close || shift.end || shift.to || shift.close_time);
+        return open && close ? `${open} - ${close}` : "";
+      })
+      .filter(Boolean);
+
+    return rendered.length ? rendered.join(", ") : "Tutup";
+  }
+
+  const open = formatScheduleTime(entry.open || entry.start || entry.from || entry.open_time);
+  const close = formatScheduleTime(entry.close || entry.end || entry.to || entry.close_time);
+
+  if (open && close) return `${open} - ${close}`;
+
+  return "Tutup";
+}
+
+function getBusinessHoursStatus(shop) {
+  const scheduleStatus = shop?.schedule_status || {};
+  const sellsBy = shop?.sells_by || "stock";
+  const isHoursMode = sellsBy === "hours";
+
+  const auto = Boolean(scheduleStatus.auto || shop?.auto_schedule_enabled);
+  const isOpenNow =
+    typeof scheduleStatus.is_open_now === "boolean"
+      ? scheduleStatus.is_open_now
+      : typeof shop?.is_open === "boolean"
+        ? shop.is_open
+        : null;
+
+  if (!isHoursMode && isOpenNow === null) {
+    return {
+      label: "Jam operasional",
+      detail: String(shop?.hours || "").trim() || "Hubungi toko untuk memastikan jam buka.",
+      open: null,
+    };
+  }
+
+  if (isOpenNow === true) {
+    return {
+      label: "Buka sekarang",
+      detail: auto && scheduleStatus.closes_at
+        ? `Tutup hari ini jam ${scheduleStatus.closes_at} WIB`
+        : String(shop?.hours || "").trim() || "Toko sedang buka.",
+      open: true,
+    };
+  }
+
+  if (isOpenNow === false) {
+    return {
+      label: "Tutup sekarang",
+      detail: auto && scheduleStatus.opens_at
+        ? `Buka lagi ${scheduleStatus.opens_at} WIB`
+        : String(shop?.hours || "").trim() || "Cek kembali nanti atau hubungi toko via WhatsApp.",
+      open: false,
+    };
+  }
+
+  return {
+    label: "Jam operasional",
+    detail: String(shop?.hours || "").trim() || "Hubungi toko untuk memastikan jam buka.",
+    open: null,
+  };
+}
+
+function BusinessHoursSection({ shop }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!shouldShowBusinessHours(shop)) return null;
+
+  const status = getBusinessHoursStatus(shop);
+  const schedule = Array.isArray(shop?.schedule) ? shop.schedule : [];
+  const hasStructuredSchedule = schedule.some(Boolean);
+  const hoursText = String(shop?.hours || "").trim();
+  const sectionTitle = hoursText || "Kapan toko buka?";
+
+  return (
+    <section
+      className="ltr-section ltr-business-hours"
+      data-testid="storefront-business-hours-section"
+    >
+      <div className="ltr-section-heading">
+        <span>Jam Operasional</span>
+        <h2>{sectionTitle}</h2>
+      </div>
+
+      <div
+        className="ltr-business-hours-card"
+        style={{
+          border: "1px solid rgba(15, 23, 42, 0.10)",
+          borderRadius: 22,
+          padding: 18,
+          background: "rgba(255, 255, 255, 0.88)",
+          boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
+          display: "grid",
+          gap: expanded ? 14 : 10,
+        }}
+      >
+        <div
+          className="ltr-business-hours-status"
+          style={{
+            display: "flex",
+            gap: 12,
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <strong
+              data-testid="storefront-business-hours-status"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                borderRadius: 999,
+                padding: "7px 11px",
+                background: status.open === true
+                  ? "rgba(22, 163, 74, 0.12)"
+                  : status.open === false
+                    ? "rgba(220, 38, 38, 0.10)"
+                    : "rgba(15, 23, 42, 0.08)",
+                color: status.open === true
+                  ? "#15803d"
+                  : status.open === false
+                    ? "#b91c1c"
+                    : "#334155",
+                fontSize: 13,
+                fontWeight: 900,
+              }}
+            >
+              {status.label}
+            </strong>
+
+            {status.detail ? (
+              <p style={{ margin: "10px 0 0", color: "#475569", lineHeight: 1.55 }}>
+                {status.detail}
+              </p>
+            ) : null}
+          </div>
+
+          {(hasStructuredSchedule || hoursText) ? (
+            <button
+              type="button"
+              data-testid="storefront-business-hours-toggle"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((value) => !value)}
+              style={{
+                border: "1px solid rgba(15, 23, 42, 0.10)",
+                borderRadius: 999,
+                background: expanded ? "#1f2937" : "#fff",
+                color: expanded ? "#fff" : "#1f2937",
+                padding: "8px 12px",
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+              }}
+            >
+              {expanded ? "Sembunyikan jadwal" : "Lihat jadwal"}
+            </button>
+          ) : null}
+        </div>
+
+        {expanded && hasStructuredSchedule ? (
+          <div
+            className="ltr-business-hours-grid"
+            data-testid="storefront-business-hours-schedule"
+            style={{
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            {LAPAKIN_DAYS.map((day, idx) => {
+              const entry = schedule[idx];
+              const label = getScheduleEntryLabel(entry);
+              const closed = label === "Tutup";
+
+              return (
+                <div
+                  key={day}
+                  className="ltr-business-hours-row"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "9px 0",
+                    borderTop: idx === 0 ? 0 : "1px solid rgba(15, 23, 42, 0.08)",
+                    color: closed ? "#94a3b8" : "#334155",
+                  }}
+                >
+                  <span style={{ fontWeight: 800 }}>{day}</span>
+                  <span style={{ textAlign: "right" }}>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {expanded && !hasStructuredSchedule && hoursText ? (
+          <p
+            data-testid="storefront-business-hours-text"
+            style={{ margin: 0, color: "#334155", lineHeight: 1.6 }}
+          >
+            {hoursText}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+// /LAPAKIN_TEMPLATE_BUSINESS_HOURS_DISPLAY
+
+
+function getGoogleMapsEmbedUrl(shop) {
+  const rawEmbed = String(
+    shop?.storefront_location_embed_url ||
+    shop?.storefront_google_maps_embed_url ||
+    shop?.google_maps_embed_url ||
+    shop?.maps_embed_url ||
+    ""
+  ).trim();
+
+  if (rawEmbed && /^https?:\/\//i.test(rawEmbed)) return rawEmbed;
+
+  const address = String(
+    shop?.storefront_location_address ||
+    shop?.address ||
+    shop?.location ||
+    ""
+  ).trim();
+
+  if (!address) return "";
+
+  return `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
+}
+
 function getLocationTitle(shop) {
   return String(shop?.storefront_location_title || "").trim() || `Lokasi ${getValue(shop, ["name", "shop_name", "store_name"], "Toko")}`;
 }
@@ -1155,66 +1431,242 @@ function shouldShowLocationMap(shop) {
   return Boolean(getLocationAddress(shop) || getGoogleMapsUrl(shop) || getLocationEmbedUrl(shop));
 }
 
+
+// LAPAKIN_TESTIMONIAL_SECTION_MVP
+function normalizeTestimonials(shop) {
+  const raw = Array.isArray(shop?.storefront_testimonials)
+    ? shop.storefront_testimonials
+    : [];
+
+  return raw
+    .map((item) => ({
+      name: String(item?.name || item?.customer_name || "").trim(),
+      text: String(item?.text || item?.comment || item?.message || "").trim(),
+      rating: Math.max(1, Math.min(5, Number(item?.rating || 5))),
+    }))
+    .filter((item) => item.name || item.text)
+    .slice(0, 3);
+}
+
+function shouldShowTestimonials(shop) {
+  return Boolean(shop?.storefront_show_testimonials && normalizeTestimonials(shop).length);
+}
+
+function TestimonialStars({ rating }) {
+  const value = Math.max(1, Math.min(5, Number(rating || 5)));
+  return (
+    <span aria-label={`${value} dari 5 bintang`} title={`${value} dari 5 bintang`}>
+      {"★★★★★".slice(0, value)}
+      <span style={{ opacity: 0.25 }}>{"★★★★★".slice(value)}</span>
+    </span>
+  );
+}
+
+function TestimonialsSection({ shop }) {
+  const testimonials = normalizeTestimonials(shop);
+  if (!shop?.storefront_show_testimonials || testimonials.length === 0) return null;
+
+  const mode = String(shop?.storefront_mode || "").trim();
+  const heading =
+    mode === "services"
+      ? "Apa kata klien kami"
+      : mode === "food_menu"
+        ? "Kata pelanggan"
+        : "Ulasan pembeli";
+
+  return (
+    <section
+      className="ltr-section ltr-testimonials"
+      data-testid="storefront-testimonials-section"
+    >
+      <div className="ltr-section-heading">
+        <span>Testimoni</span>
+        <h2>{heading}</h2>
+      </div>
+
+      <div
+        className="ltr-testimonials-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 14,
+        }}
+      >
+        {testimonials.map((item, index) => (
+          <article
+            key={`${item.name || "testimonial"}-${index}`}
+            className="ltr-testimonial-card"
+            data-testid="storefront-testimonial-card"
+            style={{
+              border: "1px solid rgba(15, 23, 42, 0.10)",
+              borderRadius: 22,
+              padding: 18,
+              background: "rgba(255, 255, 255, 0.88)",
+              boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                color: "#f59e0b",
+                fontWeight: 900,
+                letterSpacing: 1,
+                fontSize: 15,
+              }}
+            >
+              <TestimonialStars rating={item.rating} />
+            </div>
+
+            {item.text ? (
+              <p style={{ margin: 0, color: "#334155", lineHeight: 1.6 }}>
+                “{item.text}”
+              </p>
+            ) : null}
+
+            <strong style={{ color: "#1f2937" }}>
+              {item.name || "Pelanggan"}
+            </strong>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+// /LAPAKIN_TESTIMONIAL_SECTION_MVP
+
 function LocationMapSection({ shop }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (!shouldShowLocationMap(shop)) return null;
 
   const title = getLocationTitle(shop);
   const address = getLocationAddress(shop);
   const mapsUrl = getGoogleMapsUrl(shop);
-  const embedUrl = getLocationEmbedUrl(shop);
+  const embedUrl = getGoogleMapsEmbedUrl(shop);
+  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
 
   return (
     <section
       className="ltr-section ltr-location-map"
       data-testid="storefront-location-map-section"
-      style={{ display: "grid", gap: 18 }}
     >
       <div className="ltr-section-heading">
         <span>Lokasi</span>
         <h2>{title}</h2>
-        {address ? <p>{address}</p> : null}
       </div>
 
-      {embedUrl ? (
+      <div
+        className="ltr-location-map-card"
+        style={{
+          border: "1px solid rgba(15, 23, 42, 0.10)",
+          borderRadius: 22,
+          padding: 18,
+          background: "rgba(255, 255, 255, 0.88)",
+          boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
+          display: "grid",
+          gap: 14,
+        }}
+      >
         <div
+          className="ltr-location-map-summary"
           style={{
-            overflow: "hidden",
-            borderRadius: 24,
-            border: "1px solid rgba(15, 23, 42, 0.12)",
-            background: "#fff",
-            minHeight: 260,
+            display: "flex",
+            gap: 12,
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
           }}
-          data-testid="storefront-google-map-embed"
         >
-          <iframe
-            title={title}
-            src={embedUrl}
-            width="100%"
-            height="320"
-            style={{ border: 0, display: "block" }}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            allowFullScreen
-          />
-        </div>
-      ) : null}
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ display: "block", color: "#1f2937", fontSize: 16 }}>
+              {shopName}
+            </strong>
 
-      {mapsUrl ? (
-        <a
-          href={mapsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="ltr-template-btn"
-          data-testid="storefront-google-maps-link"
-          style={{ justifySelf: "start" }}
-        >
-          Buka Google Maps
-        </a>
-      ) : null}
+            {address ? (
+              <p
+                data-testid="storefront-location-address"
+                style={{ margin: "8px 0 0", color: "#475569", lineHeight: 1.55 }}
+              >
+                {address}
+              </p>
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {embedUrl ? (
+              <button
+                type="button"
+                data-testid="storefront-location-map-toggle"
+                aria-expanded={expanded}
+                onClick={() => setExpanded((value) => !value)}
+                style={{
+                  border: "1px solid rgba(15, 23, 42, 0.10)",
+                  borderRadius: 999,
+                  background: expanded ? "#1f2937" : "#fff",
+                  color: expanded ? "#fff" : "#1f2937",
+                  padding: "8px 12px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+                }}
+              >
+                {expanded ? "Sembunyikan peta" : "Lihat peta"}
+              </button>
+            ) : null}
+
+            {mapsUrl ? (
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="storefront-location-map-link"
+                style={{
+                  borderRadius: 999,
+                  background: "#C04A3B",
+                  color: "#fff",
+                  padding: "8px 12px",
+                  fontWeight: 800,
+                  textDecoration: "none",
+                  boxShadow: "0 8px 18px rgba(192, 74, 59, 0.18)",
+                }}
+              >
+                Buka Maps
+              </a>
+            ) : null}
+          </div>
+        </div>
+
+        {expanded && embedUrl ? (
+          <div
+            className="ltr-location-map-frame"
+            data-testid="storefront-location-map-frame"
+            style={{
+              overflow: "hidden",
+              borderRadius: 18,
+              border: "1px solid rgba(15, 23, 42, 0.10)",
+              background: "#f8fafc",
+            }}
+          >
+            <iframe
+              title={`Lokasi ${shopName}`}
+              src={embedUrl}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              style={{
+                display: "block",
+                width: "100%",
+                minHeight: 280,
+                border: 0,
+              }}
+              allowFullScreen
+            />
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
-
 
 function ContactSection({ shop, template }) {
   const mode = getModeFromTemplate(template);
@@ -1355,14 +1807,19 @@ function renderSection(section, context) {
       return <BrandStory key={section} shop={shop} template={template} />;
 
     case "benefits":
-    case "testimonials":
       return <Benefits key={section} template={template} />;
+
+    case "testimonials":
+      return <TestimonialsSection key={section} shop={shop} />;
 
     case "faq":
       return <FaqSection key={section} template={template} />;
 
     case "promo":
       return <PromoBannerSection shop={shop} />;
+
+    case "business_hours":
+      return <BusinessHoursSection key={section} shop={shop} />;
 
     case "location_map":
       return <LocationMapSection key={section} shop={shop} />;
@@ -1679,9 +2136,65 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     }
   }
 
-  if (shouldShowLocationMap(shop) && !sections.includes("location_map")) {
+  if (shouldShowBusinessHours(shop) && !sections.includes("business_hours")) {
+    const locationIndex = sections.indexOf("location_map");
     const contactIndex = sections.indexOf("contact");
-    if (contactIndex >= 0) {
+
+    if (locationIndex >= 0) {
+      sections.splice(locationIndex + 1, 0, "business_hours");
+    } else if (contactIndex >= 0) {
+      sections.splice(contactIndex, 0, "business_hours");
+    } else {
+      sections.push("business_hours");
+    }
+  }
+
+  // LAPAKIN_TESTIMONIAL_SECTION_ORDER_MVP
+  if (shouldShowTestimonials(shop) && !sections.includes("testimonials")) {
+    const afterKeys = [
+      "about",
+      "brand_story",
+      "story",
+      "benefits",
+      "featured_products",
+      "featured_products_section",
+      "all_products",
+      "menu_list",
+      "menu_grid",
+      "service_list",
+      "categories",
+    ];
+
+    let inserted = false;
+
+    for (const key of afterKeys) {
+      const index = sections.indexOf(key);
+      if (index >= 0) {
+        sections.splice(index + 1, 0, "testimonials");
+        inserted = true;
+        break;
+      }
+    }
+
+    if (!inserted) {
+      const beforeKeys = ["location_map", "business_hours", "contact"];
+      const beforeIndex = sections.findIndex((key) => beforeKeys.includes(key));
+
+      if (beforeIndex >= 0) {
+        sections.splice(beforeIndex, 0, "testimonials");
+      } else {
+        sections.push("testimonials");
+      }
+    }
+  }
+
+  if (shouldShowLocationMap(shop) && !sections.includes("location_map")) {
+    const businessHoursIndex = sections.indexOf("business_hours");
+    const contactIndex = sections.indexOf("contact");
+
+    if (businessHoursIndex >= 0) {
+      sections.splice(businessHoursIndex, 0, "location_map");
+    } else if (contactIndex >= 0) {
       sections.splice(contactIndex, 0, "location_map");
     } else {
       sections.push("location_map");
@@ -1759,7 +2272,26 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       <div className="ltr-background-orb ltr-background-orb-two" />
 
       <div className="ltr-container">
-        {finalSections.map((section) => renderSection(section, { shop, products, template, onAddToCart: addToCart }))}
+        {/* LAPAKIN_TESTIMONIAL_RENDER_FALLBACK */}
+        {(() => {
+          const sectionsToRender = Array.isArray(finalSections) ? [...finalSections] : [];
+
+          if (shouldShowTestimonials(shop) && !sectionsToRender.includes("testimonials")) {
+            const beforeIndex = sectionsToRender.findIndex((key) =>
+              ["location_map", "business_hours", "contact"].includes(key)
+            );
+
+            if (beforeIndex >= 0) {
+              sectionsToRender.splice(beforeIndex, 0, "testimonials");
+            } else {
+              sectionsToRender.push("testimonials");
+            }
+          }
+
+          return sectionsToRender.map((section) =>
+            renderSection(section, { shop, products, template, onAddToCart: addToCart })
+          );
+        })()}
       </div>
 
       <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
