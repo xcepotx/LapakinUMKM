@@ -131,22 +131,6 @@ function storefrontProductMatchesSearch(product, query) {
     .some((value) => String(value).toLowerCase().includes(q));
 }
 
-// LAPAKIN_LEGACY_AVAILABILITY_F2
-function getStorefrontProductAvailability(product) {
-  const raw = String(product?.availability_status || "").trim().toLowerCase();
-  if (raw === "out_of_stock" || raw === "hidden") return raw;
-  if (product?.is_active === false) return "hidden";
-  return "active";
-}
-
-function isStorefrontProductHidden(product) {
-  return getStorefrontProductAvailability(product) === "hidden";
-}
-
-function isStorefrontProductOutOfStock(product) {
-  return getStorefrontProductAvailability(product) === "out_of_stock";
-}
-
 function applyStorefrontSeo(shop, products = []) {
   if (!shop || typeof document === "undefined") return;
   const seo = getStorefrontSeo(shop, products);
@@ -326,8 +310,7 @@ export default function Storefront({ tenantSlug = null }) {
   }, [slug]);
 
   // ---- Derived data (declared before early returns to satisfy hook rules) ----
-  const rawProducts = data?.products || [];
-  const products = rawProducts.filter((product) => !isStorefrontProductHidden(product));
+  const products = data?.products || [];
   const storefrontCategories = useMemo(() => {
     return Array.from(new Set(products.map(getStorefrontProductCategory).filter(Boolean)))
       .sort((a, b) => a.localeCompare(b, "id"));
@@ -827,21 +810,11 @@ export default function Storefront({ tenantSlug = null }) {
                         </button>
                         <div className="p-3">
                           <h3 className="font-semibold leading-snug line-clamp-2 text-sm">{p.name}</h3>
-                          <div className="mt-1 flex items-center gap-2 flex-wrap">
-                            {getStorefrontProductCategory(p) && (
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-brand-mute">
-                                {getStorefrontProductCategory(p)}
-                              </span>
-                            )}
-                            {isStorefrontProductOutOfStock(p) && (
-                              <span
-                                className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700"
-                                data-testid={`storefront-product-out-of-stock-${p.product_id}`}
-                              >
-                                Habis
-                              </span>
-                            )}
-                          </div>
+                          {getStorefrontProductCategory(p) && (
+                            <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-brand-mute">
+                              {getStorefrontProductCategory(p)}
+                            </div>
+                          )}
                           <div className="font-heading font-extrabold text-base mt-1" style={{ color: brand }}>{rupiah(p.price)}</div>
 
                           {/* Cart action — adaptive per mode */}
@@ -889,7 +862,7 @@ export default function Storefront({ tenantSlug = null }) {
                               style={{ background: brand }}
                               data-testid={`add-to-cart-${p.product_id}`}>
                               {justAdded === p.product_id ? (
-                                <><Check className="w-3.5 h-3.5 mr-1 disabled:opacity-50 disabled:cursor-not-allowed" /> Ditambah</>
+                                <><Check className="w-3.5 h-3.5 mr-1" /> Ditambah</>
                               ) : (
                                 <><Plus className="w-3.5 h-3.5 mr-1" /> Keranjang</>
                               )}

@@ -84,22 +84,6 @@ function productMatchesTemplateSearch(product, query) {
     .some((value) => String(value).toLowerCase().includes(q));
 }
 
-// LAPAKIN_TEMPLATE_AVAILABILITY_F2
-function getTemplateProductAvailability(product) {
-  const raw = String(product?.availability_status || "").trim().toLowerCase();
-  if (raw === "out_of_stock" || raw === "hidden") return raw;
-  if (product?.is_active === false) return "hidden";
-  return "active";
-}
-
-function isTemplateProductHidden(product) {
-  return getTemplateProductAvailability(product) === "hidden";
-}
-
-function isTemplateProductOutOfStock(product) {
-  return getTemplateProductAvailability(product) === "out_of_stock";
-}
-
 function getProductImage(product) {
   const image = getValue(product, [
     "image_url",
@@ -958,7 +942,6 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
   const description = getProductDescription(product);
   const price = getProductPrice(product);
   const category = getProductCategory(product);
-  const outOfStock = isTemplateProductOutOfStock(product);
   const isService = mode === "services";
   const isFood = mode === "food_menu";
 
@@ -974,22 +957,6 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
       <div className="ltr-product-body">
         <div className="ltr-product-meta">
           <span>{category}</span>
-          {outOfStock && (
-            <span
-              data-testid={`storefront-template-product-out-of-stock-${getProductId(product, index)}`}
-              style={{
-                borderRadius: 999,
-                background: "#fffbeb",
-                border: "1px solid #fde68a",
-                color: "#b45309",
-                padding: "2px 8px",
-                fontWeight: 900,
-                fontSize: 11,
-              }}
-            >
-              Habis
-            </span>
-          )}
           {isFood && <span>Siap pesan</span>}
           {isService && <span>Konsultasi</span>}
         </div>
@@ -1012,7 +979,7 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
               data-testid="storefront-template-add-cart"
               aria-label={`Tambah ${name} ke keranjang`}
               title="Tambah ke keranjang"
-             disabled={outOfStock} aria-disabled={outOfStock}>
+            >
               <svg
                 className="ltr-add-cart-icon"
                 viewBox="0 0 24 24"
@@ -2179,10 +2146,6 @@ export default function StorefrontTemplateRenderer({ data, template }) {
   const cartCount = cartItems.reduce((sum, item) => sum + Number(item.qty || 0), 0);
 
   const addToCart = (product, index = 0) => {
-    if (isTemplateProductOutOfStock(product) || isTemplateProductHidden(product)) {
-      return;
-    }
-
     const snapshot = getProductSnapshot(product, index);
 
     setCart((prev) => ({
@@ -2443,11 +2406,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     new Set((products || []).map(getProductCategory).filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "id"));
 
-  const visibleStorefrontProducts = (products || []).filter(
-    (product) => !isTemplateProductHidden(product)
-  );
-
-  const productsForSections = visibleStorefrontProducts.filter((product) => {
+  const productsForSections = (products || []).filter((product) => {
     const categoryOk =
       categoryFilter === "all" ||
       getProductCategoryKey(product) === String(categoryFilter || "").toLowerCase();
@@ -2488,7 +2447,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
           }
 
           return sectionsToRender.map((section) =>
-            renderSection(section, { shop, products: productsForSections, allProducts: visibleStorefrontProducts, template, onAddToCart: addToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter })
+            renderSection(section, { shop, products: productsForSections, allProducts: products, template, onAddToCart: addToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter })
           );
         })()}
       </div>
