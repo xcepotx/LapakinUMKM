@@ -20,6 +20,20 @@ APP_VERSION = "1.0.0"
 router = APIRouter()
 
 
+def _lapakin_expose_product_status_fields(product):
+    """Return a product dict with stable status fields for API consumers."""
+    if not isinstance(product, dict):
+        return product
+    out = dict(product)
+    raw_status = str(out.get("availability_status") or "").strip().lower()
+    allowed_statuses = {"active", "out_of_stock", "hidden"}
+    if raw_status not in allowed_statuses:
+        raw_status = "hidden" if out.get("is_active") is False else "active"
+    out["availability_status"] = raw_status
+    out["is_active"] = raw_status != "hidden"
+    return out
+
+
 # ---------- Health ----------
 @router.get("/")
 async def root():

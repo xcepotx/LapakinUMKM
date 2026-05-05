@@ -12,6 +12,20 @@ from tiers import get_tier, get_limits, is_unlimited
 router = APIRouter()
 
 
+def _lapakin_expose_product_status_fields(product):
+    """Return a product dict with stable status fields for API consumers."""
+    if not isinstance(product, dict):
+        return product
+    out = dict(product)
+    raw_status = str(out.get("availability_status") or "").strip().lower()
+    allowed_statuses = {"active", "out_of_stock", "hidden"}
+    if raw_status not in allowed_statuses:
+        raw_status = "hidden" if out.get("is_active") is False else "active"
+    out["availability_status"] = raw_status
+    out["is_active"] = raw_status != "hidden"
+    return out
+
+
 def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
@@ -267,9 +281,7 @@ async def list_my_products(request: Request):
     products = await db.products.find(
         {"shop_id": user["shop_id"]}, {"_id": 0}
     ).sort("created_at", -1).to_list(500)
-    return products
-
-
+    return [_lapakin_expose_product_status_fields(p) for p in products]
 @router.post("/products")
 async def create_product(data: ProductIn, request: Request):
     user = await require_user(request)
