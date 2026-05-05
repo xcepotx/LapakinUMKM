@@ -42,22 +42,11 @@ export default function AIStudio() {
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // LAPAKIN_AI_STUDIO_CATEGORY_E
-  const [categories, setCategories] = useState([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState("");
-
   useEffect(() => {
     (async () => {
-      const [shopRes, categoriesRes] = await Promise.all([
-        api.get("/shops/me"),
-        api.get("/product-categories").catch(() => ({ data: [] })),
-      ]);
-
-      const { data } = shopRes;
+      const { data } = await api.get("/shops/me");
       if (!data) { navigate("/onboarding"); return; }
-
       setShop(data);
-      setCategories(Array.isArray(categoriesRes.data) ? categoriesRes.data : []);
     })();
   }, [navigate]);
 
@@ -131,10 +120,6 @@ export default function AIStudio() {
     }
   };
 
-  const activeCategories = Array.isArray(categories)
-    ? categories.filter((category) => category?.is_active !== false && category?.category_id)
-    : [];
-
   // Final images: enhanced if exists, else original (in order)
   const finalImages = origImages.map((o, i) => enhancedImages[i] || o);
 
@@ -143,18 +128,11 @@ export default function AIStudio() {
     if (finalImages.length === 0) { toast.error("Upload minimal 1 foto"); return; }
     setSaving(true);
     try {
-      const selectedCategory = activeCategories.find(
-        (category) => category.category_id === selectedCategoryId
-      );
-
       await api.post("/products", {
         name, price: parseInt(price, 10) || 0, stock: parseInt(stock, 10) || 0,
         description, image_data: finalImages[0], images: finalImages,
         ig_caption: igCaption, tiktok_caption: tiktokCaption, hashtags,
         available_days: availableDays,
-        category_id: selectedCategoryId || "",
-        category: selectedCategory?.name || "",
-        category_name: selectedCategory?.name || "",
       });
       toast.success("Produk berhasil disimpan!");
       navigate("/dashboard/products");
@@ -426,35 +404,6 @@ export default function AIStudio() {
             </div>
           </div>
         )}
-
-        <div
-          className="mt-6 rounded-2xl border border-brand-line bg-white p-4 shadow-card"
-          data-testid="ai-studio-category-field"
-        >
-          <Label className="mb-2 block">Kategori Produk</Label>
-          <select
-            value={selectedCategoryId}
-            onChange={(event) => setSelectedCategoryId(event.target.value)}
-            className="w-full h-11 rounded-xl border border-brand-line px-3 text-sm font-semibold bg-white"
-            data-testid="ai-studio-category-select"
-          >
-            <option value="">Tanpa kategori</option>
-            {activeCategories.map((category) => (
-              <option key={category.category_id} value={category.category_id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-          {activeCategories.length === 0 ? (
-            <p className="mt-2 text-xs text-brand-mute">
-              Belum ada kategori. Buat kategori dulu dari halaman Produk.
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-brand-mute">
-              Kategori ini akan tersimpan bersama produk yang dibuat dari AI Studio.
-            </p>
-          )}
-        </div>
 
         <div className="mt-6 flex justify-end">
           <Button onClick={saveProduct} disabled={saving}

@@ -103,7 +103,6 @@ function getStorefrontSeo(shop, products = []) {
 
 
 // LAPAKIN_LEGACY_STOREFRONT_CATEGORY_FILTER_MVP
-// LAPAKIN_LEGACY_STOREFRONT_CATEGORY_FILTER_B
 function getStorefrontProductCategory(product) {
   return String(
     product?.category_name ||
@@ -734,27 +733,6 @@ export default function Storefront({ tenantSlug = null }) {
               }
 
               const visibleFiller = Math.max(0, 4 - visibleProducts.length);
-              const hasActiveCatalogFilter = categoryFilter !== "all" || productSearch.trim();
-
-              if (visibleProducts.length === 0 && hasActiveCatalogFilter) {
-                return (
-                  <div className="bg-white border border-brand-line rounded-2xl p-12 text-center shadow-card"
-                    data-testid="storefront-no-filter-results">
-                    <Package className="w-10 h-10 mx-auto text-brand-mute" />
-                    <p className="text-brand-mute mt-3">Produk tidak ditemukan.</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProductSearch("");
-                        setCategoryFilter("all");
-                      }}
-                      className="mt-3 text-sm text-brand font-semibold hover:underline"
-                    >
-                      Reset pencarian dan kategori →
-                    </button>
-                  </div>
-                );
-              }
 
               if (visibleProducts.length === 0 && visibleFiller === 0) {
                 return (

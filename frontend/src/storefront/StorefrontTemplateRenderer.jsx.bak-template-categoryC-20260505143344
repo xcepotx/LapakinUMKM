@@ -548,7 +548,6 @@ function ProductImage({ product, className }) {
 }
 
 
-// LAPAKIN_TEMPLATE_CATEGORY_FILTER_C
 function CategoryChips({
   products,
   allProducts,
@@ -569,13 +568,10 @@ function CategoryChips({
   if (!showControls && !categories.length) return null;
 
   return (
-    <div
-      className="ltr-category-filter-panel"
-      data-testid={showControls ? "storefront-template-category-search-filter" : undefined}
-      style={{ display: "grid", gap: 14 }}
-    >
+    <div style={{ display: "grid", gap: 14 }}>
       {showControls ? (
         <div
+          data-testid="storefront-template-category-search-filter"
           style={{
             display: "grid",
             gap: 12,
@@ -589,7 +585,7 @@ function CategoryChips({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gridTemplateColumns: "minmax(0, 1fr) minmax(170px, 220px)",
               gap: 10,
             }}
           >
@@ -617,7 +613,6 @@ function CategoryChips({
                 border: "1px solid rgba(15, 23, 42, 0.12)",
                 padding: "0 12px",
                 fontWeight: 800,
-                background: "#fff",
               }}
             >
               <option value="all">Semua kategori</option>
@@ -647,7 +642,6 @@ function CategoryChips({
                 ? { borderColor: "transparent", background: "#fbbf24", color: "#111827" }
                 : undefined
             }
-            data-testid="storefront-template-category-chip-all"
           >
             Semua
           </button>
@@ -667,7 +661,6 @@ function CategoryChips({
                     ? { borderColor: "transparent", background: "#fbbf24", color: "#111827" }
                     : undefined
                 }
-                data-testid="storefront-template-category-chip"
               >
                 {category}
               </button>
@@ -678,6 +671,7 @@ function CategoryChips({
     </div>
   );
 }
+
 
 function SocialLinks
 ({ shop }) {
@@ -1888,7 +1882,7 @@ function renderSection(section, context) {
 
   switch (section) {
     case "hero":
-      return <HeroSection key={section} shop={shop} products={allProducts || products} template={template} />;
+      return <HeroSection key={section} shop={shop} products={products} template={template} />;
 
     case "categories":
       return (
@@ -2447,7 +2441,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
           }
 
           return sectionsToRender.map((section) =>
-            renderSection(section, { shop, products: productsForSections, allProducts: products, template, onAddToCart: addToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter })
+            renderSection(section, { shop, products: productsForSections, template, onAddToCart: addToCart })
           );
         })()}
       </div>

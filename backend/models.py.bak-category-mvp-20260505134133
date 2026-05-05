@@ -69,9 +69,6 @@ class ShopIn(BaseModel):
     name: str
     tagline: Optional[str] = ""
     description: Optional[str] = ""
-    category_id: Optional[str] = ""
-    category: Optional[str] = ""
-    category_name: Optional[str] = ""
     business_type: str  # kuliner / kopi / fashion / kerajinan / kecantikan / lainnya
     whatsapp: Optional[str] = ""
     brand_color: Optional[str] = "#C04A3B"

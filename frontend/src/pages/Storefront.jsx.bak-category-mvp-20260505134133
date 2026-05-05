@@ -101,36 +101,6 @@ function getStorefrontSeo(shop, products = []) {
   };
 }
 
-
-// LAPAKIN_LEGACY_STOREFRONT_CATEGORY_FILTER_MVP
-// LAPAKIN_LEGACY_STOREFRONT_CATEGORY_FILTER_B
-function getStorefrontProductCategory(product) {
-  return String(
-    product?.category_name ||
-    product?.category ||
-    product?.product_category ||
-    product?.type ||
-    ""
-  ).trim();
-}
-
-function getStorefrontProductCategoryKey(product) {
-  return getStorefrontProductCategory(product).toLowerCase();
-}
-
-function storefrontProductMatchesSearch(product, query) {
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return true;
-
-  return [
-    product?.name,
-    product?.description,
-    getStorefrontProductCategory(product),
-  ]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(q));
-}
-
 function applyStorefrontSeo(shop, products = []) {
   if (!shop || typeof document === "undefined") return;
   const seo = getStorefrontSeo(shop, products);
@@ -265,8 +235,6 @@ export default function Storefront({ tenantSlug = null }) {
   const [viewer, setViewer] = useState(null);
   const [storyIdx, setStoryIdx] = useState(null); // index into shop.story when viewing reel
   const [todayOnly, setTodayOnly] = useState(true); // F&B "Menu Hari Ini" filter
-  const [productSearch, setProductSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
 
   // ---- CART STATE (client-side, persisted in localStorage per shop slug) ----
   const cartKey = `lapakin_cart_${slug}`;
@@ -311,10 +279,6 @@ export default function Storefront({ tenantSlug = null }) {
 
   // ---- Derived data (declared before early returns to satisfy hook rules) ----
   const products = data?.products || [];
-  const storefrontCategories = useMemo(() => {
-    return Array.from(new Set(products.map(getStorefrontProductCategory).filter(Boolean)))
-      .sort((a, b) => a.localeCompare(b, "id"));
-  }, [products]);
   const productMap = useMemo(() => {
     const m = {};
     products.forEach((p) => { m[p.product_id] = p; });
@@ -665,96 +629,11 @@ export default function Storefront({ tenantSlug = null }) {
               </div>
             </div>
 
-            <div
-              className="mb-5 rounded-2xl border border-brand-line bg-white p-4 shadow-card"
-              data-testid="storefront-category-search-filter"
-            >
-              <div className="grid sm:grid-cols-[1fr_auto] gap-3">
-                <input
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="Cari produk atau menu..."
-                  className="h-11 rounded-xl border border-brand-line px-3 text-sm"
-                  data-testid="storefront-product-search"
-                />
-
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="h-11 rounded-xl border border-brand-line px-3 text-sm font-semibold"
-                  data-testid="storefront-category-filter"
-                >
-                  <option value="all">Semua kategori</option>
-                  {storefrontCategories.map((category) => (
-                    <option key={category} value={category.toLowerCase()}>{category}</option>
-                  ))}
-                </select>
-              </div>
-
-              {storefrontCategories.length ? (
-                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                  <button
-                    type="button"
-                    onClick={() => setCategoryFilter("all")}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-bold ${categoryFilter === "all" ? "bg-brand text-white border-brand" : "bg-brand-off border-brand-line text-brand-ink"}`}
-                    data-testid="storefront-category-chip-all"
-                  >
-                    Semua
-                  </button>
-                  {storefrontCategories.map((category) => (
-                    <button
-                      key={category}
-                      type="button"
-                      onClick={() => setCategoryFilter(category.toLowerCase())}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-bold ${categoryFilter === category.toLowerCase() ? "bg-brand text-white border-brand" : "bg-brand-off border-brand-line text-brand-ink"}`}
-                      data-testid="storefront-category-chip"
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-
             {(() => {
-              let visibleProducts = (sellsBy === "hours" && todayOnly)
+              const visibleProducts = (sellsBy === "hours" && todayOnly)
                 ? products.filter(isAvailableToday)
                 : products;
-
-              if (categoryFilter !== "all") {
-                visibleProducts = visibleProducts.filter(
-                  (product) => getStorefrontProductCategoryKey(product) === String(categoryFilter || "").toLowerCase()
-                );
-              }
-
-              if (productSearch.trim()) {
-                visibleProducts = visibleProducts.filter((product) =>
-                  storefrontProductMatchesSearch(product, productSearch)
-                );
-              }
-
               const visibleFiller = Math.max(0, 4 - visibleProducts.length);
-              const hasActiveCatalogFilter = categoryFilter !== "all" || productSearch.trim();
-
-              if (visibleProducts.length === 0 && hasActiveCatalogFilter) {
-                return (
-                  <div className="bg-white border border-brand-line rounded-2xl p-12 text-center shadow-card"
-                    data-testid="storefront-no-filter-results">
-                    <Package className="w-10 h-10 mx-auto text-brand-mute" />
-                    <p className="text-brand-mute mt-3">Produk tidak ditemukan.</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProductSearch("");
-                        setCategoryFilter("all");
-                      }}
-                      className="mt-3 text-sm text-brand font-semibold hover:underline"
-                    >
-                      Reset pencarian dan kategori →
-                    </button>
-                  </div>
-                );
-              }
 
               if (visibleProducts.length === 0 && visibleFiller === 0) {
                 return (
@@ -810,11 +689,6 @@ export default function Storefront({ tenantSlug = null }) {
                         </button>
                         <div className="p-3">
                           <h3 className="font-semibold leading-snug line-clamp-2 text-sm">{p.name}</h3>
-                          {getStorefrontProductCategory(p) && (
-                            <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-brand-mute">
-                              {getStorefrontProductCategory(p)}
-                            </div>
-                          )}
                           <div className="font-heading font-extrabold text-base mt-1" style={{ color: brand }}>{rupiah(p.price)}</div>
 
                           {/* Cart action — adaptive per mode */}

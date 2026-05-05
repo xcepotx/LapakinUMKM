@@ -547,140 +547,23 @@ function ProductImage({ product, className }) {
   );
 }
 
-
-// LAPAKIN_TEMPLATE_CATEGORY_FILTER_C
-function CategoryChips({
-  products,
-  allProducts,
-  template,
-  productSearch = "",
-  setProductSearch,
-  categoryFilter = "all",
-  setCategoryFilter,
-  showControls = false,
-}) {
-  const sourceProducts =
-    Array.isArray(allProducts) && allProducts.length ? allProducts : products;
-
-  const categories = getCategories(sourceProducts);
-  const filteredCount = Array.isArray(products) ? products.length : 0;
-  const totalCount = Array.isArray(sourceProducts) ? sourceProducts.length : filteredCount;
-
-  if (!showControls && !categories.length) return null;
+function CategoryChips({ products, template }) {
+  const categories = getCategories(products);
+  if (!categories.length) return null;
 
   return (
-    <div
-      className="ltr-category-filter-panel"
-      data-testid={showControls ? "storefront-template-category-search-filter" : undefined}
-      style={{ display: "grid", gap: 14 }}
-    >
-      {showControls ? (
-        <div
-          style={{
-            display: "grid",
-            gap: 12,
-            border: "1px solid rgba(15, 23, 42, 0.10)",
-            borderRadius: 22,
-            padding: 16,
-            background: "rgba(255, 255, 255, 0.88)",
-            boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 10,
-            }}
-          >
-            <input
-              value={productSearch}
-              onChange={(event) => setProductSearch?.(event.target.value)}
-              placeholder="Cari produk, menu, atau layanan..."
-              data-testid="storefront-template-product-search"
-              style={{
-                minWidth: 0,
-                height: 44,
-                borderRadius: 14,
-                border: "1px solid rgba(15, 23, 42, 0.12)",
-                padding: "0 12px",
-              }}
-            />
-
-            <select
-              value={categoryFilter}
-              onChange={(event) => setCategoryFilter?.(event.target.value)}
-              data-testid="storefront-template-category-filter"
-              style={{
-                height: 44,
-                borderRadius: 14,
-                border: "1px solid rgba(15, 23, 42, 0.12)",
-                padding: "0 12px",
-                fontWeight: 800,
-                background: "#fff",
-              }}
-            >
-              <option value="all">Semua kategori</option>
-              {categories.map((category) => (
-                <option key={category} value={category.toLowerCase()}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <small style={{ color: "#64748b" }}>
-            Menampilkan {filteredCount} dari {totalCount} item
-          </small>
-        </div>
-      ) : null}
-
-      {categories.length ? (
-        <div className="ltr-category-chips" data-template-nav={template?.categoryNav}>
-          <button
-            type="button"
-            className="ltr-chip"
-            onClick={() => setCategoryFilter?.("all")}
-            data-active={categoryFilter === "all" ? "true" : "false"}
-            style={
-              categoryFilter === "all"
-                ? { borderColor: "transparent", background: "#fbbf24", color: "#111827" }
-                : undefined
-            }
-            data-testid="storefront-template-category-chip-all"
-          >
-            Semua
-          </button>
-
-          {categories.map((category) => {
-            const active = categoryFilter === category.toLowerCase();
-
-            return (
-              <button
-                key={category}
-                type="button"
-                className="ltr-chip"
-                onClick={() => setCategoryFilter?.(category.toLowerCase())}
-                data-active={active ? "true" : "false"}
-                style={
-                  active
-                    ? { borderColor: "transparent", background: "#fbbf24", color: "#111827" }
-                    : undefined
-                }
-                data-testid="storefront-template-category-chip"
-              >
-                {category}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+    <div className="ltr-category-chips" data-template-nav={template?.categoryNav}>
+      {categories.map((category) => (
+        <span key={category} className="ltr-chip">
+          {category}
+        </span>
+      ))}
     </div>
   );
 }
 
-function SocialLinks
-({ shop }) {
+
+function SocialLinks({ shop }) {
   const links = getSocialLinks(shop);
 
   if (!links.length) return null;
@@ -1880,7 +1763,7 @@ function FaqSection({ template }) {
 }
 
 function renderSection(section, context) {
-  const { shop, products, allProducts, template, onAddToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter } = context;
+  const { shop, products, template, onAddToCart } = context;
   const mode = getModeFromTemplate(template);
   const title = getSectionTitle(section, mode);
   const featured = products.filter((product) => product?.featured || product?.is_featured);
@@ -1888,7 +1771,7 @@ function renderSection(section, context) {
 
   switch (section) {
     case "hero":
-      return <HeroSection key={section} shop={shop} products={allProducts || products} template={template} />;
+      return <HeroSection key={section} shop={shop} products={products} template={template} />;
 
     case "categories":
       return (
@@ -1897,16 +1780,7 @@ function renderSection(section, context) {
             <span>Jelajahi</span>
             <h2>{title}</h2>
           </div>
-          <CategoryChips
-            products={products}
-            allProducts={allProducts}
-            template={template}
-            showControls
-            productSearch={productSearch}
-            setProductSearch={setProductSearch}
-            categoryFilter={categoryFilter}
-            setCategoryFilter={setCategoryFilter}
-          />
+          <CategoryChips products={products} template={template} />
         </section>
       );
 
@@ -2430,6 +2304,86 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       <div className="ltr-background-orb ltr-background-orb-two" />
 
       <div className="ltr-container">
+        <section
+          className="ltr-section ltr-category-search-filter"
+          data-testid="storefront-template-category-search-filter"
+        >
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              border: "1px solid rgba(15, 23, 42, 0.10)",
+              borderRadius: 22,
+              padding: 16,
+              background: "rgba(255, 255, 255, 0.88)",
+              boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10 }}>
+              <input
+                value={productSearch}
+                onChange={(event) => setProductSearch(event.target.value)}
+                placeholder="Cari produk, menu, atau layanan..."
+                data-testid="storefront-template-product-search"
+                style={{
+                  minWidth: 0,
+                  height: 44,
+                  borderRadius: 14,
+                  border: "1px solid rgba(15, 23, 42, 0.12)",
+                  padding: "0 12px",
+                }}
+              />
+
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+                data-testid="storefront-template-category-filter"
+                style={{
+                  height: 44,
+                  borderRadius: 14,
+                  border: "1px solid rgba(15, 23, 42, 0.12)",
+                  padding: "0 12px",
+                  fontWeight: 800,
+                }}
+              >
+                <option value="all">Semua kategori</option>
+                {templateCategories.map((category) => (
+                  <option key={category} value={category.toLowerCase()}>{category}</option>
+                ))}
+              </select>
+            </div>
+
+            {templateCategories.length ? (
+              <div className="ltr-category-chips" data-template-nav={template?.categoryNav}>
+                <button
+                  type="button"
+                  className="ltr-chip"
+                  onClick={() => setCategoryFilter("all")}
+                  data-active={categoryFilter === "all" ? "true" : "false"}
+                  data-testid="storefront-template-category-chip-all"
+                >
+                  Semua
+                </button>
+                {templateCategories.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    className="ltr-chip"
+                    onClick={() => setCategoryFilter(category.toLowerCase())}
+                    data-active={categoryFilter === category.toLowerCase() ? "true" : "false"}
+                    data-testid="storefront-template-category-chip"
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <small style={{ color: "#64748b" }}>
+              Menampilkan {productsForSections.length} dari {(products || []).length} item
+            </small>
+          </div>
+        </section>
         {/* LAPAKIN_TESTIMONIAL_RENDER_FALLBACK */}
         {(() => {
           const sectionsToRender = Array.isArray(finalSections) ? [...finalSections] : [];
@@ -2447,7 +2401,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
           }
 
           return sectionsToRender.map((section) =>
-            renderSection(section, { shop, products: productsForSections, allProducts: products, template, onAddToCart: addToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter })
+            renderSection(section, { shop, products: productsForSections, template, onAddToCart: addToCart })
           );
         })()}
       </div>
