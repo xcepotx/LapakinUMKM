@@ -68,8 +68,6 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_payment_instruction", "")
     shop.setdefault("storefront_qris_image", "")
     shop.setdefault("storefront_payment_confirmation_text", "")
-    shop.setdefault("storefront_whatsapp_checkout_template", "Halo {shop_name}, saya mau pesan:\n\n{items}\n\nTotal: {total}\nNama: {customer_name}\nCatatan: {notes}\n{payment_instruction}")
-    shop.setdefault("storefront_whatsapp_product_template", "Halo {shop_name}, saya mau tanya produk:\n\n{product_name}\nHarga: {product_price}\n\nApakah masih tersedia?")
     shop.setdefault("storefront_show_location_map", False)
     shop.setdefault("storefront_location_title", "")
     shop.setdefault("storefront_location_address", "")
@@ -603,47 +601,6 @@ def _clean_storefront_qris_image(value, *extra_args):
     return ""
 
 
-
-def _clean_storefront_whatsapp_template_text(value, max_len=1200):
-    try:
-        text = str(value or "").strip()
-    except Exception:
-        text = ""
-
-    if max_len <= 0:
-        max_len = 1200
-
-    return text[:max_len]
-
-
-def _sanitize_storefront_whatsapp_template_payload(payload, templates_enabled=True):
-    if not payload:
-        return payload
-
-    fields = [
-        "storefront_whatsapp_checkout_template",
-        "storefront_whatsapp_product_template",
-    ]
-
-    if not templates_enabled:
-        for field in fields:
-            payload.pop(field, None)
-        return payload
-
-    if "storefront_whatsapp_checkout_template" in payload:
-        payload["storefront_whatsapp_checkout_template"] = _clean_storefront_whatsapp_template_text(
-            payload.get("storefront_whatsapp_checkout_template"),
-            1200,
-        )
-
-    if "storefront_whatsapp_product_template" in payload:
-        payload["storefront_whatsapp_product_template"] = _clean_storefront_whatsapp_template_text(
-            payload.get("storefront_whatsapp_product_template"),
-            800,
-        )
-
-    return payload
-
 def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
     if not payload:
         return payload
@@ -849,8 +806,6 @@ def _apply_storefront_tier_guard(payload, user):
 
     payload = _sanitize_storefront_payment_payload(payload, features.get("templates"))
 
-    payload = _sanitize_storefront_whatsapp_template_payload(payload, features.get("templates"))
-
     payload = _sanitize_storefront_location_payload(payload)
 
     return payload
@@ -956,10 +911,6 @@ async def create_or_update_shop(data: ShopIn, request: Request):
         payload,
         templates_enabled=(payload.get("storefront_renderer") or "template") != "legacy" or bool(user.get("shop_id")),
     )
-    payload = _sanitize_storefront_whatsapp_template_payload(
-        payload,
-        templates_enabled=(payload.get("storefront_renderer") or "template") != "legacy" or bool(user.get("shop_id")),
-    )
     payload = _sanitize_storefront_location_payload(payload)
 
     if user.get("shop_id"):
@@ -1004,8 +955,6 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_payment_instruction", "")
     doc.setdefault("storefront_qris_image", "")
     doc.setdefault("storefront_payment_confirmation_text", "")
-    doc.setdefault("storefront_whatsapp_checkout_template", "Halo {shop_name}, saya mau pesan:\n\n{items}\n\nTotal: {total}\nNama: {customer_name}\nCatatan: {notes}\n{payment_instruction}")
-    doc.setdefault("storefront_whatsapp_product_template", "Halo {shop_name}, saya mau tanya produk:\n\n{product_name}\nHarga: {product_price}\n\nApakah masih tersedia?")
     doc.setdefault("storefront_show_location_map", False)
     doc.setdefault("storefront_location_title", "")
     doc.setdefault("storefront_location_address", "")

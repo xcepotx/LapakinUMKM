@@ -186,94 +186,6 @@ function getStorefrontTrafficSource() {
     return host.replace(/^www\./, "");
   } catch { return "direct"; }
 }
-
-// LAPAKIN_LEGACY_WHATSAPP_TEMPLATE_G1B
-const LEGACY_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE = `Halo {shop_name}, saya mau pesan:
-
-{items}
-
-Total: {total}
-Nama: {customer_name}
-Catatan: {notes}
-{payment_instruction}`;
-
-function renderLegacyWhatsappTemplate(template, variables) {
-  let text = String(template || LEGACY_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE || "");
-
-  Object.entries(variables || {}).forEach(([key, value]) => {
-    const pattern = new RegExp(`\\\\{${key}\\\\}`, "g");
-    text = text.replace(pattern, value == null ? "" : String(value));
-  });
-
-  return text
-    .split("\\n")
-    .map((line) => line.replace(/[ \\t]+$/g, ""))
-    .join("\\n")
-    .replace(/\\n{4,}/g, "\\n\\n\\n")
-    .trim();
-}
-
-function getLegacyPaymentInstructionText(shop) {
-  if (!shop?.storefront_show_payment_instruction) return "";
-
-  const parts = [];
-
-  if (shop?.storefront_payment_method_label) {
-    parts.push(`Metode pembayaran: ${shop.storefront_payment_method_label}`);
-  }
-
-  if (shop?.storefront_payment_instruction) {
-    parts.push(String(shop.storefront_payment_instruction).trim());
-  }
-
-  if (shop?.storefront_payment_confirmation_text) {
-    parts.push(String(shop.storefront_payment_confirmation_text).trim());
-  }
-
-  return parts.filter(Boolean).join("\\n");
-}
-
-function buildLegacyCheckoutWhatsappMessage(shop, cartItems, cartTotal, options = {}) {
-  if (!cartItems?.length) return "";
-
-  const shopName = shop?.name || "toko";
-  const items = cartItems
-    .map((it, index) => {
-      const product = it.product || {};
-      const qty = Number(it.qty || 0);
-      const price = Number(product.price || 0);
-      return `${index + 1}. ${product.name} — ${qty}x ${rupiah(price)} = ${rupiah(qty * price)}`;
-    })
-    .join("\\n");
-
-  const paymentInstruction = getLegacyPaymentInstructionText(shop);
-  const template = String(shop?.storefront_whatsapp_checkout_template || "").trim() ||
-    LEGACY_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE;
-
-  const message = renderLegacyWhatsappTemplate(template, {
-    shop_name: shopName,
-    customer_name: "",
-    items,
-    total: rupiah(cartTotal),
-    notes: options.shopClosed ? "Toko sedang tutup — saya menanyakan ketersediaan." : "",
-    payment_instruction: paymentInstruction,
-    campaign_slug: getStorefrontCampaignSlug(),
-  });
-
-  if (message) return message;
-
-  return [
-    `Halo ${shopName}, saya mau pesan:`,
-    "",
-    items,
-    "─────────────",
-    `Total: ${rupiah(cartTotal)}`,
-    "",
-    options.shopClosed ? "(Toko sedang tutup — saya menanyakan ketersediaan.)" : "",
-    "Mohon konfirmasi ketersediaan & ongkir ya. Terima kasih!",
-  ].filter(Boolean).join("\\n");
-}
-
 // /LAPAKIN_GROWTH_SPRINT_V2_SEO_HELPERS
 
 export default function Storefront({ tenantSlug = null }) {
@@ -516,7 +428,19 @@ export default function Storefront({ tenantSlug = null }) {
   const clearCart = () => setCart({});
 
   const buildCartMessage = () => {
-    return buildLegacyCheckoutWhatsappMessage(shop, cartItems, cartTotal, { shopClosed });
+    if (!cartItems.length) return "";
+    const lines = [`Halo ${shop.name}, saya mau pesan:`, ""];
+    cartItems.forEach((it, i) => {
+      lines.push(`${i + 1}. ${it.product.name} — ${it.qty}x ${rupiah(it.product.price)} = ${rupiah(it.qty * it.product.price)}`);
+    });
+    lines.push("─────────────");
+    lines.push(`Total: ${rupiah(cartTotal)}`);
+    lines.push("");
+    if (shopClosed) {
+      lines.push("(Toko sedang tutup — saya menanyakan ketersediaan.)");
+    }
+    lines.push("Mohon konfirmasi ketersediaan & ongkir ya. Terima kasih!");
+    return lines.join("\n");
   };
 
   const productImages = (p) => {

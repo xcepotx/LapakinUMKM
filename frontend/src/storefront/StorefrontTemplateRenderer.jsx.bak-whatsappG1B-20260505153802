@@ -227,30 +227,6 @@ function getPaymentConfirmationText(shop) {
 }
 
 
-// LAPAKIN_TEMPLATE_PRODUCT_WHATSAPP_G1C
-const TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE = `Halo {shop_name}, saya mau tanya produk:
-
-{product_name}
-Harga: {product_price}
-
-Apakah masih tersedia?`;
-
-function renderProductWhatsappTemplate(template, variables) {
-  let text = String(template || TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE || "");
-
-  Object.entries(variables || {}).forEach(([key, value]) => {
-    const pattern = new RegExp(`\\{${key}\\}`, "g");
-    text = text.replace(pattern, value == null ? "" : String(value));
-  });
-
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.replace(/[ \t]+$/g, ""))
-    .join("\n")
-    .replace(/\n{4,}/g, "\n\n\n")
-    .trim();
-}
-
 function buildWhatsappLink(shop, product) {
   const phone = normalizeWhatsapp(
     getValue(shop, [
@@ -267,19 +243,8 @@ function buildWhatsappLink(shop, product) {
 
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
   const productName = product ? getProductName(product) : "";
-  const productPrice = product ? formatPrice(getProductPrice(product)) : "";
-  const campaignSlug = getCampaignSlugFromUrl();
-
-  const productTemplate = String(shop?.storefront_whatsapp_product_template || "").trim() ||
-    TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE;
-
   const message = productName
-    ? renderProductWhatsappTemplate(productTemplate, {
-        shop_name: shopName,
-        product_name: productName,
-        product_price: productPrice,
-        campaign_slug: campaignSlug,
-      })
+    ? `Halo ${shopName}, saya tertarik dengan ${productName}.`
     : `Halo ${shopName}, saya ingin bertanya.`;
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
@@ -535,84 +500,7 @@ function getCartTotal(cartItems) {
   }, 0);
 }
 
-// LAPAKIN_TEMPLATE_WHATSAPP_CHECKOUT_G1B
-const TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE = `Halo {shop_name}, saya mau pesan:
-
-{items}
-
-Total: {total}
-Nama: {customer_name}
-Catatan: {notes}
-{payment_instruction}`;
-
-function renderTemplateWhatsappMessage(template, variables) {
-  let text = String(template || TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE || "");
-
-  Object.entries(variables || {}).forEach(([key, value]) => {
-    const pattern = new RegExp(`\\{${key}\\}`, "g");
-    text = text.replace(pattern, value == null ? "" : String(value));
-  });
-
-  return text
-    .split("\\n")
-    .map((line) => line.replace(/[ \\t]+$/g, ""))
-    .join("\\n")
-    .replace(/\\n{4,}/g, "\\n\\n\\n")
-    .trim();
-}
-
-function getTemplateCheckoutItemsText(cartItems) {
-  return (cartItems || [])
-    .map((item, index) => {
-      const product = item.product || {};
-      const qty = Number(item.qty || 0);
-      const price = Number(product.price || 0);
-      const subtotal = price * qty;
-      return `${index + 1}. ${product.name} x${qty} - ${formatPrice(subtotal)}`;
-    })
-    .join("\\n");
-}
-
-function getTemplatePaymentInstructionText(shop) {
-  if (!shouldShowPaymentInstruction(shop)) return "";
-
-  return [
-    `Metode pembayaran: ${getPaymentMethodLabel(shop)}`,
-    getPaymentInstruction(shop),
-    getPaymentConfirmationText(shop),
-  ].filter(Boolean).join("\\n");
-}
-
-function buildCartWhatsappMessage(shop, cartItems, lead = {}) {
-  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
-  const items = getTemplateCheckoutItemsText(cartItems);
-  const total = formatPrice(getCartTotal(cartItems));
-  const template = String(shop?.storefront_whatsapp_checkout_template || "").trim() ||
-    TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE;
-
-  const message = renderTemplateWhatsappMessage(template, {
-    shop_name: shopName,
-    customer_name: lead.customer_name || "",
-    items,
-    total,
-    notes: lead.notes || "",
-    payment_instruction: getTemplatePaymentInstructionText(shop),
-    campaign_slug: getCampaignSlugFromUrl(),
-  });
-
-  if (message) return message;
-
-  return [
-    `Halo ${shopName}, saya ingin pesan:`,
-    "",
-    items,
-    "",
-    `Total: ${total}`,
-    getTemplatePaymentInstructionText(shop),
-  ].filter(Boolean).join("\\n");
-}
-
-function buildCartWhatsappLink(shop, cartItems, lead = {}) {
+function buildCartWhatsappLink(shop, cartItems) {
   const phone = normalizeWhatsapp(
     getValue(shop, [
       "whatsapp",
@@ -626,8 +514,30 @@ function buildCartWhatsappLink(shop, cartItems, lead = {}) {
 
   if (!phone) return "#";
 
-  const message = buildCartWhatsappMessage(shop, cartItems, lead);
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
+
+  const lines = [
+    `Halo ${shopName}, saya ingin pesan:`,
+    "",
+    ...cartItems.map((item, index) => {
+      const product = item.product || {};
+      const qty = Number(item.qty || 0);
+      const price = Number(product.price || 0);
+      const subtotal = price * qty;
+      return `${index + 1}. ${product.name} x${qty} - ${formatPrice(subtotal)}`;
+    }),
+    "",
+    `Total: ${formatPrice(getCartTotal(cartItems))}`,
+    ...(shouldShowPaymentInstruction(shop)
+      ? [
+          "",
+          `Metode pembayaran: ${getPaymentMethodLabel(shop)}`,
+          getPaymentConfirmationText(shop),
+        ]
+      : []),
+  ];
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\\n"))}`;
 }
 
 
@@ -1005,13 +915,7 @@ function TemplateCartDrawer({
 
               <PaymentInstructionBox shop={shop} />
 
-              <a
-                href={checkoutHref}
-                target="_blank"
-                rel="noreferrer"
-                data-testid="storefront-checkout-whatsapp-link"
-                data-whatsapp-context="cart_checkout"
-              >
+              <a href={checkoutHref} target="_blank" rel="noreferrer" data-testid="storefront-checkout-whatsapp-link">
                 Checkout WhatsApp
               </a>
 
@@ -2519,14 +2423,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       if (!href || href === "#") return;
       event.preventDefault();
       trackTemplateEvent(shop, "whatsapp_checkout_click", { metadata: { label: String(whatsappLink.textContent || "").trim().slice(0, 120) } });
-      setLeadCapture({
-        open: true,
-        href,
-        context: {
-          source_label: String(whatsappLink.textContent || "").trim().slice(0, 120),
-          type: whatsappLink.getAttribute("data-whatsapp-context") || "",
-        },
-      });
+      setLeadCapture({ open: true, href, context: { source_label: String(whatsappLink.textContent || "").trim().slice(0, 120) } });
     };
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
@@ -2534,11 +2431,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
 
   const closeLeadAndOpenWhatsapp = (href) => { setLeadCapture({ open: false, href: "", context: {} }); openWhatsappHref(href); };
   const continueLeadToWhatsapp = async (form) => {
-    const href =
-      leadCapture.context?.type === "cart_checkout"
-        ? buildCartWhatsappLink(shop, cartItems, form)
-        : enrichWhatsappHrefWithLead(leadCapture.href, form);
-
+    const href = enrichWhatsappHrefWithLead(leadCapture.href, form);
     try {
       await postStorefrontJson("/storefront/leads", { ...getAnalyticsBasePayload(shop), customer_name: form.customer_name, customer_phone: form.customer_phone, fulfillment_method: form.fulfillment_method, notes: form.notes, items: cartItems.map((item) => ({ product_id: item.product?.id, name: item.product?.name, price: item.product?.price, qty: item.qty })), total: getCartTotal(cartItems), metadata: leadCapture.context || {} });
     } catch { }

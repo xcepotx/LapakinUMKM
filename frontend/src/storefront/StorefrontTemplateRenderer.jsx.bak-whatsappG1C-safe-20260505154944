@@ -227,30 +227,6 @@ function getPaymentConfirmationText(shop) {
 }
 
 
-// LAPAKIN_TEMPLATE_PRODUCT_WHATSAPP_G1C
-const TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE = `Halo {shop_name}, saya mau tanya produk:
-
-{product_name}
-Harga: {product_price}
-
-Apakah masih tersedia?`;
-
-function renderProductWhatsappTemplate(template, variables) {
-  let text = String(template || TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE || "");
-
-  Object.entries(variables || {}).forEach(([key, value]) => {
-    const pattern = new RegExp(`\\{${key}\\}`, "g");
-    text = text.replace(pattern, value == null ? "" : String(value));
-  });
-
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.replace(/[ \t]+$/g, ""))
-    .join("\n")
-    .replace(/\n{4,}/g, "\n\n\n")
-    .trim();
-}
-
 function buildWhatsappLink(shop, product) {
   const phone = normalizeWhatsapp(
     getValue(shop, [
@@ -267,19 +243,8 @@ function buildWhatsappLink(shop, product) {
 
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
   const productName = product ? getProductName(product) : "";
-  const productPrice = product ? formatPrice(getProductPrice(product)) : "";
-  const campaignSlug = getCampaignSlugFromUrl();
-
-  const productTemplate = String(shop?.storefront_whatsapp_product_template || "").trim() ||
-    TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE;
-
   const message = productName
-    ? renderProductWhatsappTemplate(productTemplate, {
-        shop_name: shopName,
-        product_name: productName,
-        product_price: productPrice,
-        campaign_slug: campaignSlug,
-      })
+    ? `Halo ${shopName}, saya tertarik dengan ${productName}.`
     : `Halo ${shopName}, saya ingin bertanya.`;
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;

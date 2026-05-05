@@ -57,8 +57,6 @@ class ShopIn(BaseModel):
     storefront_payment_instruction: Optional[str] = ""
     storefront_qris_image: Optional[str] = ""
     storefront_payment_confirmation_text: Optional[str] = ""
-    storefront_whatsapp_checkout_template: Optional[str] = ""
-    storefront_whatsapp_product_template: Optional[str] = ""
     storefront_show_location_map: Optional[bool] = False
     storefront_location_title: Optional[str] = ""
     storefront_location_address: Optional[str] = ""
