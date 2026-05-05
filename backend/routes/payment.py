@@ -1,5 +1,6 @@
 """Payment routes: create Snap transaction, receive webhook, check status,
 list payment history."""
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -22,7 +23,72 @@ class CreateTransactionIn(BaseModel):
     plan_id: str  # e.g. "pro_monthly"
 
 
+class ManualPaymentRequestIn(BaseModel):
+    plan_id: str
+
+
+class ManualPaymentProofIn(BaseModel):
+    proof_image: str
+    proof_filename: Optional[str] = "bukti-pembayaran.png"
+
+
+
 # ---- Helpers ----
+
+def _manual_payment_config():
+    """Temporary manual QRIS payment config for Lapakin tier upgrades.
+
+    Keep this outside storefront checkout. Values can be overridden with env vars:
+    - LAPAKIN_MANUAL_PAYMENT_QRIS_IMAGE: data URL or image URL for Lapakin QRIS
+    - LAPAKIN_MANUAL_PAYMENT_INSTRUCTION: instruction text
+    - LAPAKIN_MANUAL_PAYMENT_ADMIN_WHATSAPP: admin WhatsApp number, digits only
+    """
+    return {
+        "enabled": os.environ.get("LAPAKIN_MANUAL_PAYMENT_ENABLED", "0") == "1",
+        "method_label": os.environ.get("LAPAKIN_MANUAL_PAYMENT_LABEL", "QRIS Lapakin"),
+        "qris_image": os.environ.get("LAPAKIN_MANUAL_PAYMENT_QRIS_IMAGE", ""),
+        "admin_whatsapp": os.environ.get("LAPAKIN_MANUAL_PAYMENT_ADMIN_WHATSAPP", ""),
+        "instruction": os.environ.get(
+            "LAPAKIN_MANUAL_PAYMENT_INSTRUCTION",
+            "Scan QRIS Lapakin, bayar sesuai nominal paket, lalu upload bukti pembayaran di halaman ini. Admin Lapakin akan memverifikasi dan mengaktifkan paket kamu.",
+        ),
+        "disabled_message": os.environ.get(
+            "LAPAKIN_MANUAL_PAYMENT_DISABLED_MESSAGE",
+            "Pembayaran upgrade tier sementara belum tersedia. QRIS Lapakin sedang dalam proses approval.",
+        ),
+        "max_proof_size_mb": 2,
+    }
+
+
+def _public_manual_payment(payment: Optional[dict]):
+    if not payment:
+        return None
+    return {
+        "order_id": payment.get("order_id"),
+        "plan_id": payment.get("plan_id"),
+        "plan_label": payment.get("plan_label") or payment.get("plan_id"),
+        "amount": payment.get("amount"),
+        "status": payment.get("status") or "pending_payment",
+        "payment_type": payment.get("payment_type") or "manual_qris",
+        "proof_filename": payment.get("proof_filename"),
+        "proof_uploaded_at": payment.get("proof_uploaded_at"),
+        "admin_note": payment.get("admin_note"),
+        "created_at": payment.get("created_at"),
+        "updated_at": payment.get("updated_at"),
+    }
+
+
+async def _latest_manual_payment_for_user(user_id: str):
+    docs = await db.payments.find(
+        {
+            "user_id": user_id,
+            "provider": "manual_qris",
+            "status": {"$in": ["pending_payment", "pending_review", "rejected"]},
+        },
+        {"_id": 0, "proof_image": 0},
+    ).sort("created_at", -1).limit(1).to_list(1)
+    return docs[0] if docs else None
+
 async def _activate_subscription(user_id: str, plan_id: str, order_id: str,
                                   payment_type: str = "", amount_idr: Optional[int] = None):
     """Upgrade user tier + extend expiry. Idempotent per (user_id, order_id).
@@ -155,6 +221,106 @@ async def payment_config():
         "is_production": MIDTRANS_IS_PRODUCTION,
         "plans": await get_plans_with_dynamic_prices(db),
     }
+
+
+# ---- Manual QRIS payment for tier upgrades (temporary, no gateway) ----
+@router.get("/payment/manual-config")
+async def payment_manual_config(request: Request):
+    await require_user(request)
+    return _manual_payment_config()
+
+
+@router.get("/payment/manual/current")
+async def payment_manual_current(request: Request):
+    user = await require_user(request)
+    payment = await _latest_manual_payment_for_user(user["user_id"])
+    return {"payment": _public_manual_payment(payment), "config": _manual_payment_config()}
+
+
+@router.post("/payment/manual/request")
+async def payment_manual_request(data: ManualPaymentRequestIn, request: Request):
+    user = await require_user(request)
+    config = _manual_payment_config()
+    if not config["enabled"]:
+        raise HTTPException(status_code=503, detail=config.get("disabled_message") or "Pembayaran manual sedang tidak aktif.")
+
+    if data.plan_id not in PLANS:
+        raise HTTPException(status_code=400, detail="Paket tidak valid")
+
+    plan = await get_plan_with_dynamic_price(db, data.plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Paket tidak valid")
+
+    # Reuse latest pending manual payment for the same plan to avoid duplicate requests.
+    existing = await db.payments.find(
+        {
+            "user_id": user["user_id"],
+            "plan_id": data.plan_id,
+            "provider": "manual_qris",
+            "status": {"$in": ["pending_payment", "pending_review", "rejected"]},
+        },
+        {"_id": 0, "proof_image": 0},
+    ).sort("created_at", -1).limit(1).to_list(1)
+
+    if existing and existing[0].get("status") != "rejected":
+        return {"ok": True, "reused": True, "payment": _public_manual_payment(existing[0]), "config": config}
+
+    now = datetime.now(timezone.utc)
+    order_id = f"manual-{data.plan_id}-{uuid.uuid4().hex[:10]}"
+    payment_doc = {
+        "order_id": order_id,
+        "user_id": user["user_id"],
+        "user_email": user.get("email"),
+        "user_name": user.get("name"),
+        "plan_id": data.plan_id,
+        "plan_label": plan.get("label") or data.plan_id,
+        "tier": plan.get("tier"),
+        "cycle": plan.get("cycle"),
+        "amount": plan.get("price_idr"),
+        "status": "pending_payment",
+        "provider": "manual_qris",
+        "payment_type": "manual_qris",
+        "manual_payment_method": config["method_label"],
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+    }
+    await db.payments.insert_one(payment_doc)
+    payment_doc.pop("_id", None)
+    return {"ok": True, "reused": False, "payment": _public_manual_payment(payment_doc), "config": config}
+
+
+@router.post("/payment/manual/{order_id}/proof")
+async def payment_manual_upload_proof(order_id: str, data: ManualPaymentProofIn, request: Request):
+    user = await require_user(request)
+    payment = await db.payments.find_one({"order_id": order_id, "provider": "manual_qris"}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Request pembayaran tidak ditemukan")
+    if payment.get("user_id") != user.get("user_id"):
+        raise HTTPException(status_code=403, detail="Bukan pembayaran kamu")
+    if payment.get("status") == "success":
+        raise HTTPException(status_code=400, detail="Pembayaran ini sudah disetujui")
+
+    proof = (data.proof_image or "").strip()
+    if not proof.startswith("data:image/"):
+        raise HTTPException(status_code=400, detail="Bukti pembayaran harus berupa gambar")
+    # Base64 expands size by about 4/3; allow a little overhead for data URL header.
+    if len(proof) > 2_900_000:
+        raise HTTPException(status_code=413, detail="Ukuran bukti pembayaran maksimal 2MB")
+
+    now = datetime.now(timezone.utc)
+    await db.payments.update_one(
+        {"order_id": order_id, "provider": "manual_qris", "user_id": user["user_id"]},
+        {"$set": {
+            "status": "pending_review",
+            "proof_image": proof,
+            "proof_filename": data.proof_filename or "bukti-pembayaran.png",
+            "proof_uploaded_at": now.isoformat(),
+            "admin_note": None,
+            "updated_at": now.isoformat(),
+        }},
+    )
+    updated = await db.payments.find_one({"order_id": order_id}, {"_id": 0, "proof_image": 0})
+    return {"ok": True, "payment": _public_manual_payment(updated)}
 
 
 # ---- Create transaction ----

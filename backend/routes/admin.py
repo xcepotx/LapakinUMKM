@@ -8,9 +8,10 @@ import time
 import uuid
 import secrets
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from deps import (
     db, require_admin, log_admin_action, hash_password, asyncio_gather_safe,
@@ -18,6 +19,7 @@ from deps import (
 )
 from models import TierIn, StatusIn, FeaturedIn, BroadcastIn
 from tiers import VALID_TIERS, get_tier
+from payment_service import get_plan_with_dynamic_price
 from pricing_config import get_pricing_settings, save_pricing_settings
 from routes.whatsapp import _wa_send
 
@@ -25,6 +27,10 @@ router = APIRouter()
 
 class AdminPricingIn(BaseModel):
     tiers: dict
+
+
+class ManualPaymentReviewIn(BaseModel):
+    admin_note: Optional[str] = ""
 
 
 
@@ -453,6 +459,159 @@ async def admin_set_user_tier(user_id: str, data: TierIn, request: Request):
     await log_admin_action(admin, "user_tier_change", "user", user_id,
                            {"from": old_tier, "to": data.tier})
     return {"ok": True, "user_id": user_id, "tier": data.tier}
+
+
+# Manual QRIS tier payment review
+async def _activate_manual_tier_payment(payment: dict, admin: dict):
+    plan_id = payment.get("plan_id")
+    plan = await get_plan_with_dynamic_price(db, plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Paket pembayaran tidak valid")
+
+    user = await db.users.find_one({"user_id": payment.get("user_id")}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User pembayaran tidak ditemukan")
+
+    now = datetime.now(timezone.utc)
+    cur_tier = user.get("tier") or "free"
+    cur_exp = user.get("subscription_expires_at")
+    start = now
+    if cur_tier == plan.get("tier") and cur_exp:
+        try:
+            exp_dt = datetime.fromisoformat(str(cur_exp).replace("Z", "+00:00"))
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            if exp_dt > now:
+                start = exp_dt
+        except Exception:
+            pass
+
+    new_exp = start + timedelta(days=int(plan.get("duration_days") or 30))
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {
+            "tier": plan["tier"],
+            "trial": False,
+            "trial_expires_at": None,
+            "trial_used": True,
+            "trial_expired": False,
+            "trial_expired_at": None,
+            "subscription_plan_id": plan_id,
+            "subscription_cycle": plan.get("cycle"),
+            "subscription_started_at": now.isoformat(),
+            "subscription_expires_at": new_exp.isoformat(),
+            "subscription_last_order_id": payment.get("order_id"),
+            "subscription_status": "active",
+            "subscription_unsuspended_at": now.isoformat(),
+            "subscription_suspended_at": None,
+            "subscription_suspend_reason": None,
+            "tier_updated_at": now.isoformat(),
+        }},
+    )
+    await log_admin_action(
+        admin,
+        "manual_payment_approved",
+        "payment",
+        payment.get("order_id"),
+        {"user_id": user["user_id"], "from": get_tier(user), "to": plan["tier"], "plan_id": plan_id},
+    )
+    return {"tier": plan["tier"], "expires_at": new_exp.isoformat()}
+
+
+def _public_admin_manual_payment(doc: dict):
+    if not doc:
+        return None
+    return {
+        "order_id": doc.get("order_id"),
+        "user_id": doc.get("user_id"),
+        "user_email": doc.get("user_email"),
+        "user_name": doc.get("user_name"),
+        "plan_id": doc.get("plan_id"),
+        "plan_label": doc.get("plan_label") or doc.get("plan_id"),
+        "tier": doc.get("tier"),
+        "cycle": doc.get("cycle"),
+        "amount": doc.get("amount"),
+        "status": doc.get("status"),
+        "proof_image": doc.get("proof_image"),
+        "proof_filename": doc.get("proof_filename"),
+        "proof_uploaded_at": doc.get("proof_uploaded_at"),
+        "admin_note": doc.get("admin_note"),
+        "reviewed_by": doc.get("reviewed_by"),
+        "reviewed_at": doc.get("reviewed_at"),
+        "created_at": doc.get("created_at"),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+@router.get("/admin/manual-payments")
+async def admin_manual_payments(
+    request: Request,
+    status: str = Query(default="pending_review"),
+    limit: int = Query(default=100, ge=1, le=200),
+):
+    await require_admin(request)
+    query = {"provider": "manual_qris"}
+    if status and status != "all":
+        query["status"] = status
+    docs = await db.payments.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"items": [_public_admin_manual_payment(d) for d in docs]}
+
+
+@router.post("/admin/manual-payments/{order_id}/approve")
+async def admin_manual_payment_approve(order_id: str, data: ManualPaymentReviewIn, request: Request):
+    admin = await require_admin(request)
+    payment = await db.payments.find_one({"order_id": order_id, "provider": "manual_qris"}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pembayaran manual tidak ditemukan")
+    if payment.get("status") == "success":
+        return {"ok": True, "already_approved": True}
+    if not payment.get("proof_image"):
+        raise HTTPException(status_code=400, detail="Bukti pembayaran belum diupload")
+
+    activation = await _activate_manual_tier_payment(payment, admin)
+    now = datetime.now(timezone.utc)
+    await db.payments.update_one(
+        {"order_id": order_id, "provider": "manual_qris"},
+        {"$set": {
+            "status": "success",
+            "payment_type": "manual_qris",
+            "admin_note": data.admin_note or "Disetujui admin Lapakin",
+            "reviewed_by": admin.get("user_id"),
+            "reviewed_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }},
+    )
+    return {"ok": True, "order_id": order_id, **activation}
+
+
+@router.post("/admin/manual-payments/{order_id}/reject")
+async def admin_manual_payment_reject(order_id: str, data: ManualPaymentReviewIn, request: Request):
+    admin = await require_admin(request)
+    payment = await db.payments.find_one({"order_id": order_id, "provider": "manual_qris"}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pembayaran manual tidak ditemukan")
+    if payment.get("status") == "success":
+        raise HTTPException(status_code=400, detail="Pembayaran sudah disetujui")
+
+    now = datetime.now(timezone.utc)
+    await db.payments.update_one(
+        {"order_id": order_id, "provider": "manual_qris"},
+        {"$set": {
+            "status": "rejected",
+            "admin_note": data.admin_note or "Bukti pembayaran ditolak. Silakan upload ulang bukti yang benar.",
+            "reviewed_by": admin.get("user_id"),
+            "reviewed_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }},
+    )
+    await log_admin_action(
+        admin,
+        "manual_payment_rejected",
+        "payment",
+        order_id,
+        {"user_id": payment.get("user_id"), "plan_id": payment.get("plan_id")},
+    )
+    return {"ok": True, "order_id": order_id}
 
 
 # 7. Audit log

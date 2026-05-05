@@ -10,6 +10,36 @@ import { Save, Wand2, Upload, X, ImagePlus, Trash2, QrCode, RefreshCw, Users, Us
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
+
+// LAPAKIN_WHATSAPP_TEMPLATE_G1A
+const DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE = `Halo {shop_name}, saya mau pesan:
+
+{items}
+
+Total: {total}
+Nama: {customer_name}
+Catatan: {notes}
+{payment_instruction}`;
+
+const DEFAULT_WHATSAPP_PRODUCT_TEMPLATE = `Halo {shop_name}, saya mau tanya produk:
+
+{product_name}
+Harga: {product_price}
+
+Apakah masih tersedia?`;
+
+const WHATSAPP_TEMPLATE_VARIABLES = [
+  "{shop_name}",
+  "{customer_name}",
+  "{items}",
+  "{total}",
+  "{notes}",
+  "{payment_instruction}",
+  "{campaign_slug}",
+  "{product_name}",
+  "{product_price}",
+];
+
 import { resolveStorefrontTemplate } from "../storefront/templates";
 const BUSINESS_TYPES = [
   { id: "kuliner", label: "Kuliner / Makanan" },
@@ -19,6 +49,20 @@ const BUSINESS_TYPES = [
   { id: "kecantikan", label: "Kecantikan" },
   { id: "lainnya", label: "Lainnya" },
 ];
+
+
+
+// LAPAKIN_GROWTH_SPRINT_V2_SETTINGS_HELPERS
+function formatGrowthNumber(value) { return Number(value || 0).toLocaleString("id-ID"); }
+function formatGrowthCurrency(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+function formatGrowthDate(value) {
+  if (!value) return "-";
+  try { return new Date(value).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }); } catch { return value; }
+}
+// /LAPAKIN_GROWTH_SPRINT_V2_SETTINGS_HELPERS
 
 const COVER_STYLES = [
   { id: "warm", label: "Hangat / Earthy" },
@@ -94,6 +138,10 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
   const [branchInfo, setBranchInfo] = useState(null);
   const [branchName, setBranchName] = useState("");
   const [creatingBranch, setCreatingBranch] = useState(false);
+  // LAPAKIN_GROWTH_SPRINT_V2_SETTINGS_STATE
+  const [storefrontAnalytics, setStorefrontAnalytics] = useState(null);
+  const [storefrontLeads, setStorefrontLeads] = useState([]);
+  const [storefrontGrowthError, setStorefrontGrowthError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -102,6 +150,29 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
       setShop(data);
     })();
   }, [navigate]);
+
+
+  // LAPAKIN_GROWTH_SPRINT_V2_SETTINGS_LOADER
+  useEffect(() => {
+    if (!isWebsiteSettings || !shop?.shop_id) return;
+    let alive = true;
+    async function loadStorefrontGrowthData() {
+      try {
+        const [analyticsResponse, leadsResponse] = await Promise.all([api.get("/shops/storefront-analytics?days=30"), api.get("/shops/storefront-leads?limit=5")]);
+        if (!alive) return;
+        setStorefrontAnalytics(analyticsResponse?.data || null);
+        setStorefrontLeads(leadsResponse?.data?.leads || []);
+        setStorefrontGrowthError("");
+      } catch (error) {
+        if (!alive) return;
+        setStorefrontAnalytics(null);
+        setStorefrontLeads([]);
+        setStorefrontGrowthError("Analytics website belum tersedia.");
+      }
+    }
+    loadStorefrontGrowthData();
+    return () => { alive = false; };
+  }, [isWebsiteSettings, shop?.shop_id]);
 
   const loadTeam = async () => {
     setTeamLoading(true);
@@ -243,6 +314,8 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
       storefront_about_title: "",
 
       storefront_featured_product_ids: [],
+      storefront_show_testimonials: false,
+      storefront_testimonials: [],
     storefront_show_promo: false,
     storefront_promo_title: "",
     storefront_promo_text: "",
@@ -802,6 +875,32 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
   };
   const removeStory = (i) => update("story", (shop.story || []).filter((_, idx) => idx !== i));
   const setStoryCaption = (i, txt) => update("story", (shop.story || []).map((s, idx) => idx === i ? { ...s, caption: txt } : s));
+
+  const onStorefrontQrisFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("File QRIS harus berupa gambar.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Ukuran gambar QRIS maksimal 2MB.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      update("storefront_qris_image", reader.result);
+      toast.success("Gambar QRIS siap disimpan.");
+    };
+    reader.onerror = () => toast.error("Gagal membaca gambar QRIS.");
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
 
   const save = async () => {
     setSaving(true);
@@ -1576,6 +1675,418 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
               </div>
             </div>
 
+            <div
+              className="mt-4 rounded-2xl border border-brand-line bg-white p-4"
+
+              data-testid="storefront-payment-instruction-editor"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-brand-ink">Instruksi Pembayaran Manual / QRIS</p>
+                  <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                    Tampilkan QRIS atau instruksi transfer di drawer checkout. Ini hanya instruksi manual, bukan payment gateway otomatis.
+                  </p>
+                </div>
+                <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">Tanpa Gateway</span>
+              </div>
+
+              {storefrontTemplateLocked && (
+                <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+                  Instruksi pembayaran tampil di Template Baru. Aktifkan paket/template terlebih dahulu.
+                </div>
+              )}
+
+              <label className="mt-4 flex items-center gap-3 rounded-xl bg-brand-off p-3 text-sm font-bold text-brand-ink">
+                <input
+                  type="checkbox"
+                  checked={Boolean(shop.storefront_show_payment_instruction)}
+                  onChange={(e) => update("storefront_show_payment_instruction", e.target.checked)}
+                  disabled={storefrontTemplateLocked}
+                  className="h-4 w-4"
+                  data-testid="storefront-show-payment-instruction-toggle"
+                />
+                Tampilkan instruksi pembayaran di checkout
+              </label>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-bold text-brand-ink">Label Metode Pembayaran</span>
+                  <input
+                    value={shop.storefront_payment_method_label || ""}
+                    onChange={(e) => update("storefront_payment_method_label", e.target.value)}
+                    disabled={storefrontTemplateLocked}
+                    placeholder="Contoh: QRIS Warung Bu Sari"
+                    maxLength={80}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-payment-method-label-input"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-brand-ink">Upload Gambar QRIS</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={onStorefrontQrisFile}
+                    disabled={storefrontTemplateLocked}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-qris-image-input"
+                  />
+                </label>
+
+                <label className="block md:col-span-2">
+                  <span className="text-sm font-bold text-brand-ink">Instruksi Pembayaran</span>
+                  <textarea
+                    value={shop.storefront_payment_instruction || ""}
+                    onChange={(e) => update("storefront_payment_instruction", e.target.value)}
+                    disabled={storefrontTemplateLocked}
+                    placeholder="Contoh: Scan QRIS di bawah, lalu kirim bukti pembayaran melalui WhatsApp. Pesanan diproses setelah pembayaran dikonfirmasi."
+                    maxLength={500}
+                    rows={4}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-payment-instruction-input"
+                  />
+                </label>
+
+                <label className="block md:col-span-2">
+                  <span className="text-sm font-bold text-brand-ink">Teks Konfirmasi WhatsApp</span>
+                  <input
+                    value={shop.storefront_payment_confirmation_text || ""}
+                    onChange={(e) => update("storefront_payment_confirmation_text", e.target.value)}
+                    disabled={storefrontTemplateLocked}
+                    placeholder="Contoh: Saya akan kirim bukti pembayaran via WhatsApp."
+                    maxLength={160}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-payment-confirmation-text-input"
+                  />
+                </label>
+
+                {shop.storefront_qris_image ? (
+                  <div className="md:col-span-2 rounded-2xl border border-brand-line bg-brand-off p-4" data-testid="storefront-qris-image-preview">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <img src={shop.storefront_qris_image} alt="Preview QRIS" className="h-40 w-40 rounded-xl border border-brand-line bg-white object-contain p-2" />
+                      <div className="flex-1 text-sm text-brand-mute">
+                        <p className="font-bold text-brand-ink">Preview QRIS</p>
+                        <p className="mt-1">Gambar ini akan tampil di drawer checkout website template.</p>
+                        <button
+                          type="button"
+                          onClick={() => update("storefront_qris_image", "")}
+                          className="mt-3 rounded-xl border border-brand-line bg-white px-4 py-2 text-sm font-extrabold text-brand-ink"
+                          data-testid="storefront-qris-clear-btn"
+                        >
+                          Hapus QRIS
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div
+              className="mt-4 rounded-2xl border border-brand-line bg-white p-4"
+              data-testid="storefront-whatsapp-template-editor"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-brand-ink">Template Pesan WhatsApp</p>
+                  <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                    Atur format pesan yang nanti dipakai saat pembeli lanjut ke WhatsApp. Variable akan diganti otomatis saat checkout.
+                  </p>
+                </div>
+                <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">G1A Editor</span>
+              </div>
+
+              {storefrontTemplateLocked && (
+                <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+                  Template pesan WhatsApp dipakai di Template Baru. Aktifkan paket/template terlebih dahulu.
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {WHATSAPP_TEMPLATE_VARIABLES.map((variable) => (
+                  <code
+                    key={variable}
+                    className="rounded-full border border-brand-line bg-brand-off px-2.5 py-1 text-[11px] font-extrabold text-brand-ink"
+                  >
+                    {variable}
+                  </code>
+                ))}
+              </div>
+
+              <div className="mt-4 grid gap-4">
+                <label className="block">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-bold text-brand-ink">Template Checkout Cart</span>
+                    <button
+                      type="button"
+                      onClick={() => update("storefront_whatsapp_checkout_template", DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE)}
+                      className="text-xs font-extrabold text-brand hover:underline"
+                      data-testid="storefront-whatsapp-checkout-template-reset"
+                    >
+                      Reset default
+                    </button>
+                  </div>
+                  <textarea
+                    value={shop.storefront_whatsapp_checkout_template || DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE}
+                    onChange={(e) => update("storefront_whatsapp_checkout_template", e.target.value)}
+                    disabled={storefrontTemplateLocked}
+                    maxLength={1200}
+                    rows={8}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 font-mono text-xs font-semibold leading-relaxed text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-whatsapp-checkout-template-input"
+                  />
+                  <p className="mt-1 text-xs text-brand-mute">
+                    Cocok untuk cart checkout. Gunakan variable seperti {"{items}"}, {"{total}"}, dan {"{payment_instruction}"}.
+                  </p>
+                </label>
+
+                <label className="block">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-bold text-brand-ink">Template Tanya Produk</span>
+                    <button
+                      type="button"
+                      onClick={() => update("storefront_whatsapp_product_template", DEFAULT_WHATSAPP_PRODUCT_TEMPLATE)}
+                      className="text-xs font-extrabold text-brand hover:underline"
+                      data-testid="storefront-whatsapp-product-template-reset"
+                    >
+                      Reset default
+                    </button>
+                  </div>
+                  <textarea
+                    value={shop.storefront_whatsapp_product_template || DEFAULT_WHATSAPP_PRODUCT_TEMPLATE}
+                    onChange={(e) => update("storefront_whatsapp_product_template", e.target.value)}
+                    disabled={storefrontTemplateLocked}
+                    maxLength={800}
+                    rows={6}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 font-mono text-xs font-semibold leading-relaxed text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-whatsapp-product-template-input"
+                  />
+                  <p className="mt-1 text-xs text-brand-mute">
+                    Dipakai nanti untuk tombol tanya produk atau CTA produk satuan.
+                  </p>
+                </label>
+              </div>
+            </div>
+
+
+            <div
+              className="mt-4 rounded-2xl border border-brand-line bg-white p-4"
+              data-testid="storefront-location-map-editor"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-brand-ink">Lokasi Toko / Google Maps</p>
+                  <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                    Tampilkan alamat, peta, dan tombol arahkan ke lokasi di website template. Untuk MVP, cukup paste link Google Maps atau isi alamat toko.
+                  </p>
+                </div>
+                <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">MVP</span>
+              </div>
+
+        {(typeof isWebsiteSettings !== "undefined"
+          ? isWebsiteSettings
+          : (typeof settingsView !== "undefined" && settingsView === "website")) && (
+          <details
+            data-testid="storefront-testimonials-editor"
+            className="rounded-2xl border border-brand-line bg-white p-4 sm:p-5 shadow-sm"
+          >
+            <summary className="cursor-pointer list-none">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-brand-muted">Testimoni Pelanggan</p>
+                  <h3 className="text-lg font-bold text-brand-dark">Tampilkan ulasan di website</h3>
+                  <p className="text-sm text-brand-muted mt-1">
+                    Klik untuk membuka editor testimoni. Maksimal 3 testimoni manual.
+                  </p>
+                </div>
+
+                <span className="rounded-full border border-brand-line px-3 py-1.5 text-xs font-bold text-brand-dark bg-brand-soft">
+                  Buka / tutup editor
+                </span>
+              </div>
+            </summary>
+
+            <div className="mt-4 space-y-4">
+              <label className="inline-flex items-center gap-2 text-sm font-semibold text-brand-dark">
+                <input
+                  type="checkbox"
+                  checked={!!shop.storefront_show_testimonials}
+                  onChange={(e) => update("storefront_show_testimonials", e.target.checked)}
+                  data-testid="storefront-show-testimonials-toggle"
+                />
+                Tampilkan testimoni di website
+              </label>
+
+              <div className="grid gap-3">
+                {Array.from({ length: 3 }).map((_, index) => {
+                  const testimonials = Array.isArray(shop.storefront_testimonials)
+                    ? shop.storefront_testimonials
+                    : [];
+                  const item = testimonials[index] || {};
+
+                  const setTestimonial = (field, value) => {
+                    const next = [...testimonials];
+                    next[index] = {
+                      ...(next[index] || {}),
+                      [field]: value,
+                    };
+                    update("storefront_testimonials", next);
+                  };
+
+                  const clearTestimonial = () => {
+                    const next = [...testimonials];
+                    next[index] = {};
+                    update("storefront_testimonials", next);
+                  };
+
+                  return (
+                    <div
+                      key={index}
+                      className="rounded-xl border border-brand-line bg-brand-soft/40 p-3 space-y-3"
+                      data-testid="storefront-testimonial-item"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <strong className="text-sm text-brand-dark">Testimoni {index + 1}</strong>
+                        <button
+                          type="button"
+                          onClick={clearTestimonial}
+                          className="text-xs font-semibold text-brand-muted hover:text-brand-dark"
+                        >
+                          Kosongkan
+                        </button>
+                      </div>
+
+                      <div className="grid md:grid-cols-[1fr_140px] gap-3">
+                        <label className="text-sm font-semibold text-brand-dark">
+                          Nama pelanggan
+                          <input
+                            value={item.name || ""}
+                            onChange={(e) => setTestimonial("name", e.target.value)}
+                            placeholder="Contoh: Bu Rina"
+                            className="mt-1 w-full rounded-xl border border-brand-line px-3 py-2"
+                            data-testid="storefront-testimonial-name-input"
+                          />
+                        </label>
+
+                        <label className="text-sm font-semibold text-brand-dark">
+                          Rating
+                          <select
+                            value={item.rating || 5}
+                            onChange={(e) => setTestimonial("rating", Number(e.target.value))}
+                            className="mt-1 w-full rounded-xl border border-brand-line px-3 py-2"
+                            data-testid="storefront-testimonial-rating-input"
+                          >
+                            <option value={5}>5 ★</option>
+                            <option value={4}>4 ★</option>
+                            <option value={3}>3 ★</option>
+                            <option value={2}>2 ★</option>
+                            <option value={1}>1 ★</option>
+                          </select>
+                        </label>
+                      </div>
+
+                      <label className="text-sm font-semibold text-brand-dark block">
+                        Komentar
+                        <textarea
+                          value={item.text || ""}
+                          onChange={(e) => setTestimonial("text", e.target.value)}
+                          placeholder="Contoh: Menunya enak, cepat sampai, dan owner responsif."
+                          rows={3}
+                          className="mt-1 w-full rounded-xl border border-brand-line px-3 py-2"
+                          data-testid="storefront-testimonial-text-input"
+                        />
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </details>
+        )}
+
+
+              <label className="mt-4 flex items-center gap-3 rounded-xl bg-brand-off p-3 text-sm font-bold text-brand-ink">
+                <input
+                  type="checkbox"
+                  checked={Boolean(shop.storefront_show_location_map)}
+                  onChange={(e) => update("storefront_show_location_map", e.target.checked)}
+                  className="h-4 w-4"
+                  data-testid="storefront-show-location-map-toggle"
+                />
+                Tampilkan lokasi dan peta di website
+              </label>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-bold text-brand-ink">Judul Section</span>
+                  <input
+                    value={shop.storefront_location_title || ""}
+                    onChange={(e) => update("storefront_location_title", e.target.value)}
+                    placeholder="Contoh: Lokasi Warung Bu Sari"
+                    maxLength={80}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    data-testid="storefront-location-title-input"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-brand-ink">Link Google Maps</span>
+                  <input
+                    value={shop.storefront_google_maps_url || ""}
+                    onChange={(e) => update("storefront_google_maps_url", e.target.value)}
+                    placeholder="https://maps.app.goo.gl/... atau https://www.google.com/maps/..."
+                    maxLength={1000}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    data-testid="storefront-google-maps-url-input"
+                  />
+                </label>
+
+                <label className="block md:col-span-2">
+                  <span className="text-sm font-bold text-brand-ink">Alamat yang Ditampilkan</span>
+                  <textarea
+                    value={shop.storefront_location_address || shop.address || ""}
+                    onChange={(e) => update("storefront_location_address", e.target.value)}
+                    placeholder="Contoh: Jl. Melati No. 10, Cibubur, Jakarta Timur"
+                    maxLength={300}
+                    rows={3}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    data-testid="storefront-location-address-input"
+                  />
+                  <span className="mt-1 block text-xs text-brand-mute">
+                    Kalau embed URL kosong, peta akan dibuat otomatis dari alamat ini.
+                  </span>
+                </label>
+
+                <label className="block md:col-span-2">
+                  <span className="text-sm font-bold text-brand-ink">Embed URL Google Maps opsional</span>
+                  <input
+                    value={shop.storefront_location_embed_url || ""}
+                    onChange={(e) => update("storefront_location_embed_url", e.target.value)}
+                    placeholder="https://www.google.com/maps/embed?..."
+                    maxLength={1000}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                    data-testid="storefront-location-embed-url-input"
+                  />
+                  <span className="mt-1 block text-xs text-brand-mute">
+                    Opsional. Pakai jika kamu mengambil kode embed dari Google Maps. Jika kosong, sistem pakai alamat toko.
+                  </span>
+                </label>
+              </div>
+
+              {(shop.storefront_show_location_map && (shop.storefront_location_address || shop.address || shop.storefront_google_maps_url || shop.storefront_location_embed_url)) ? (
+                <div className="mt-4 rounded-2xl border border-brand-line bg-brand-off p-4 text-sm text-brand-mute" data-testid="storefront-location-map-preview">
+                  <b className="text-brand-ink">Preview Lokasi:</b> {shop.storefront_location_title || shop.name || "Lokasi Toko"}<br />
+                  {(shop.storefront_location_address || shop.address) ? <span>{shop.storefront_location_address || shop.address}</span> : <span>Alamat belum diisi.</span>}
+                  {shop.storefront_google_maps_url ? (
+                    <a href={shop.storefront_google_maps_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex font-extrabold text-brand hover:underline">
+                      Buka Google Maps
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               {[
                 { mode: "catalog", title: "Katalog", desc: "Untuk produk fisik dan toko umum." },
@@ -1604,17 +2115,63 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
             </div>
           </Section>
         
+
+
+          {/* LAPAKIN_GROWTH_SPRINT_V2_SETTINGS_CARDS */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Section title="Analytics Website" desc="Ringkasan 30 hari terakhir dari website dan campaign promo.">
+              <div data-testid="storefront-analytics-card" className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    ["Kunjungan website", storefrontAnalytics?.totals?.page_view],
+                    ["Klik promo", storefrontAnalytics?.totals?.promo_cta_click],
+                    ["Klik WhatsApp/order", storefrontAnalytics?.totals?.whatsapp_checkout_click],
+                    ["Leads masuk", storefrontAnalytics?.totals?.lead_created],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-brand-line bg-white p-4">
+                      <div className="text-xs font-bold uppercase tracking-wide text-brand-mute">{label}</div>
+                      <div className="mt-1 text-2xl font-extrabold text-brand-ink">{formatGrowthNumber(value)}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-2xl bg-brand-off p-4 text-sm text-brand-mute">
+                  Campaign aktif: <b className="text-brand-ink">{storefrontAnalytics?.campaign_slug || shop.storefront_promo_slug || "Belum ada"}</b><br />
+                  Produk paling sering diklik: <b className="text-brand-ink">{storefrontAnalytics?.top_products?.[0]?.name || "Belum ada data"}</b>
+                </div>
+                {storefrontGrowthError && <div className="rounded-xl bg-yellow-50 p-3 text-sm font-semibold text-yellow-800">{storefrontGrowthError}</div>}
+              </div>
+            </Section>
+            <Section title="Lead Terbaru" desc="Calon pembeli yang lanjut ke WhatsApp lewat website.">
+              <div data-testid="storefront-leads-card" className="space-y-3">
+                {storefrontLeads.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-brand-line bg-white p-4 text-sm text-brand-mute">Belum ada lead dari website.</div>
+                ) : (
+                  storefrontLeads.map((lead) => (
+                    <div key={lead.lead_id || lead.created_at} className="rounded-2xl border border-brand-line bg-white p-4">
+                      <div className="font-extrabold text-brand-ink">{lead.customer_name || "Tanpa nama"}{lead.customer_phone ? <span className="ml-2 text-sm font-semibold text-brand-mute">{lead.customer_phone}</span> : null}</div>
+                      <div className="mt-1 text-xs leading-relaxed text-brand-mute">Total: {formatGrowthCurrency(lead.total)} · Campaign: {lead.campaign_slug || "-"} · {formatGrowthDate(lead.created_at)}</div>
+                      {lead.notes ? <div className="mt-2 text-sm text-brand-mute">Catatan: {lead.notes}</div> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </Section>
+          </div>
+          {/* /LAPAKIN_GROWTH_SPRINT_V2_SETTINGS_CARDS */}
+
           <div className="sticky bottom-4 z-20 mt-6 rounded-2xl border border-brand-line bg-white/95 p-4 shadow-xl backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm leading-relaxed text-brand-mute">
                 Setelah mengubah tampilan website, klik simpan agar perubahan tampil di website publik.
               </p>
 
+
               <Button
                 type="button"
                 onClick={save}
                 disabled={saving}
                 className="w-full sm:w-auto"
+
                 data-testid="website-settings-save-btn"
               >
                 {saving ? "Menyimpan..." : "Simpan Semua Perubahan"}

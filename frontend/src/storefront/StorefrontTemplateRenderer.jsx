@@ -1,4 +1,4 @@
-import { Component, useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState } from "react";
 import "./storefront-template-renderer.css";
 
 function cx(...classes) {
@@ -64,6 +64,40 @@ function getProductDescription(product) {
 
 function getProductCategory(product) {
   return getValue(product, ["category", "category_name", "type"], "Pilihan");
+}
+
+function getProductCategoryKey(product) {
+  const raw = getProductCategory(product);
+  return String(raw || "").trim().toLowerCase();
+}
+
+function productMatchesTemplateSearch(product, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+
+  return [
+    getProductName(product),
+    getProductDescription(product),
+    getProductCategory(product),
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(q));
+}
+
+// LAPAKIN_TEMPLATE_AVAILABILITY_F2
+function getTemplateProductAvailability(product) {
+  const raw = String(product?.availability_status || "").trim().toLowerCase();
+  if (raw === "out_of_stock" || raw === "hidden") return raw;
+  if (product?.is_active === false) return "hidden";
+  return "active";
+}
+
+function isTemplateProductHidden(product) {
+  return getTemplateProductAvailability(product) === "hidden";
+}
+
+function isTemplateProductOutOfStock(product) {
+  return getTemplateProductAvailability(product) === "out_of_stock";
 }
 
 function getProductImage(product) {
@@ -167,6 +201,55 @@ function getPromoCtaLabel(shop) {
   return String(shop?.storefront_promo_cta_label || "").trim() || "Chat Sekarang";
 }
 
+function shouldShowPaymentInstruction(shop) {
+  return Boolean(
+    shop?.storefront_show_payment_instruction &&
+    (shop?.storefront_payment_instruction || shop?.storefront_qris_image || shop?.storefront_payment_method_label)
+  );
+}
+
+function getPaymentMethodLabel(shop) {
+  return String(shop?.storefront_payment_method_label || "QRIS / Transfer Manual").trim();
+}
+
+function getPaymentInstruction(shop) {
+  return String(
+    shop?.storefront_payment_instruction ||
+    "Silakan lakukan pembayaran sesuai instruksi toko, lalu kirim bukti pembayaran melalui WhatsApp."
+  ).trim();
+}
+
+function getPaymentConfirmationText(shop) {
+  return String(
+    shop?.storefront_payment_confirmation_text ||
+    "Saya akan kirim bukti pembayaran via WhatsApp setelah checkout."
+  ).trim();
+}
+
+
+// LAPAKIN_TEMPLATE_PRODUCT_WHATSAPP_G1C
+const TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE = `Halo {shop_name}, saya mau tanya produk:
+
+{product_name}
+Harga: {product_price}
+
+Apakah masih tersedia?`;
+
+function renderProductWhatsappTemplate(template, variables) {
+  let text = String(template || TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE || "");
+
+  Object.entries(variables || {}).forEach(([key, value]) => {
+    const pattern = new RegExp(`\\{${key}\\}`, "g");
+    text = text.replace(pattern, value == null ? "" : String(value));
+  });
+
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+}
 
 function buildWhatsappLink(shop, product) {
   const phone = normalizeWhatsapp(
@@ -184,13 +267,86 @@ function buildWhatsappLink(shop, product) {
 
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
   const productName = product ? getProductName(product) : "";
+  const productPrice = product ? formatPrice(getProductPrice(product)) : "";
+  const campaignSlug = getCampaignSlugFromUrl();
+
+  const productTemplate = String(shop?.storefront_whatsapp_product_template || "").trim() ||
+    TEMPLATE_DEFAULT_WHATSAPP_PRODUCT_TEMPLATE;
+
   const message = productName
-    ? `Halo ${shopName}, saya tertarik dengan ${productName}.`
+    ? renderProductWhatsappTemplate(productTemplate, {
+        shop_name: shopName,
+        product_name: productName,
+        product_price: productPrice,
+        campaign_slug: campaignSlug,
+      })
     : `Halo ${shopName}, saya ingin bertanya.`;
 
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
+
+
+
+// LAPAKIN_GROWTH_SPRINT_V2_TEMPLATE_HELPERS
+function getApiBaseUrl() {
+  const raw = String(process.env.REACT_APP_BACKEND_URL || "").replace(/\/$/, "");
+  if (!raw) return "/api";
+  return raw.endsWith("/api") ? raw : `${raw}/api`;
+}
+
+function postStorefrontJson(path, payload) {
+  if (typeof window === "undefined") return Promise.resolve({ ok: true });
+  const url = `${getApiBaseUrl()}${path}`;
+  try {
+    const body = JSON.stringify(payload || {});
+    if (navigator.sendBeacon && path === "/storefront/events") {
+      const blob = new Blob([body], { type: "application/json" });
+      navigator.sendBeacon(url, blob);
+      return Promise.resolve({ ok: true });
+    }
+    return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => ({ ok: true }));
+  } catch { return Promise.resolve({ ok: true }); }
+}
+function getCampaignSlugFromUrl() { try { return new URLSearchParams(window.location.search).get("promo") || ""; } catch { return ""; } }
+function getTrafficSourceFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const utm = params.get("utm_source");
+    if (utm) return utm;
+    if (!document.referrer) return "direct";
+    const host = new URL(document.referrer).hostname.toLowerCase();
+    if (host.includes("instagram")) return "instagram";
+    if (host.includes("tiktok")) return "tiktok";
+    if (host.includes("facebook") || host.includes("fb.")) return "facebook";
+    if (host.includes("whatsapp") || host.includes("wa.me")) return "whatsapp";
+    if (host.includes("google")) return "google";
+    return host.replace(/^www\./, "");
+  } catch { return "direct"; }
+}
+function getShopId(shop) { return getValue(shop, ["shop_id", "id", "_id"], ""); }
+function getAnalyticsBasePayload(shop) {
+  return { shop_id: getShopId(shop) || undefined, shop_slug: getShopSlug(shop) || undefined, campaign_slug: getCampaignSlugFromUrl() || undefined, source: getTrafficSourceFromUrl() };
+}
+function trackTemplateEvent(shop, event_type, extra = {}) {
+  return postStorefrontJson("/storefront/events", { ...getAnalyticsBasePayload(shop), event_type, ...extra, metadata: extra.metadata || {} });
+}
+function enrichWhatsappHrefWithLead(href, form) {
+  if (!href || href === "#") return href;
+  try {
+    const url = new URL(href);
+    const currentText = url.searchParams.get("text") || "";
+    const extraLines = ["", "Data pelanggan:", form.customer_name ? `Nama: ${form.customer_name}` : "", form.customer_phone ? `No HP: ${form.customer_phone}` : "", form.fulfillment_method ? `Metode: ${form.fulfillment_method}` : "", form.notes ? `Catatan: ${form.notes}` : ""].filter(Boolean);
+    url.searchParams.set("text", `${currentText}${extraLines.join("\n")}`);
+    return url.toString();
+  } catch { return href; }
+}
+function openWhatsappHref(href) {
+  if (!href || href === "#") return;
+  const opened = window.open(href, "_blank", "noopener,noreferrer");
+  if (!opened) window.location.href = href;
+}
+// /LAPAKIN_GROWTH_SPRINT_V2_TEMPLATE_HELPERS
 
 function normalizeSocialUrl(value, platform) {
   if (!value) return "";
@@ -316,6 +472,7 @@ function getSectionTitle(section, mode) {
     testimonials: "Dipercaya Pelanggan",
     promo_banner: "Promo Spesial",
     faq: "Pertanyaan Umum",
+    business_hours: "Jam Operasional",
     contact: "Hubungi Toko",
   };
 
@@ -378,7 +535,84 @@ function getCartTotal(cartItems) {
   }, 0);
 }
 
-function buildCartWhatsappLink(shop, cartItems) {
+// LAPAKIN_TEMPLATE_WHATSAPP_CHECKOUT_G1B
+const TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE = `Halo {shop_name}, saya mau pesan:
+
+{items}
+
+Total: {total}
+Nama: {customer_name}
+Catatan: {notes}
+{payment_instruction}`;
+
+function renderTemplateWhatsappMessage(template, variables) {
+  let text = String(template || TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE || "");
+
+  Object.entries(variables || {}).forEach(([key, value]) => {
+    const pattern = new RegExp(`\\{${key}\\}`, "g");
+    text = text.replace(pattern, value == null ? "" : String(value));
+  });
+
+  return text
+    .split("\\n")
+    .map((line) => line.replace(/[ \\t]+$/g, ""))
+    .join("\\n")
+    .replace(/\\n{4,}/g, "\\n\\n\\n")
+    .trim();
+}
+
+function getTemplateCheckoutItemsText(cartItems) {
+  return (cartItems || [])
+    .map((item, index) => {
+      const product = item.product || {};
+      const qty = Number(item.qty || 0);
+      const price = Number(product.price || 0);
+      const subtotal = price * qty;
+      return `${index + 1}. ${product.name} x${qty} - ${formatPrice(subtotal)}`;
+    })
+    .join("\\n");
+}
+
+function getTemplatePaymentInstructionText(shop) {
+  if (!shouldShowPaymentInstruction(shop)) return "";
+
+  return [
+    `Metode pembayaran: ${getPaymentMethodLabel(shop)}`,
+    getPaymentInstruction(shop),
+    getPaymentConfirmationText(shop),
+  ].filter(Boolean).join("\\n");
+}
+
+function buildCartWhatsappMessage(shop, cartItems, lead = {}) {
+  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
+  const items = getTemplateCheckoutItemsText(cartItems);
+  const total = formatPrice(getCartTotal(cartItems));
+  const template = String(shop?.storefront_whatsapp_checkout_template || "").trim() ||
+    TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE;
+
+  const message = renderTemplateWhatsappMessage(template, {
+    shop_name: shopName,
+    customer_name: lead.customer_name || "",
+    items,
+    total,
+    notes: lead.notes || "",
+    payment_instruction: getTemplatePaymentInstructionText(shop),
+    campaign_slug: getCampaignSlugFromUrl(),
+  });
+
+  if (message) return message;
+
+  return [
+    `Halo ${shopName}, saya ingin pesan:`,
+    "",
+    items,
+    "",
+    `Total: ${total}`,
+    getTemplatePaymentInstructionText(shop),
+  ].filter(Boolean).join("\\n");
+}
+
+function buildCartWhatsappLink(shop, cartItems, lead = {}) {
   const phone = normalizeWhatsapp(
     getValue(shop, [
       "whatsapp",
@@ -392,23 +626,8 @@ function buildCartWhatsappLink(shop, cartItems) {
 
   if (!phone) return "#";
 
-  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
-
-  const lines = [
-    `Halo ${shopName}, saya ingin pesan:`,
-    "",
-    ...cartItems.map((item, index) => {
-      const product = item.product || {};
-      const qty = Number(item.qty || 0);
-      const price = Number(product.price || 0);
-      const subtotal = price * qty;
-      return `${index + 1}. ${product.name} x${qty} - ${formatPrice(subtotal)}`;
-    }),
-    "",
-    `Total: ${formatPrice(getCartTotal(cartItems))}`,
-  ];
-
-  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\\n"))}`;
+  const message = buildCartWhatsappMessage(shop, cartItems, lead);
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
 
@@ -434,23 +653,140 @@ function ProductImage({ product, className }) {
   );
 }
 
-function CategoryChips({ products, template }) {
-  const categories = getCategories(products);
-  if (!categories.length) return null;
+
+// LAPAKIN_TEMPLATE_CATEGORY_FILTER_C
+function CategoryChips({
+  products,
+  allProducts,
+  template,
+  productSearch = "",
+  setProductSearch,
+  categoryFilter = "all",
+  setCategoryFilter,
+  showControls = false,
+}) {
+  const sourceProducts =
+    Array.isArray(allProducts) && allProducts.length ? allProducts : products;
+
+  const categories = getCategories(sourceProducts);
+  const filteredCount = Array.isArray(products) ? products.length : 0;
+  const totalCount = Array.isArray(sourceProducts) ? sourceProducts.length : filteredCount;
+
+  if (!showControls && !categories.length) return null;
 
   return (
-    <div className="ltr-category-chips" data-template-nav={template?.categoryNav}>
-      {categories.map((category) => (
-        <span key={category} className="ltr-chip">
-          {category}
-        </span>
-      ))}
+    <div
+      className="ltr-category-filter-panel"
+      data-testid={showControls ? "storefront-template-category-search-filter" : undefined}
+      style={{ display: "grid", gap: 14 }}
+    >
+      {showControls ? (
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            border: "1px solid rgba(15, 23, 42, 0.10)",
+            borderRadius: 22,
+            padding: 16,
+            background: "rgba(255, 255, 255, 0.88)",
+            boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: 10,
+            }}
+          >
+            <input
+              value={productSearch}
+              onChange={(event) => setProductSearch?.(event.target.value)}
+              placeholder="Cari produk, menu, atau layanan..."
+              data-testid="storefront-template-product-search"
+              style={{
+                minWidth: 0,
+                height: 44,
+                borderRadius: 14,
+                border: "1px solid rgba(15, 23, 42, 0.12)",
+                padding: "0 12px",
+              }}
+            />
+
+            <select
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter?.(event.target.value)}
+              data-testid="storefront-template-category-filter"
+              style={{
+                height: 44,
+                borderRadius: 14,
+                border: "1px solid rgba(15, 23, 42, 0.12)",
+                padding: "0 12px",
+                fontWeight: 800,
+                background: "#fff",
+              }}
+            >
+              <option value="all">Semua kategori</option>
+              {categories.map((category) => (
+                <option key={category} value={category.toLowerCase()}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <small style={{ color: "#64748b" }}>
+            Menampilkan {filteredCount} dari {totalCount} item
+          </small>
+        </div>
+      ) : null}
+
+      {categories.length ? (
+        <div className="ltr-category-chips" data-template-nav={template?.categoryNav}>
+          <button
+            type="button"
+            className="ltr-chip"
+            onClick={() => setCategoryFilter?.("all")}
+            data-active={categoryFilter === "all" ? "true" : "false"}
+            style={
+              categoryFilter === "all"
+                ? { borderColor: "transparent", background: "#fbbf24", color: "#111827" }
+                : undefined
+            }
+            data-testid="storefront-template-category-chip-all"
+          >
+            Semua
+          </button>
+
+          {categories.map((category) => {
+            const active = categoryFilter === category.toLowerCase();
+
+            return (
+              <button
+                key={category}
+                type="button"
+                className="ltr-chip"
+                onClick={() => setCategoryFilter?.(category.toLowerCase())}
+                data-active={active ? "true" : "false"}
+                style={
+                  active
+                    ? { borderColor: "transparent", background: "#fbbf24", color: "#111827" }
+                    : undefined
+                }
+                data-testid="storefront-template-category-chip"
+              >
+                {category}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-
-function SocialLinks({ shop }) {
+function SocialLinks
+({ shop }) {
   const links = getSocialLinks(shop);
 
   if (!links.length) return null;
@@ -544,6 +880,54 @@ function HeroSection({ shop, products, template }) {
 }
 
 
+function PaymentInstructionBox({ shop }) {
+  if (!shouldShowPaymentInstruction(shop)) return null;
+
+  const qrisImage = String(shop?.storefront_qris_image || "").trim();
+
+  return (
+    <div
+      className="ltr-payment-instruction"
+      data-testid="storefront-payment-instruction"
+      style={{
+        border: "1px solid rgba(192, 74, 59, 0.22)",
+        borderRadius: 18,
+        padding: 14,
+        background: "rgba(255, 248, 242, 0.95)",
+        display: "grid",
+        gap: 12,
+      }}
+    >
+      <div>
+        <span style={{ display: "block", fontSize: 12, fontWeight: 900, color: "#C04A3B", textTransform: "uppercase", letterSpacing: 0.6 }}>
+          Pembayaran Manual
+        </span>
+        <strong style={{ display: "block", marginTop: 2, color: "#1f2933" }}>
+          {getPaymentMethodLabel(shop)}
+        </strong>
+      </div>
+
+      {qrisImage ? (
+        <img
+          src={qrisImage}
+          alt={`QRIS ${getValue(shop, ["name", "shop_name", "store_name"], "toko")}`}
+          data-testid="storefront-qris-image"
+          style={{ width: "100%", maxWidth: 220, borderRadius: 16, border: "1px solid #eadfd2", background: "#fff", padding: 8 }}
+        />
+      ) : null}
+
+      <p style={{ margin: 0, color: "#475569", lineHeight: 1.5, whiteSpace: "pre-line" }}>
+        {getPaymentInstruction(shop)}
+      </p>
+
+      <small style={{ color: "#64748b", lineHeight: 1.45 }}>
+        {getPaymentConfirmationText(shop)}
+      </small>
+    </div>
+  );
+}
+
+
 function TemplateCartDrawer({
   shop,
   cartItems,
@@ -619,7 +1003,15 @@ function TemplateCartDrawer({
                 <strong>{formatPrice(total)}</strong>
               </div>
 
-              <a href={checkoutHref} target="_blank" rel="noreferrer">
+              <PaymentInstructionBox shop={shop} />
+
+              <a
+                href={checkoutHref}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="storefront-checkout-whatsapp-link"
+                data-whatsapp-context="cart_checkout"
+              >
                 Checkout WhatsApp
               </a>
 
@@ -662,11 +1054,13 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
   const description = getProductDescription(product);
   const price = getProductPrice(product);
   const category = getProductCategory(product);
+  const outOfStock = isTemplateProductOutOfStock(product);
   const isService = mode === "services";
   const isFood = mode === "food_menu";
 
   return (
     <article
+      data-product-id={getProductId(product, index)}
       className={cx("ltr-product-card", `ltr-card-${variant}`, {
         "ltr-product-card-featured": index === 0,
       })}
@@ -676,6 +1070,22 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
       <div className="ltr-product-body">
         <div className="ltr-product-meta">
           <span>{category}</span>
+          {outOfStock && (
+            <span
+              data-testid={`storefront-template-product-out-of-stock-${getProductId(product, index)}`}
+              style={{
+                borderRadius: 999,
+                background: "#fffbeb",
+                border: "1px solid #fde68a",
+                color: "#b45309",
+                padding: "2px 8px",
+                fontWeight: 900,
+                fontSize: 11,
+              }}
+            >
+              Habis
+            </span>
+          )}
           {isFood && <span>Siap pesan</span>}
           {isService && <span>Konsultasi</span>}
         </div>
@@ -698,7 +1108,7 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
               data-testid="storefront-template-add-cart"
               aria-label={`Tambah ${name} ke keranjang`}
               title="Tambah ke keranjang"
-            >
+             disabled={outOfStock} aria-disabled={outOfStock}>
               <svg
                 className="ltr-add-cart-icon"
                 viewBox="0 0 24 24"
@@ -980,6 +1390,548 @@ function getStorefrontSocialLinks(shop) {
   return links;
 }
 
+
+
+// LAPAKIN_TEMPLATE_BUSINESS_HOURS_DISPLAY
+const LAPAKIN_DAYS = [
+  "Senin",
+  "Selasa",
+  "Rabu",
+  "Kamis",
+  "Jumat",
+  "Sabtu",
+  "Minggu",
+];
+
+function shouldShowBusinessHours(shop) {
+  return Boolean(
+    String(shop?.hours || "").trim() ||
+    shop?.sells_by === "hours" ||
+    shop?.auto_schedule_enabled ||
+    Array.isArray(shop?.schedule) ||
+    shop?.schedule_status
+  );
+}
+
+function formatScheduleTime(value) {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  return raw.slice(0, 5);
+}
+
+function getScheduleEntryLabel(entry) {
+  if (!entry) return "Tutup";
+
+  if (entry.closed === true || entry.is_closed === true || entry.open === false || entry.enabled === false) {
+    return "Tutup";
+  }
+
+  const shifts = Array.isArray(entry.shifts) ? entry.shifts : [];
+  if (shifts.length) {
+    const rendered = shifts
+      .map((shift) => {
+        const open = formatScheduleTime(shift.open || shift.start || shift.from || shift.open_time);
+        const close = formatScheduleTime(shift.close || shift.end || shift.to || shift.close_time);
+        return open && close ? `${open} - ${close}` : "";
+      })
+      .filter(Boolean);
+
+    return rendered.length ? rendered.join(", ") : "Tutup";
+  }
+
+  const open = formatScheduleTime(entry.open || entry.start || entry.from || entry.open_time);
+  const close = formatScheduleTime(entry.close || entry.end || entry.to || entry.close_time);
+
+  if (open && close) return `${open} - ${close}`;
+
+  return "Tutup";
+}
+
+function getBusinessHoursStatus(shop) {
+  const scheduleStatus = shop?.schedule_status || {};
+  const sellsBy = shop?.sells_by || "stock";
+  const isHoursMode = sellsBy === "hours";
+
+  const auto = Boolean(scheduleStatus.auto || shop?.auto_schedule_enabled);
+  const isOpenNow =
+    typeof scheduleStatus.is_open_now === "boolean"
+      ? scheduleStatus.is_open_now
+      : typeof shop?.is_open === "boolean"
+        ? shop.is_open
+        : null;
+
+  if (!isHoursMode && isOpenNow === null) {
+    return {
+      label: "Jam operasional",
+      detail: String(shop?.hours || "").trim() || "Hubungi toko untuk memastikan jam buka.",
+      open: null,
+    };
+  }
+
+  if (isOpenNow === true) {
+    return {
+      label: "Buka sekarang",
+      detail: auto && scheduleStatus.closes_at
+        ? `Tutup hari ini jam ${scheduleStatus.closes_at} WIB`
+        : String(shop?.hours || "").trim() || "Toko sedang buka.",
+      open: true,
+    };
+  }
+
+  if (isOpenNow === false) {
+    return {
+      label: "Tutup sekarang",
+      detail: auto && scheduleStatus.opens_at
+        ? `Buka lagi ${scheduleStatus.opens_at} WIB`
+        : String(shop?.hours || "").trim() || "Cek kembali nanti atau hubungi toko via WhatsApp.",
+      open: false,
+    };
+  }
+
+  return {
+    label: "Jam operasional",
+    detail: String(shop?.hours || "").trim() || "Hubungi toko untuk memastikan jam buka.",
+    open: null,
+  };
+}
+
+function BusinessHoursSection({ shop }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!shouldShowBusinessHours(shop)) return null;
+
+  const status = getBusinessHoursStatus(shop);
+  const schedule = Array.isArray(shop?.schedule) ? shop.schedule : [];
+  const hasStructuredSchedule = schedule.some(Boolean);
+  const hoursText = String(shop?.hours || "").trim();
+  const sectionTitle = hoursText || "Kapan toko buka?";
+
+  return (
+    <section
+      className="ltr-section ltr-business-hours"
+      data-testid="storefront-business-hours-section"
+    >
+      <div className="ltr-section-heading">
+        <span>Jam Operasional</span>
+        <h2>{sectionTitle}</h2>
+      </div>
+
+      <div
+        className="ltr-business-hours-card"
+        style={{
+          border: "1px solid rgba(15, 23, 42, 0.10)",
+          borderRadius: 22,
+          padding: 18,
+          background: "rgba(255, 255, 255, 0.88)",
+          boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
+          display: "grid",
+          gap: expanded ? 14 : 10,
+        }}
+      >
+        <div
+          className="ltr-business-hours-status"
+          style={{
+            display: "flex",
+            gap: 12,
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <strong
+              data-testid="storefront-business-hours-status"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                borderRadius: 999,
+                padding: "7px 11px",
+                background: status.open === true
+                  ? "rgba(22, 163, 74, 0.12)"
+                  : status.open === false
+                    ? "rgba(220, 38, 38, 0.10)"
+                    : "rgba(15, 23, 42, 0.08)",
+                color: status.open === true
+                  ? "#15803d"
+                  : status.open === false
+                    ? "#b91c1c"
+                    : "#334155",
+                fontSize: 13,
+                fontWeight: 900,
+              }}
+            >
+              {status.label}
+            </strong>
+
+            {status.detail ? (
+              <p style={{ margin: "10px 0 0", color: "#475569", lineHeight: 1.55 }}>
+                {status.detail}
+              </p>
+            ) : null}
+          </div>
+
+          {(hasStructuredSchedule || hoursText) ? (
+            <button
+              type="button"
+              data-testid="storefront-business-hours-toggle"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((value) => !value)}
+              style={{
+                border: "1px solid rgba(15, 23, 42, 0.10)",
+                borderRadius: 999,
+                background: expanded ? "#1f2937" : "#fff",
+                color: expanded ? "#fff" : "#1f2937",
+                padding: "8px 12px",
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+              }}
+            >
+              {expanded ? "Sembunyikan jadwal" : "Lihat jadwal"}
+            </button>
+          ) : null}
+        </div>
+
+        {expanded && hasStructuredSchedule ? (
+          <div
+            className="ltr-business-hours-grid"
+            data-testid="storefront-business-hours-schedule"
+            style={{
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            {LAPAKIN_DAYS.map((day, idx) => {
+              const entry = schedule[idx];
+              const label = getScheduleEntryLabel(entry);
+              const closed = label === "Tutup";
+
+              return (
+                <div
+                  key={day}
+                  className="ltr-business-hours-row"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "9px 0",
+                    borderTop: idx === 0 ? 0 : "1px solid rgba(15, 23, 42, 0.08)",
+                    color: closed ? "#94a3b8" : "#334155",
+                  }}
+                >
+                  <span style={{ fontWeight: 800 }}>{day}</span>
+                  <span style={{ textAlign: "right" }}>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {expanded && !hasStructuredSchedule && hoursText ? (
+          <p
+            data-testid="storefront-business-hours-text"
+            style={{ margin: 0, color: "#334155", lineHeight: 1.6 }}
+          >
+            {hoursText}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+// /LAPAKIN_TEMPLATE_BUSINESS_HOURS_DISPLAY
+
+
+function getGoogleMapsEmbedUrl(shop) {
+  const rawEmbed = String(
+    shop?.storefront_location_embed_url ||
+    shop?.storefront_google_maps_embed_url ||
+    shop?.google_maps_embed_url ||
+    shop?.maps_embed_url ||
+    ""
+  ).trim();
+
+  if (rawEmbed && /^https?:\/\//i.test(rawEmbed)) return rawEmbed;
+
+  const address = String(
+    shop?.storefront_location_address ||
+    shop?.address ||
+    shop?.location ||
+    ""
+  ).trim();
+
+  if (!address) return "";
+
+  return `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
+}
+
+function getLocationTitle(shop) {
+  return String(shop?.storefront_location_title || "").trim() || `Lokasi ${getValue(shop, ["name", "shop_name", "store_name"], "Toko")}`;
+}
+
+function getLocationAddress(shop) {
+  return String(shop?.storefront_location_address || shop?.address || shop?.location || shop?.store_address || "").trim();
+}
+
+function getGoogleMapsUrl(shop) {
+  const explicit = String(shop?.storefront_google_maps_url || "").trim();
+  if (explicit && /^https?:\/\//i.test(explicit)) return explicit;
+  const address = getLocationAddress(shop);
+  if (!address) return "";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+function getLocationEmbedUrl(shop) {
+  const explicit = String(shop?.storefront_location_embed_url || "").trim();
+  if (explicit && /^https?:\/\//i.test(explicit)) return explicit;
+  const address = getLocationAddress(shop);
+  if (!address) return "";
+  return `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
+}
+
+function shouldShowLocationMap(shop) {
+  if (!shop?.storefront_show_location_map) return false;
+  return Boolean(getLocationAddress(shop) || getGoogleMapsUrl(shop) || getLocationEmbedUrl(shop));
+}
+
+
+// LAPAKIN_TESTIMONIAL_SECTION_MVP
+function normalizeTestimonials(shop) {
+  const raw = Array.isArray(shop?.storefront_testimonials)
+    ? shop.storefront_testimonials
+    : [];
+
+  return raw
+    .map((item) => ({
+      name: String(item?.name || item?.customer_name || "").trim(),
+      text: String(item?.text || item?.comment || item?.message || "").trim(),
+      rating: Math.max(1, Math.min(5, Number(item?.rating || 5))),
+    }))
+    .filter((item) => item.name || item.text)
+    .slice(0, 3);
+}
+
+function shouldShowTestimonials(shop) {
+  return Boolean(shop?.storefront_show_testimonials && normalizeTestimonials(shop).length);
+}
+
+function TestimonialStars({ rating }) {
+  const value = Math.max(1, Math.min(5, Number(rating || 5)));
+  return (
+    <span aria-label={`${value} dari 5 bintang`} title={`${value} dari 5 bintang`}>
+      {"★★★★★".slice(0, value)}
+      <span style={{ opacity: 0.25 }}>{"★★★★★".slice(value)}</span>
+    </span>
+  );
+}
+
+function TestimonialsSection({ shop }) {
+  const testimonials = normalizeTestimonials(shop);
+  if (!shop?.storefront_show_testimonials || testimonials.length === 0) return null;
+
+  const mode = String(shop?.storefront_mode || "").trim();
+  const heading =
+    mode === "services"
+      ? "Apa kata klien kami"
+      : mode === "food_menu"
+        ? "Kata pelanggan"
+        : "Ulasan pembeli";
+
+  return (
+    <section
+      className="ltr-section ltr-testimonials"
+      data-testid="storefront-testimonials-section"
+    >
+      <div className="ltr-section-heading">
+        <span>Testimoni</span>
+        <h2>{heading}</h2>
+      </div>
+
+      <div
+        className="ltr-testimonials-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 14,
+        }}
+      >
+        {testimonials.map((item, index) => (
+          <article
+            key={`${item.name || "testimonial"}-${index}`}
+            className="ltr-testimonial-card"
+            data-testid="storefront-testimonial-card"
+            style={{
+              border: "1px solid rgba(15, 23, 42, 0.10)",
+              borderRadius: 22,
+              padding: 18,
+              background: "rgba(255, 255, 255, 0.88)",
+              boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                color: "#f59e0b",
+                fontWeight: 900,
+                letterSpacing: 1,
+                fontSize: 15,
+              }}
+            >
+              <TestimonialStars rating={item.rating} />
+            </div>
+
+            {item.text ? (
+              <p style={{ margin: 0, color: "#334155", lineHeight: 1.6 }}>
+                “{item.text}”
+              </p>
+            ) : null}
+
+            <strong style={{ color: "#1f2937" }}>
+              {item.name || "Pelanggan"}
+            </strong>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+// /LAPAKIN_TESTIMONIAL_SECTION_MVP
+
+function LocationMapSection({ shop }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!shouldShowLocationMap(shop)) return null;
+
+  const title = getLocationTitle(shop);
+  const address = getLocationAddress(shop);
+  const mapsUrl = getGoogleMapsUrl(shop);
+  const embedUrl = getGoogleMapsEmbedUrl(shop);
+  const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
+
+  return (
+    <section
+      className="ltr-section ltr-location-map"
+      data-testid="storefront-location-map-section"
+    >
+      <div className="ltr-section-heading">
+        <span>Lokasi</span>
+        <h2>{title}</h2>
+      </div>
+
+      <div
+        className="ltr-location-map-card"
+        style={{
+          border: "1px solid rgba(15, 23, 42, 0.10)",
+          borderRadius: 22,
+          padding: 18,
+          background: "rgba(255, 255, 255, 0.88)",
+          boxShadow: "0 14px 40px rgba(15, 23, 42, 0.06)",
+          display: "grid",
+          gap: 14,
+        }}
+      >
+        <div
+          className="ltr-location-map-summary"
+          style={{
+            display: "flex",
+            gap: 12,
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ display: "block", color: "#1f2937", fontSize: 16 }}>
+              {shopName}
+            </strong>
+
+            {address ? (
+              <p
+                data-testid="storefront-location-address"
+                style={{ margin: "8px 0 0", color: "#475569", lineHeight: 1.55 }}
+              >
+                {address}
+              </p>
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {embedUrl ? (
+              <button
+                type="button"
+                data-testid="storefront-location-map-toggle"
+                aria-expanded={expanded}
+                onClick={() => setExpanded((value) => !value)}
+                style={{
+                  border: "1px solid rgba(15, 23, 42, 0.10)",
+                  borderRadius: 999,
+                  background: expanded ? "#1f2937" : "#fff",
+                  color: expanded ? "#fff" : "#1f2937",
+                  padding: "8px 12px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+                }}
+              >
+                {expanded ? "Sembunyikan peta" : "Lihat peta"}
+              </button>
+            ) : null}
+
+            {mapsUrl ? (
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="storefront-location-map-link"
+                style={{
+                  borderRadius: 999,
+                  background: "#C04A3B",
+                  color: "#fff",
+                  padding: "8px 12px",
+                  fontWeight: 800,
+                  textDecoration: "none",
+                  boxShadow: "0 8px 18px rgba(192, 74, 59, 0.18)",
+                }}
+              >
+                Buka Maps
+              </a>
+            ) : null}
+          </div>
+        </div>
+
+        {expanded && embedUrl ? (
+          <div
+            className="ltr-location-map-frame"
+            data-testid="storefront-location-map-frame"
+            style={{
+              overflow: "hidden",
+              borderRadius: 18,
+              border: "1px solid rgba(15, 23, 42, 0.10)",
+              background: "#f8fafc",
+            }}
+          >
+            <iframe
+              title={`Lokasi ${shopName}`}
+              src={embedUrl}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              style={{
+                display: "block",
+                width: "100%",
+                minHeight: 280,
+                border: 0,
+              }}
+              allowFullScreen
+            />
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function ContactSection({ shop, template }) {
   const mode = getModeFromTemplate(template);
   const socialLinks = getStorefrontSocialLinks(shop);
@@ -1057,7 +2009,7 @@ function FaqSection({ template }) {
 }
 
 function renderSection(section, context) {
-  const { shop, products, template, onAddToCart } = context;
+  const { shop, products, allProducts, template, onAddToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter } = context;
   const mode = getModeFromTemplate(template);
   const title = getSectionTitle(section, mode);
   const featured = products.filter((product) => product?.featured || product?.is_featured);
@@ -1065,7 +2017,7 @@ function renderSection(section, context) {
 
   switch (section) {
     case "hero":
-      return <HeroSection key={section} shop={shop} products={products} template={template} />;
+      return <HeroSection key={section} shop={shop} products={allProducts || products} template={template} />;
 
     case "categories":
       return (
@@ -1074,7 +2026,16 @@ function renderSection(section, context) {
             <span>Jelajahi</span>
             <h2>{title}</h2>
           </div>
-          <CategoryChips products={products} template={template} />
+          <CategoryChips
+            products={products}
+            allProducts={allProducts}
+            template={template}
+            showControls
+            productSearch={productSearch}
+            setProductSearch={setProductSearch}
+            categoryFilter={categoryFilter}
+            setCategoryFilter={setCategoryFilter}
+          />
         </section>
       );
 
@@ -1119,14 +2080,22 @@ function renderSection(section, context) {
       return <BrandStory key={section} shop={shop} template={template} />;
 
     case "benefits":
-    case "testimonials":
       return <Benefits key={section} template={template} />;
+
+    case "testimonials":
+      return <TestimonialsSection key={section} shop={shop} />;
 
     case "faq":
       return <FaqSection key={section} template={template} />;
 
     case "promo":
       return <PromoBannerSection shop={shop} />;
+
+    case "business_hours":
+      return <BusinessHoursSection key={section} shop={shop} />;
+
+    case "location_map":
+      return <LocationMapSection key={section} shop={shop} />;
 
     case "contact":
       return <ContactSection key={section} shop={shop} template={template} />;
@@ -1167,12 +2136,95 @@ function MobileStickyOrderBar({ shop, template, cartCount, onOpenCart }) {
   );
 }
 
+
+
+function LeadCaptureModal({ open, onSkip, onContinue }) {
+  const [form, setForm] = useState({ customer_name: "", customer_phone: "", fulfillment_method: "discuss", notes: "" });
+  useEffect(() => { if (open) setForm({ customer_name: "", customer_phone: "", fulfillment_method: "discuss", notes: "" }); }, [open]);
+  if (!open) return null;
+
+  const fieldStyle = {
+    width: "100%",
+    border: "1px solid #d8cfc3",
+    borderRadius: 14,
+    padding: "10px 12px",
+    font: "inherit",
+    color: "#1f2933",
+    background: "#fff",
+  };
+
+  return (
+    <div
+      data-testid="storefront-lead-capture-modal"
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        background: "rgba(15, 23, 42, 0.56)",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 460,
+          borderRadius: 24,
+          background: "#fff",
+          padding: 22,
+          boxShadow: "0 24px 80px rgba(15, 23, 42, 0.28)",
+        }}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <span style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#C04A3B", letterSpacing: 0.8, textTransform: "uppercase" }}>Data Pesanan</span>
+          <h2 style={{ margin: "4px 0 6px", fontSize: 22, fontWeight: 900, color: "#1f2933" }}>Lengkapi sebelum lanjut WhatsApp</h2>
+          <p style={{ margin: 0, color: "#64748b", lineHeight: 1.45 }}>Biar penjual lebih mudah follow up pesanan kamu.</p>
+        </div>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
+            <span>Nama</span>
+            <input value={form.customer_name} onChange={(event) => setForm((prev) => ({ ...prev, customer_name: event.target.value }))} placeholder="Nama kamu" style={fieldStyle} />
+          </label>
+          <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
+            <span>Nomor HP opsional</span>
+            <input value={form.customer_phone} onChange={(event) => setForm((prev) => ({ ...prev, customer_phone: event.target.value }))} placeholder="08xxxxxxxxxx" style={fieldStyle} />
+          </label>
+          <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
+            <span>Metode</span>
+            <select value={form.fulfillment_method} onChange={(event) => setForm((prev) => ({ ...prev, fulfillment_method: event.target.value }))} style={fieldStyle}>
+              <option value="discuss">Diskusikan via WhatsApp</option>
+              <option value="pickup">Ambil di tempat</option>
+              <option value="delivery">Kirim/delivery</option>
+            </select>
+          </label>
+          <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
+            <span>Catatan opsional</span>
+            <textarea value={form.notes} onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))} placeholder="Contoh: kirim jam 5 sore, pedas sedang, dll." rows={3} style={{ ...fieldStyle, resize: "vertical" }} />
+          </label>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+          <button type="button" onClick={onSkip} data-testid="lead-capture-skip" style={{ border: "1px solid #d8cfc3", borderRadius: 999, padding: "10px 14px", background: "#fff", color: "#475569", fontWeight: 800, cursor: "pointer" }}>Lewati</button>
+          <button type="button" onClick={() => onContinue(form)} disabled={!form.customer_name.trim()} data-testid="lead-capture-continue-whatsapp" style={{ border: 0, borderRadius: 999, padding: "10px 16px", background: form.customer_name.trim() ? "#16a34a" : "#94a3b8", color: "#fff", fontWeight: 900, cursor: form.customer_name.trim() ? "pointer" : "not-allowed" }}>Lanjut WhatsApp</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StorefrontTemplateRenderer({ data, template }) {
   const shop = getShop(data);
   const products = getProducts(data);
   const mode = getModeFromTemplate(template);
   const cartKey = getCartStorageKey(shop);
   const [cartOpen, setCartOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [cart, setCart] = useState(() => {
     if (typeof window === "undefined") return {};
 
@@ -1219,9 +2271,14 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       .filter(Boolean);
   }, [cart, productMap]);
 
+
   const cartCount = cartItems.reduce((sum, item) => sum + Number(item.qty || 0), 0);
 
   const addToCart = (product, index = 0) => {
+    if (isTemplateProductOutOfStock(product) || isTemplateProductHidden(product)) {
+      return;
+    }
+
     const snapshot = getProductSnapshot(product, index);
 
     setCart((prev) => ({
@@ -1358,6 +2415,71 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     }
   }
 
+  if (shouldShowBusinessHours(shop) && !sections.includes("business_hours")) {
+    const locationIndex = sections.indexOf("location_map");
+    const contactIndex = sections.indexOf("contact");
+
+    if (locationIndex >= 0) {
+      sections.splice(locationIndex + 1, 0, "business_hours");
+    } else if (contactIndex >= 0) {
+      sections.splice(contactIndex, 0, "business_hours");
+    } else {
+      sections.push("business_hours");
+    }
+  }
+
+  // LAPAKIN_TESTIMONIAL_SECTION_ORDER_MVP
+  if (shouldShowTestimonials(shop) && !sections.includes("testimonials")) {
+    const afterKeys = [
+      "about",
+      "brand_story",
+      "story",
+      "benefits",
+      "featured_products",
+      "featured_products_section",
+      "all_products",
+      "menu_list",
+      "menu_grid",
+      "service_list",
+      "categories",
+    ];
+
+    let inserted = false;
+
+    for (const key of afterKeys) {
+      const index = sections.indexOf(key);
+      if (index >= 0) {
+        sections.splice(index + 1, 0, "testimonials");
+        inserted = true;
+        break;
+      }
+    }
+
+    if (!inserted) {
+      const beforeKeys = ["location_map", "business_hours", "contact"];
+      const beforeIndex = sections.findIndex((key) => beforeKeys.includes(key));
+
+      if (beforeIndex >= 0) {
+        sections.splice(beforeIndex, 0, "testimonials");
+      } else {
+        sections.push("testimonials");
+      }
+    }
+  }
+
+  if (shouldShowLocationMap(shop) && !sections.includes("location_map")) {
+    const businessHoursIndex = sections.indexOf("business_hours");
+    const contactIndex = sections.indexOf("contact");
+
+    if (businessHoursIndex >= 0) {
+      sections.splice(businessHoursIndex, 0, "location_map");
+    } else if (contactIndex >= 0) {
+      sections.splice(contactIndex, 0, "location_map");
+    } else {
+      sections.push("location_map");
+    }
+  }
+
   if (!sections.includes("contact")) {
     sections.push("contact");
   }
@@ -1366,6 +2488,79 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     shop,
     sections
   );
+
+  // LAPAKIN_GROWTH_SPRINT_V2_TEMPLATE_STATE
+  const promoViewedRef = useRef(false);
+  const [leadCapture, setLeadCapture] = useState({ open: false, href: "", context: {} });
+
+  useEffect(() => {
+    if (typeof document === "undefined" || promoViewedRef.current) return;
+    const promoNode = document.getElementById("promo") || document.querySelector('[data-testid="storefront-promo-banner"]');
+    if (!promoNode) return;
+    const markPromoViewed = () => { if (promoViewedRef.current) return; promoViewedRef.current = true; trackTemplateEvent(shop, "promo_view"); };
+    if (!("IntersectionObserver" in window)) { markPromoViewed(); return; }
+    const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) { markPromoViewed(); observer.disconnect(); } }, { threshold: 0.35 });
+    observer.observe(promoNode);
+    return () => observer.disconnect();
+  }, [shop, finalSections]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleClick = (event) => {
+      const target = event.target;
+      if (!target || !target.closest) return;
+      const productCard = target.closest(".ltr-product-card");
+      if (productCard) trackTemplateEvent(shop, "product_click", { product_id: productCard.getAttribute("data-product-id") || undefined, metadata: { label: String(productCard.textContent || "").trim().slice(0, 120) } });
+      const promoLink = target.closest('#promo a, #promo button, [data-testid="storefront-promo-banner"] a, [data-testid="storefront-promo-banner"] button');
+      if (promoLink) trackTemplateEvent(shop, "promo_cta_click");
+      const whatsappLink = target.closest('a[href*="wa.me"], a[href*="api.whatsapp.com"], a[href*="whatsapp.com/send"]');
+      if (!whatsappLink) return;
+      const href = whatsappLink.getAttribute("href");
+      if (!href || href === "#") return;
+      event.preventDefault();
+      trackTemplateEvent(shop, "whatsapp_checkout_click", { metadata: { label: String(whatsappLink.textContent || "").trim().slice(0, 120) } });
+      setLeadCapture({
+        open: true,
+        href,
+        context: {
+          source_label: String(whatsappLink.textContent || "").trim().slice(0, 120),
+          type: whatsappLink.getAttribute("data-whatsapp-context") || "",
+        },
+      });
+    };
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
+  }, [shop]);
+
+  const closeLeadAndOpenWhatsapp = (href) => { setLeadCapture({ open: false, href: "", context: {} }); openWhatsappHref(href); };
+  const continueLeadToWhatsapp = async (form) => {
+    const href =
+      leadCapture.context?.type === "cart_checkout"
+        ? buildCartWhatsappLink(shop, cartItems, form)
+        : enrichWhatsappHrefWithLead(leadCapture.href, form);
+
+    try {
+      await postStorefrontJson("/storefront/leads", { ...getAnalyticsBasePayload(shop), customer_name: form.customer_name, customer_phone: form.customer_phone, fulfillment_method: form.fulfillment_method, notes: form.notes, items: cartItems.map((item) => ({ product_id: item.product?.id, name: item.product?.name, price: item.product?.price, qty: item.qty })), total: getCartTotal(cartItems), metadata: leadCapture.context || {} });
+    } catch { }
+    closeLeadAndOpenWhatsapp(href);
+  };
+
+
+  const templateCategories = Array.from(
+    new Set((products || []).map(getProductCategory).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, "id"));
+
+  const visibleStorefrontProducts = (products || []).filter(
+    (product) => !isTemplateProductHidden(product)
+  );
+
+  const productsForSections = visibleStorefrontProducts.filter((product) => {
+    const categoryOk =
+      categoryFilter === "all" ||
+      getProductCategoryKey(product) === String(categoryFilter || "").toLowerCase();
+
+    return categoryOk && productMatchesTemplateSearch(product, productSearch);
+  });
 
   return (
     <main
@@ -1383,7 +2578,26 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       <div className="ltr-background-orb ltr-background-orb-two" />
 
       <div className="ltr-container">
-        {finalSections.map((section) => renderSection(section, { shop, products, template, onAddToCart: addToCart }))}
+        {/* LAPAKIN_TESTIMONIAL_RENDER_FALLBACK */}
+        {(() => {
+          const sectionsToRender = Array.isArray(finalSections) ? [...finalSections] : [];
+
+          if (shouldShowTestimonials(shop) && !sectionsToRender.includes("testimonials")) {
+            const beforeIndex = sectionsToRender.findIndex((key) =>
+              ["location_map", "business_hours", "contact"].includes(key)
+            );
+
+            if (beforeIndex >= 0) {
+              sectionsToRender.splice(beforeIndex, 0, "testimonials");
+            } else {
+              sectionsToRender.push("testimonials");
+            }
+          }
+
+          return sectionsToRender.map((section) =>
+            renderSection(section, { shop, products: productsForSections, allProducts: visibleStorefrontProducts, template, onAddToCart: addToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter })
+          );
+        })()}
       </div>
 
       <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
@@ -1397,6 +2611,13 @@ export default function StorefrontTemplateRenderer({ data, template }) {
         onDecrease={decreaseCartItem}
         onRemove={removeCartItem}
         onClear={() => setCart({})}
+      />
+
+
+      <LeadCaptureModal
+        open={leadCapture.open}
+        onSkip={() => closeLeadAndOpenWhatsapp(leadCapture.href)}
+        onContinue={continueLeadToWhatsapp}
       />
 
       <MobileStickyOrderBar

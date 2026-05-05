@@ -38,6 +38,8 @@ for _r in ALL_ROUTERS:
 
 app.include_router(api)
 
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
@@ -85,10 +87,17 @@ async def on_startup():
     await db.storefront_visits.create_index([("shop_id", 1), ("timestamp", -1)])
     await db.analytics_events.create_index([("shop_id", 1), ("timestamp", -1)])
     await db.analytics_events.create_index([("shop_id", 1), ("event", 1)])
+    # LAPAKIN_GROWTH_SPRINT_V2_INDEXES
+    await db.analytics_events.create_index([("shop_id", 1), ("campaign_slug", 1), ("timestamp", -1)])
+    await db.analytics_events.create_index([("shop_id", 1), ("event", 1), ("timestamp", -1)])
+    await db.storefront_leads.create_index([("shop_id", 1), ("created_at", -1)])
+    await db.storefront_leads.create_index([("shop_id", 1), ("status", 1), ("created_at", -1)])
     await db.shops.create_index("custom_domain", sparse=True, unique=True)
     await db.payments.create_index("order_id", unique=True)
     await db.payments.create_index([("user_id", 1), ("created_at", -1)])
     await db.payments.create_index("status")
+    await db.payments.create_index([("provider", 1), ("status", 1), ("created_at", -1)])
+    await db.payments.create_index([("user_id", 1), ("provider", 1), ("created_at", -1)])
 
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@lapakin.id").lower()

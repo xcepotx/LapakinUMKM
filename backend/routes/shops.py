@@ -5,6 +5,7 @@ import os
 import re as _re
 import uuid
 from datetime import datetime, timezone, timedelta
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -16,6 +17,36 @@ from og_render import OG_PNG_CACHE
 from pydantic import BaseModel
 
 router = APIRouter()
+
+
+def normalize_storefront_testimonials(value):
+    if not isinstance(value, list):
+        return []
+
+    items = []
+    for raw in value[:3]:
+        if not isinstance(raw, dict):
+            continue
+
+        name = str(raw.get("name") or raw.get("customer_name") or "").strip()[:80]
+        text = str(raw.get("text") or raw.get("comment") or raw.get("message") or "").strip()[:280]
+
+        try:
+            rating = int(raw.get("rating") or 5)
+        except Exception:
+            rating = 5
+
+        rating = max(1, min(5, rating))
+
+        if name or text:
+            items.append({
+                "name": name,
+                "text": text,
+                "rating": rating,
+            })
+
+    return items
+
 
 ALLOWED_STOREFRONT_MODES = {"catalog", "food_menu", "services"}
 ALLOWED_STOREFRONT_STYLES = {"classic", "modern", "compact", "premium", "playful"}
@@ -32,6 +63,18 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_promo_text", "")
     shop.setdefault("storefront_promo_cta_label", "")
     shop.setdefault("storefront_promo_slug", "")
+    shop.setdefault("storefront_show_payment_instruction", False)
+    shop.setdefault("storefront_payment_method_label", "")
+    shop.setdefault("storefront_payment_instruction", "")
+    shop.setdefault("storefront_qris_image", "")
+    shop.setdefault("storefront_payment_confirmation_text", "")
+    shop.setdefault("storefront_whatsapp_checkout_template", "Halo {shop_name}, saya mau pesan:\n\n{items}\n\nTotal: {total}\nNama: {customer_name}\nCatatan: {notes}\n{payment_instruction}")
+    shop.setdefault("storefront_whatsapp_product_template", "Halo {shop_name}, saya mau tanya produk:\n\n{product_name}\nHarga: {product_price}\n\nApakah masih tersedia?")
+    shop.setdefault("storefront_show_location_map", False)
+    shop.setdefault("storefront_location_title", "")
+    shop.setdefault("storefront_location_address", "")
+    shop.setdefault("storefront_google_maps_url", "")
+    shop.setdefault("storefront_location_embed_url", "")
     shop.setdefault("storefront_renderer", "legacy")
     return shop
 
@@ -448,7 +491,7 @@ def _sanitize_storefront_featured_product_ids(payload, features):
 
 
 
-def _clean_storefront_promo_text(value, max_len=180):
+def _clean_storefront_promo_text(value, max_len=180, *extra_args):
     if value is None:
         return ""
     value = str(value).strip()
@@ -458,7 +501,7 @@ def _clean_storefront_promo_text(value, max_len=180):
 
 
 
-def _clean_storefront_promo_slug(value, max_len=48):
+def _clean_storefront_promo_slug(value, max_len=48, *extra_args):
     if value is None:
         return ""
 
@@ -475,6 +518,8 @@ def _sanitize_storefront_promo_payload(payload, features):
 
     promo_fields = [
         "storefront_show_promo",
+        "storefront_show_testimonials",
+        "storefront_testimonials",
         "storefront_promo_title",
         "storefront_promo_text",
         "storefront_promo_cta_label",
@@ -511,6 +556,247 @@ def _sanitize_storefront_promo_payload(payload, features):
         payload["storefront_promo_slug"] = _clean_storefront_promo_slug(
             payload.get("storefront_promo_slug"),
             48,
+        )
+
+    return payload
+
+
+
+
+def _clean_storefront_payment_text(value, max_len=500, *extra_args):
+    """Clean storefront payment text.
+
+    Defensive signature: older patch attempts may accidentally pass extra
+    positional args into this helper. Ignore non-integer extras and use the
+    first integer as max length when present.
+    """
+    for arg in (max_len, *extra_args):
+        if isinstance(arg, int):
+            max_len = arg
+            break
+    else:
+        max_len = 500
+
+    try:
+        text = str(value or "").strip()
+    except Exception:
+        text = ""
+
+    if max_len <= 0:
+        max_len = 500
+
+    return text[:max_len]
+
+
+def _clean_storefront_qris_image(value, *extra_args):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    if not value:
+        return ""
+    # Allow either base64 data URL uploaded from dashboard or an existing https image URL.
+    if value.startswith("data:image/"):
+        # Keep payload bounded; QRIS image should be compressed client-side before upload.
+        return value[:1200000]
+    if value.startswith("https://") or value.startswith("http://"):
+        return value[:1000]
+    return ""
+
+
+
+def _clean_storefront_whatsapp_template_text(value, max_len=1200):
+    try:
+        text = str(value or "").strip()
+    except Exception:
+        text = ""
+
+    if max_len <= 0:
+        max_len = 1200
+
+    return text[:max_len]
+
+
+def _sanitize_storefront_whatsapp_template_payload(payload, templates_enabled=True):
+    if not payload:
+        return payload
+
+    fields = [
+        "storefront_whatsapp_checkout_template",
+        "storefront_whatsapp_product_template",
+    ]
+
+    if not templates_enabled:
+        for field in fields:
+            payload.pop(field, None)
+        return payload
+
+    if "storefront_whatsapp_checkout_template" in payload:
+        payload["storefront_whatsapp_checkout_template"] = _clean_storefront_whatsapp_template_text(
+            payload.get("storefront_whatsapp_checkout_template"),
+            1200,
+        )
+
+    if "storefront_whatsapp_product_template" in payload:
+        payload["storefront_whatsapp_product_template"] = _clean_storefront_whatsapp_template_text(
+            payload.get("storefront_whatsapp_product_template"),
+            800,
+        )
+
+    return payload
+
+def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
+    if not payload:
+        return payload
+
+    payment_fields = [
+        "storefront_show_payment_instruction",
+        "storefront_show_testimonials",
+        "storefront_testimonials",
+        "storefront_payment_method_label",
+        "storefront_payment_instruction",
+        "storefront_qris_image",
+        "storefront_payment_confirmation_text",
+    ]
+
+    if not templates_enabled:
+        for field in payment_fields:
+            payload.pop(field, None)
+        return payload
+
+    if "storefront_show_payment_instruction" in payload:
+        payload["storefront_show_payment_instruction"] = bool(payload.get("storefront_show_payment_instruction"))
+
+    if "storefront_payment_method_label" in payload:
+        payload["storefront_payment_method_label"] = _clean_storefront_payment_text(
+            payload.get("storefront_payment_method_label"),
+            80,
+        )
+
+    if "storefront_payment_instruction" in payload:
+        payload["storefront_payment_instruction"] = _clean_storefront_payment_text(
+        "storefront_show_testimonials",
+        "storefront_testimonials",
+            payload.get("storefront_payment_instruction"),
+            "storefront_show_testimonials",
+            "storefront_testimonials",
+            500,
+        )
+
+    if "storefront_payment_confirmation_text" in payload:
+        payload["storefront_payment_confirmation_text"] = _clean_storefront_payment_text(
+            payload.get("storefront_payment_confirmation_text"),
+            160,
+        )
+
+    if "storefront_qris_image" in payload:
+        payload["storefront_qris_image"] = _clean_storefront_qris_image(
+            payload.get("storefront_qris_image"),
+        )
+
+    return payload
+
+
+
+
+def _clean_storefront_location_text(value, max_len=300, *extra_args):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    value = " ".join(value.split())
+    return value[:max_len]
+
+
+def _is_allowed_google_maps_url(value):
+    if not value:
+        return False
+    value = str(value).strip()
+    if not (value.startswith("https://") or value.startswith("http://")):
+        return False
+    lowered = value.lower()
+    return (
+        "google.com/maps" in lowered
+        or "maps.google." in lowered
+        or "maps.app.goo.gl" in lowered
+        or "goo.gl/maps" in lowered
+    )
+
+
+def _clean_google_maps_url(value, max_len=1000, *extra_args):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    if not value:
+        return ""
+    if not _is_allowed_google_maps_url(value):
+        return ""
+    return value[:max_len]
+
+
+def _clean_google_maps_embed_url(value, max_len=1000, *extra_args):
+    if value is None:
+        return ""
+    value = str(value).strip()
+    if not value:
+        return ""
+    lowered = value.lower()
+    allowed = (
+        value.startswith("https://www.google.com/maps/embed")
+        or value.startswith("https://maps.google.com/maps")
+        or value.startswith("http://maps.google.com/maps")
+        or "google.com/maps/embed" in lowered
+    )
+    if not allowed:
+        return ""
+    return value[:max_len]
+
+
+def _make_google_maps_search_embed_url(address):
+    address = _clean_storefront_location_text(address, 300)
+    if not address:
+        return ""
+    return "https://maps.google.com/maps?q=" + quote_plus(address) + "&output=embed"
+
+
+def _sanitize_storefront_location_payload(payload):
+    if not payload:
+        return payload
+
+    if "storefront_show_location_map" in payload:
+        payload["storefront_show_location_map"] = bool(payload.get("storefront_show_location_map"))
+
+    if "storefront_location_title" in payload:
+        payload["storefront_location_title"] = _clean_storefront_location_text(
+            payload.get("storefront_location_title"),
+            80,
+        )
+
+    if "storefront_location_address" in payload:
+        payload["storefront_location_address"] = _clean_storefront_location_text(
+            payload.get("storefront_location_address"),
+            300,
+        )
+
+    if "storefront_google_maps_url" in payload:
+        payload["storefront_google_maps_url"] = _clean_google_maps_url(
+            payload.get("storefront_google_maps_url"),
+            1000,
+        )
+
+    if "storefront_location_embed_url" in payload:
+        payload["storefront_location_embed_url"] = _clean_google_maps_embed_url(
+        "storefront_show_testimonials",
+        "storefront_testimonials",
+            payload.get("storefront_location_embed_url"),
+            "storefront_show_testimonials",
+            "storefront_testimonials",
+            1000,
+        )
+
+    if not payload.get("storefront_location_embed_url") and payload.get("storefront_location_address"):
+        payload["storefront_location_embed_url"] = _make_google_maps_search_embed_url(
+        "storefront_show_testimonials",
+        "storefront_testimonials",
+            payload.get("storefront_location_address")
         )
 
     return payload
@@ -560,6 +846,12 @@ def _apply_storefront_tier_guard(payload, user):
     payload = _sanitize_storefront_featured_product_ids(payload, features)
 
     payload = _sanitize_storefront_promo_payload(payload, features)
+
+    payload = _sanitize_storefront_payment_payload(payload, features.get("templates"))
+
+    payload = _sanitize_storefront_whatsapp_template_payload(payload, features.get("templates"))
+
+    payload = _sanitize_storefront_location_payload(payload)
 
     return payload
 
@@ -632,8 +924,7 @@ async def create_or_update_shop(data: ShopIn, request: Request):
             payload.pop("storefront_featured_product_ids", None)
         else:
             payload["storefront_featured_product_ids"] = _normalize_featured_product_ids(
-                payload.get("storefront_featured_product_ids"),
-                featured_limit,
+                payload.get("storefront_featured_product_ids", []),
             )
 
     raw_storefront_mode = payload.get("storefront_mode")
@@ -661,8 +952,23 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     else:
         payload["storefront_renderer"] = raw_storefront_renderer
 
+    payload = _sanitize_storefront_payment_payload(
+        payload,
+        templates_enabled=(payload.get("storefront_renderer") or "template") != "legacy" or bool(user.get("shop_id")),
+    )
+    payload = _sanitize_storefront_whatsapp_template_payload(
+        payload,
+        templates_enabled=(payload.get("storefront_renderer") or "template") != "legacy" or bool(user.get("shop_id")),
+    )
+    payload = _sanitize_storefront_location_payload(payload)
+
     if user.get("shop_id"):
         # update
+        if "storefront_testimonials" in payload:
+            payload["storefront_testimonials"] = normalize_storefront_testimonials(payload.get("storefront_testimonials"))
+        if "storefront_show_testimonials" in payload:
+            payload["storefront_show_testimonials"] = bool(payload.get("storefront_show_testimonials"))
+
         await db.shops.update_one(
             {"shop_id": user["shop_id"]},
             {"$set": {**payload, "updated_at": now}}
@@ -693,6 +999,18 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_promo_text", "")
     doc.setdefault("storefront_promo_cta_label", "")
     doc.setdefault("storefront_promo_slug", "")
+    doc.setdefault("storefront_show_payment_instruction", False)
+    doc.setdefault("storefront_payment_method_label", "")
+    doc.setdefault("storefront_payment_instruction", "")
+    doc.setdefault("storefront_qris_image", "")
+    doc.setdefault("storefront_payment_confirmation_text", "")
+    doc.setdefault("storefront_whatsapp_checkout_template", "Halo {shop_name}, saya mau pesan:\n\n{items}\n\nTotal: {total}\nNama: {customer_name}\nCatatan: {notes}\n{payment_instruction}")
+    doc.setdefault("storefront_whatsapp_product_template", "Halo {shop_name}, saya mau tanya produk:\n\n{product_name}\nHarga: {product_price}\n\nApakah masih tersedia?")
+    doc.setdefault("storefront_show_location_map", False)
+    doc.setdefault("storefront_location_title", "")
+    doc.setdefault("storefront_location_address", "")
+    doc.setdefault("storefront_google_maps_url", "")
+    doc.setdefault("storefront_location_embed_url", "")
     doc.setdefault("storefront_renderer", "legacy")
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})
@@ -867,7 +1185,11 @@ async def create_branch_shop(data: ShopIn, request: Request):
             payload.pop("storefront_featured_product_ids", None)
         else:
             payload["storefront_featured_product_ids"] = _normalize_featured_product_ids(
+            "storefront_show_testimonials",
+            "storefront_testimonials",
                 payload.get("storefront_featured_product_ids"),
+                "storefront_show_testimonials",
+                "storefront_testimonials",
                 featured_limit,
             )
 

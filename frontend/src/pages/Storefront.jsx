@@ -58,6 +58,224 @@ const STOREFRONT_STYLE_OPTIONS = {
 };
 
 
+
+
+// LAPAKIN_GROWTH_SPRINT_V2_SEO_HELPERS
+function setLapakinMeta(selector, createAttrs, content) {
+  if (!content || typeof document === "undefined") return;
+  let tag = document.head.querySelector(selector);
+  if (!tag) {
+    tag = document.createElement("meta");
+    Object.entries(createAttrs).forEach(([key, value]) => tag.setAttribute(key, value));
+    tag.setAttribute("data-lapakin-seo", "1");
+    document.head.appendChild(tag);
+  }
+  tag.setAttribute("content", content);
+}
+
+function getStorefrontSeo(shop, products = []) {
+  const shopName = shop?.name || shop?.shop_name || "Toko";
+  const firstProductImage = products.find((item) => item?.image_data || item?.image_url || item?.images?.[0]);
+  const rawImage =
+    shop?.seo_image ||
+    shop?.cover_image ||
+    shop?.logo_url ||
+    firstProductImage?.image_url ||
+    firstProductImage?.image_data ||
+    firstProductImage?.images?.[0] ||
+    "";
+
+  const image = rawImage && !String(rawImage).startsWith("data:") && !String(rawImage).startsWith("http")
+    ? `data:image/png;base64,${rawImage}`
+    : rawImage;
+
+  return {
+    title: shop?.seo_title || shop?.storefront_hero_title || `${shopName} - Pesan Online di Lapakin`,
+    description:
+      shop?.seo_description ||
+      shop?.storefront_hero_subtitle ||
+      shop?.tagline ||
+      shop?.description ||
+      "Lihat produk, promo, dan pesan langsung via WhatsApp.",
+    image,
+  };
+}
+
+
+// LAPAKIN_LEGACY_STOREFRONT_CATEGORY_FILTER_MVP
+// LAPAKIN_LEGACY_STOREFRONT_CATEGORY_FILTER_B
+function getStorefrontProductCategory(product) {
+  return String(
+    product?.category_name ||
+    product?.category ||
+    product?.product_category ||
+    product?.type ||
+    ""
+  ).trim();
+}
+
+function getStorefrontProductCategoryKey(product) {
+  return getStorefrontProductCategory(product).toLowerCase();
+}
+
+function storefrontProductMatchesSearch(product, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+
+  return [
+    product?.name,
+    product?.description,
+    getStorefrontProductCategory(product),
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(q));
+}
+
+// LAPAKIN_LEGACY_AVAILABILITY_F2
+function getStorefrontProductAvailability(product) {
+  const raw = String(product?.availability_status || "").trim().toLowerCase();
+  if (raw === "out_of_stock" || raw === "hidden") return raw;
+  if (product?.is_active === false) return "hidden";
+  return "active";
+}
+
+function isStorefrontProductHidden(product) {
+  return getStorefrontProductAvailability(product) === "hidden";
+}
+
+function isStorefrontProductOutOfStock(product) {
+  return getStorefrontProductAvailability(product) === "out_of_stock";
+}
+
+function applyStorefrontSeo(shop, products = []) {
+  if (!shop || typeof document === "undefined") return;
+  const seo = getStorefrontSeo(shop, products);
+  document.title = seo.title;
+  setLapakinMeta('meta[name="description"]', { name: "description" }, seo.description);
+  setLapakinMeta('meta[property="og:title"]', { property: "og:title" }, seo.title);
+  setLapakinMeta('meta[property="og:description"]', { property: "og:description" }, seo.description);
+  setLapakinMeta('meta[property="og:type"]', { property: "og:type" }, "website");
+  setLapakinMeta('meta[property="og:url"]', { property: "og:url" }, window.location.href);
+  setLapakinMeta('meta[name="twitter:card"]', { name: "twitter:card" }, seo.image ? "summary_large_image" : "summary");
+  setLapakinMeta('meta[name="twitter:title"]', { name: "twitter:title" }, seo.title);
+  setLapakinMeta('meta[name="twitter:description"]', { name: "twitter:description" }, seo.description);
+  if (seo.image) {
+    setLapakinMeta('meta[property="og:image"]', { property: "og:image" }, seo.image);
+    setLapakinMeta('meta[name="twitter:image"]', { name: "twitter:image" }, seo.image);
+  }
+}
+
+function getStorefrontCampaignSlug() {
+  if (typeof window === "undefined") return "";
+  try { return new URLSearchParams(window.location.search).get("promo") || ""; } catch { return ""; }
+}
+
+function getStorefrontTrafficSource() {
+  if (typeof window === "undefined") return "direct";
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const utm = params.get("utm_source");
+    if (utm) return utm;
+    if (!document.referrer) return "direct";
+    const host = new URL(document.referrer).hostname.toLowerCase();
+    if (host.includes("instagram")) return "instagram";
+    if (host.includes("tiktok")) return "tiktok";
+    if (host.includes("facebook") || host.includes("fb.")) return "facebook";
+    if (host.includes("whatsapp") || host.includes("wa.me")) return "whatsapp";
+    if (host.includes("google")) return "google";
+    return host.replace(/^www\./, "");
+  } catch { return "direct"; }
+}
+
+// LAPAKIN_LEGACY_WHATSAPP_TEMPLATE_G1B
+const LEGACY_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE = `Halo {shop_name}, saya mau pesan:
+
+{items}
+
+Total: {total}
+Nama: {customer_name}
+Catatan: {notes}
+{payment_instruction}`;
+
+function renderLegacyWhatsappTemplate(template, variables) {
+  let text = String(template || LEGACY_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE || "");
+
+  Object.entries(variables || {}).forEach(([key, value]) => {
+    const pattern = new RegExp(`\\\\{${key}\\\\}`, "g");
+    text = text.replace(pattern, value == null ? "" : String(value));
+  });
+
+  return text
+    .split("\\n")
+    .map((line) => line.replace(/[ \\t]+$/g, ""))
+    .join("\\n")
+    .replace(/\\n{4,}/g, "\\n\\n\\n")
+    .trim();
+}
+
+function getLegacyPaymentInstructionText(shop) {
+  if (!shop?.storefront_show_payment_instruction) return "";
+
+  const parts = [];
+
+  if (shop?.storefront_payment_method_label) {
+    parts.push(`Metode pembayaran: ${shop.storefront_payment_method_label}`);
+  }
+
+  if (shop?.storefront_payment_instruction) {
+    parts.push(String(shop.storefront_payment_instruction).trim());
+  }
+
+  if (shop?.storefront_payment_confirmation_text) {
+    parts.push(String(shop.storefront_payment_confirmation_text).trim());
+  }
+
+  return parts.filter(Boolean).join("\\n");
+}
+
+function buildLegacyCheckoutWhatsappMessage(shop, cartItems, cartTotal, options = {}) {
+  if (!cartItems?.length) return "";
+
+  const shopName = shop?.name || "toko";
+  const items = cartItems
+    .map((it, index) => {
+      const product = it.product || {};
+      const qty = Number(it.qty || 0);
+      const price = Number(product.price || 0);
+      return `${index + 1}. ${product.name} — ${qty}x ${rupiah(price)} = ${rupiah(qty * price)}`;
+    })
+    .join("\\n");
+
+  const paymentInstruction = getLegacyPaymentInstructionText(shop);
+  const template = String(shop?.storefront_whatsapp_checkout_template || "").trim() ||
+    LEGACY_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE;
+
+  const message = renderLegacyWhatsappTemplate(template, {
+    shop_name: shopName,
+    customer_name: "",
+    items,
+    total: rupiah(cartTotal),
+    notes: options.shopClosed ? "Toko sedang tutup — saya menanyakan ketersediaan." : "",
+    payment_instruction: paymentInstruction,
+    campaign_slug: getStorefrontCampaignSlug(),
+  });
+
+  if (message) return message;
+
+  return [
+    `Halo ${shopName}, saya mau pesan:`,
+    "",
+    items,
+    "─────────────",
+    `Total: ${rupiah(cartTotal)}`,
+    "",
+    options.shopClosed ? "(Toko sedang tutup — saya menanyakan ketersediaan.)" : "",
+    "Mohon konfirmasi ketersediaan & ongkir ya. Terima kasih!",
+  ].filter(Boolean).join("\\n");
+}
+
+// /LAPAKIN_GROWTH_SPRINT_V2_SEO_HELPERS
+
 export default function Storefront({ tenantSlug = null }) {
   // Slug resolution priority:
   // 1) URL param /toko/:slug (main-domain route)
@@ -151,6 +369,8 @@ export default function Storefront({ tenantSlug = null }) {
   const [viewer, setViewer] = useState(null);
   const [storyIdx, setStoryIdx] = useState(null); // index into shop.story when viewing reel
   const [todayOnly, setTodayOnly] = useState(true); // F&B "Menu Hari Ini" filter
+  const [productSearch, setProductSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
 
   // ---- CART STATE (client-side, persisted in localStorage per shop slug) ----
   const cartKey = `lapakin_cart_${slug}`;
@@ -175,8 +395,18 @@ export default function Storefront({ tenantSlug = null }) {
       try {
         const r = await api.get(`/shops/by-slug/${slug}`);
         setData(r.data);
-        // Fire-and-forget analytics: track shop view
+        // Fire-and-forget analytics: track shop view + growth campaign page view
         try { api.post("/analytics/track", { event: "view_shop", slug }); } catch (_) { /* ignore */ }
+        try {
+          api.post("/storefront/events", {
+            event_type: "page_view",
+            shop_slug: slug,
+            shop_id: r.data?.shop?.shop_id,
+            campaign_slug: getStorefrontCampaignSlug() || undefined,
+            source: getStorefrontTrafficSource(),
+            metadata: { renderer: new URLSearchParams(window.location.search).get("renderer") || undefined },
+          });
+        } catch (_) { /* ignore */ }
       } catch (e) {
         setError(e.response?.status === 404 ? "Toko tidak ditemukan" : "Gagal memuat toko");
       } finally { setLoading(false); }
@@ -184,7 +414,12 @@ export default function Storefront({ tenantSlug = null }) {
   }, [slug]);
 
   // ---- Derived data (declared before early returns to satisfy hook rules) ----
-  const products = data?.products || [];
+  const rawProducts = data?.products || [];
+  const products = rawProducts.filter((product) => !isStorefrontProductHidden(product));
+  const storefrontCategories = useMemo(() => {
+    return Array.from(new Set(products.map(getStorefrontProductCategory).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, "id"));
+  }, [products]);
   const productMap = useMemo(() => {
     const m = {};
     products.forEach((p) => { m[p.product_id] = p; });
@@ -196,6 +431,13 @@ export default function Storefront({ tenantSlug = null }) {
       .map(([pid, qty]) => ({ product: productMap[pid], qty }))
       .filter((it) => it.product && it.qty > 0);
   }, [cart, productMap]);
+
+
+  // LAPAKIN_GROWTH_SPRINT_V2_SEO_EFFECT
+  useEffect(() => {
+    if (!data?.shop) return;
+    applyStorefrontSeo(data.shop, products);
+  }, [data, products]);
 
   if (loading) return <div className="min-h-screen grid place-items-center text-brand-mute">Memuat toko…</div>;
   if (error) return (
@@ -274,19 +516,7 @@ export default function Storefront({ tenantSlug = null }) {
   const clearCart = () => setCart({});
 
   const buildCartMessage = () => {
-    if (!cartItems.length) return "";
-    const lines = [`Halo ${shop.name}, saya mau pesan:`, ""];
-    cartItems.forEach((it, i) => {
-      lines.push(`${i + 1}. ${it.product.name} — ${it.qty}x ${rupiah(it.product.price)} = ${rupiah(it.qty * it.product.price)}`);
-    });
-    lines.push("─────────────");
-    lines.push(`Total: ${rupiah(cartTotal)}`);
-    lines.push("");
-    if (shopClosed) {
-      lines.push("(Toko sedang tutup — saya menanyakan ketersediaan.)");
-    }
-    lines.push("Mohon konfirmasi ketersediaan & ongkir ya. Terima kasih!");
-    return lines.join("\n");
+    return buildLegacyCheckoutWhatsappMessage(shop, cartItems, cartTotal, { shopClosed });
   };
 
   const productImages = (p) => {
@@ -528,11 +758,96 @@ export default function Storefront({ tenantSlug = null }) {
               </div>
             </div>
 
+            <div
+              className="mb-5 rounded-2xl border border-brand-line bg-white p-4 shadow-card"
+              data-testid="storefront-category-search-filter"
+            >
+              <div className="grid sm:grid-cols-[1fr_auto] gap-3">
+                <input
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder="Cari produk atau menu..."
+                  className="h-11 rounded-xl border border-brand-line px-3 text-sm"
+                  data-testid="storefront-product-search"
+                />
+
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="h-11 rounded-xl border border-brand-line px-3 text-sm font-semibold"
+                  data-testid="storefront-category-filter"
+                >
+                  <option value="all">Semua kategori</option>
+                  {storefrontCategories.map((category) => (
+                    <option key={category} value={category.toLowerCase()}>{category}</option>
+                  ))}
+                </select>
+              </div>
+
+              {storefrontCategories.length ? (
+                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter("all")}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-bold ${categoryFilter === "all" ? "bg-brand text-white border-brand" : "bg-brand-off border-brand-line text-brand-ink"}`}
+                    data-testid="storefront-category-chip-all"
+                  >
+                    Semua
+                  </button>
+                  {storefrontCategories.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => setCategoryFilter(category.toLowerCase())}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-bold ${categoryFilter === category.toLowerCase() ? "bg-brand text-white border-brand" : "bg-brand-off border-brand-line text-brand-ink"}`}
+                      data-testid="storefront-category-chip"
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
             {(() => {
-              const visibleProducts = (sellsBy === "hours" && todayOnly)
+              let visibleProducts = (sellsBy === "hours" && todayOnly)
                 ? products.filter(isAvailableToday)
                 : products;
+
+              if (categoryFilter !== "all") {
+                visibleProducts = visibleProducts.filter(
+                  (product) => getStorefrontProductCategoryKey(product) === String(categoryFilter || "").toLowerCase()
+                );
+              }
+
+              if (productSearch.trim()) {
+                visibleProducts = visibleProducts.filter((product) =>
+                  storefrontProductMatchesSearch(product, productSearch)
+                );
+              }
+
               const visibleFiller = Math.max(0, 4 - visibleProducts.length);
+              const hasActiveCatalogFilter = categoryFilter !== "all" || productSearch.trim();
+
+              if (visibleProducts.length === 0 && hasActiveCatalogFilter) {
+                return (
+                  <div className="bg-white border border-brand-line rounded-2xl p-12 text-center shadow-card"
+                    data-testid="storefront-no-filter-results">
+                    <Package className="w-10 h-10 mx-auto text-brand-mute" />
+                    <p className="text-brand-mute mt-3">Produk tidak ditemukan.</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductSearch("");
+                        setCategoryFilter("all");
+                      }}
+                      className="mt-3 text-sm text-brand font-semibold hover:underline"
+                    >
+                      Reset pencarian dan kategori →
+                    </button>
+                  </div>
+                );
+              }
 
               if (visibleProducts.length === 0 && visibleFiller === 0) {
                 return (
@@ -588,6 +903,21 @@ export default function Storefront({ tenantSlug = null }) {
                         </button>
                         <div className="p-3">
                           <h3 className="font-semibold leading-snug line-clamp-2 text-sm">{p.name}</h3>
+                          <div className="mt-1 flex items-center gap-2 flex-wrap">
+                            {getStorefrontProductCategory(p) && (
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-brand-mute">
+                                {getStorefrontProductCategory(p)}
+                              </span>
+                            )}
+                            {isStorefrontProductOutOfStock(p) && (
+                              <span
+                                className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700"
+                                data-testid={`storefront-product-out-of-stock-${p.product_id}`}
+                              >
+                                Habis
+                              </span>
+                            )}
+                          </div>
                           <div className="font-heading font-extrabold text-base mt-1" style={{ color: brand }}>{rupiah(p.price)}</div>
 
                           {/* Cart action — adaptive per mode */}
@@ -635,7 +965,7 @@ export default function Storefront({ tenantSlug = null }) {
                               style={{ background: brand }}
                               data-testid={`add-to-cart-${p.product_id}`}>
                               {justAdded === p.product_id ? (
-                                <><Check className="w-3.5 h-3.5 mr-1" /> Ditambah</>
+                                <><Check className="w-3.5 h-3.5 mr-1 disabled:opacity-50 disabled:cursor-not-allowed" /> Ditambah</>
                               ) : (
                                 <><Plus className="w-3.5 h-3.5 mr-1" /> Keranjang</>
                               )}

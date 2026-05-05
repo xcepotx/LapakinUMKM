@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Store, Zap, Rocket, Check, Loader2, ArrowRight } from "lucide-react";
+import { Sparkles, Store, Zap, Rocket, Check, Loader2, ArrowRight, Upload, X, Copy, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 const TIER_ICON = { free: Sparkles, starter: Store, pro: Zap, business: Rocket };
@@ -13,6 +13,214 @@ const TIER_COLOR = {
   pro: "bg-yellow-50 text-yellow-900 border-yellow-300",
   business: "bg-purple-50 text-purple-900 border-purple-300",
 };
+
+
+const MANUAL_PAYMENT_STATUS = {
+  pending_payment: {
+    label: "Menunggu bukti bayar",
+    cls: "bg-yellow-100 text-yellow-900 border-yellow-200",
+  },
+  pending_review: {
+    label: "Menunggu verifikasi admin",
+    cls: "bg-blue-100 text-blue-900 border-blue-200",
+  },
+  rejected: {
+    label: "Bukti ditolak",
+    cls: "bg-red-100 text-red-900 border-red-200",
+  },
+  success: {
+    label: "Disetujui",
+    cls: "bg-green-100 text-green-900 border-green-200",
+  },
+};
+
+function formatRupiah(value) {
+  return `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
+}
+
+function ManualPaymentPanel({ manualPayment, onClose, onUploadProof, uploading }) {
+  if (!manualPayment?.payment) return null;
+
+  const payment = manualPayment.payment;
+  const config = manualPayment.config || {};
+  const status = MANUAL_PAYMENT_STATUS[payment.status] || MANUAL_PAYMENT_STATUS.pending_payment;
+  const qrisImage = config.qris_image || "";
+  const copyText = [
+    `Order ID: ${payment.order_id}`,
+    `Paket: ${payment.plan_label || payment.plan_id}`,
+    `Nominal: ${formatRupiah(payment.amount)}`,
+    config.instruction || "Scan QRIS Lapakin lalu upload bukti pembayaran.",
+  ].join("\n");
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      toast.success("Instruksi pembayaran disalin");
+    } catch {
+      toast.error("Gagal menyalin instruksi");
+    }
+  };
+
+  const handleFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    onUploadProof(file);
+    event.target.value = "";
+  };
+
+  return (
+    <div
+      className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/70 p-5 text-blue-950 shadow-card"
+      data-testid="manual-tier-payment-card"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-extrabold uppercase tracking-wide bg-white border-blue-200">
+            QRIS Manual Lapakin
+          </div>
+          <h2 className="font-heading font-extrabold text-xl mt-3">
+            Pembayaran Upgrade Tier
+          </h2>
+          <p className="text-sm mt-1 text-blue-900/80">
+            Bayar paket via QRIS Lapakin, lalu upload bukti pembayaran untuk diverifikasi admin.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full p-2 hover:bg-white/70"
+          aria-label="Tutup instruksi pembayaran"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="grid md:grid-cols-[220px,1fr] gap-4 mt-4">
+        <div className="rounded-2xl border border-blue-200 bg-white p-3 text-center">
+          {qrisImage ? (
+            <img
+              src={qrisImage}
+              alt="QRIS Lapakin"
+              className="w-full rounded-xl border border-brand-line object-contain"
+              data-testid="manual-tier-qris-image"
+            />
+          ) : (
+            <div className="aspect-square rounded-xl border border-dashed border-blue-300 grid place-items-center px-4 text-sm text-blue-900/70">
+              QRIS Lapakin belum diset di server. Admin bisa kirim QRIS via WhatsApp sementara.
+            </div>
+          )}
+          {config.admin_whatsapp ? (
+            <a
+              href={`https://wa.me/${config.admin_whatsapp}?text=${encodeURIComponent(`Halo Admin Lapakin, saya mau konfirmasi pembayaran ${payment.order_id}`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex w-full justify-center rounded-xl bg-blue-900 px-3 py-2 text-sm font-bold text-white hover:opacity-90"
+            >
+              Chat Admin
+            </a>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border border-blue-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-xs text-brand-mute font-bold uppercase tracking-wide">Order ID</div>
+              <div className="font-mono text-sm font-bold break-all" data-testid="manual-tier-payment-order-id">
+                {payment.order_id}
+              </div>
+            </div>
+            <span className={`rounded-full border px-3 py-1 text-xs font-extrabold ${status.cls}`} data-testid="manual-tier-payment-status">
+              {status.label}
+            </span>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3 mt-4 text-sm">
+            <div className="rounded-xl bg-brand-off/70 p-3">
+              <div className="text-brand-mute">Paket</div>
+              <div className="font-bold">{payment.plan_label || payment.plan_id}</div>
+            </div>
+            <div className="rounded-xl bg-brand-off/70 p-3">
+              <div className="text-brand-mute">Nominal</div>
+              <div className="font-bold">{formatRupiah(payment.amount)}</div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-xl bg-blue-50 border border-blue-100 p-3 text-sm leading-relaxed">
+            {config.instruction || "Scan QRIS Lapakin, bayar sesuai nominal paket, lalu upload bukti pembayaran di halaman ini."}
+          </div>
+
+          {payment.status === "rejected" && payment.admin_note ? (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" data-testid="manual-tier-payment-rejected-note">
+              <div className="font-bold flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Catatan admin</div>
+              <div className="mt-1">{payment.admin_note}</div>
+            </div>
+          ) : null}
+
+          {payment.status === "pending_review" ? (
+            <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900" data-testid="manual-tier-payment-review-note">
+              <div className="font-bold flex items-center gap-2"><CheckCircle2 className="w-4 h-4" /> Bukti sudah dikirim</div>
+              <div className="mt-1">Admin Lapakin akan mengecek bukti pembayaran kamu.</div>
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCopy}
+              className="rounded-xl border-brand-line"
+              data-testid="manual-tier-copy-instruction-btn"
+            >
+              <Copy className="w-4 h-4 mr-2" /> Salin Instruksi
+            </Button>
+            <label className="inline-flex cursor-pointer items-center rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:opacity-90">
+              {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+              {uploading ? "Mengupload…" : payment.proof_filename ? "Upload Ulang Bukti" : "Upload Bukti Bayar"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFile}
+                disabled={uploading}
+                data-testid="manual-tier-proof-input"
+              />
+            </label>
+          </div>
+          <div className="mt-2 text-xs text-brand-mute">
+            Format gambar JPG/PNG/WebP, maksimal {config.max_proof_size_mb || 2}MB.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ManualPaymentDisabledPanel({ config, notice, onDismiss }) {
+  const message = notice?.message || config?.disabled_message || "Pembayaran upgrade tier sementara belum tersedia. QRIS Lapakin sedang dalam proses approval.";
+  const adminWa = config?.admin_whatsapp || "";
+  return (
+    <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-card" data-testid="manual-tier-payment-disabled-card">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="inline-flex rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-amber-900">
+            Upgrade sedang disiapkan
+          </div>
+          <h2 className="mt-3 font-heading text-xl font-extrabold">Pembayaran upgrade belum aktif</h2>
+          <p className="mt-1 text-sm leading-relaxed text-amber-900/90">{message}</p>
+          {notice?.plan_id ? <p className="mt-2 text-xs font-bold">Paket dipilih: {notice.plan_id}</p> : null}
+        </div>
+        {onDismiss ? (
+          <button type="button" onClick={onDismiss} className="rounded-full px-2 py-1 text-sm font-bold hover:bg-white/70">×</button>
+        ) : null}
+      </div>
+      {adminWa ? (
+        <a href={`https://wa.me/${adminWa}?text=${encodeURIComponent("Halo Admin Lapakin, saya mau tanya aktivasi paket upgrade.")}`} target="_blank" rel="noreferrer" className="mt-4 inline-flex rounded-xl bg-amber-900 px-4 py-2 text-sm font-bold text-white hover:opacity-90">
+          Hubungi Admin Lapakin
+        </a>
+      ) : null}
+    </div>
+  );
+}
 
 function UsageBar({ label, used, limit }) {
   const isUnlimited = limit === "unlimited";
@@ -47,6 +255,10 @@ export default function Billing() {
   const [history, setHistory] = useState([]);
   const [paying, setPaying] = useState(null);
   const [me, setMe] = useState(null);
+  const [manualPayment, setManualPayment] = useState(null);
+  const [manualConfig, setManualConfig] = useState(null);
+  const [manualPaymentNotice, setManualPaymentNotice] = useState(null);
+  const [proofUploading, setProofUploading] = useState(false);
   const navigate = useNavigate();
 
   const refresh = async () => {
@@ -74,6 +286,14 @@ export default function Billing() {
       setHistory(h.data || []);
     } catch {
       /* ignore */
+    }
+
+    try {
+      const manual = await api.get("/payment/manual/current");
+      setManualConfig(manual.data?.config || null);
+      setManualPayment(manual.data?.payment ? manual.data : null);
+    } catch {
+      setManualConfig(null);
     }
   };
 
@@ -109,19 +329,66 @@ export default function Billing() {
       return;
     }
 
-    const message =
-      plan_id.startsWith("business_")
-        ? "Halo Lapakin, saya mau aktivasi paket Bisnis."
-        : plan_id.startsWith("starter_")
-        ? "Halo Lapakin, saya mau aktivasi paket Starter."
-        : "Halo Lapakin, saya mau aktivasi paket Pro.";
+    if (manualConfig?.enabled === false) {
+      const message = manualConfig?.disabled_message || "Pembayaran upgrade tier sementara belum tersedia. QRIS Lapakin sedang dalam proses approval.";
+      setManualPaymentNotice({ plan_id, message });
+      toast(message);
+      return;
+    }
 
-    toast("Pembayaran online sedang disiapkan. Untuk sementara aktivasi dilakukan manual.");
+    setPaying(plan_id);
+    try {
+      const res = await api.post("/payment/manual/request", { plan_id });
+      setManualPayment(res.data);
+      toast.success("Instruksi QRIS Lapakin sudah dibuat. Silakan upload bukti pembayaran.");
+    } catch (err) {
+      const detail = err?.response?.data?.detail || "Gagal membuat request pembayaran manual. Coba lagi sebentar.";
+      if (err?.response?.status === 503) {
+        setManualPaymentNotice({ plan_id, message: detail });
+        toast(detail);
+      } else {
+        toast.error(detail);
+      }
+    } finally {
+      setPaying(null);
+    }
+  };
 
-    window.open(
-      `https://wa.me/628123456789?text=${encodeURIComponent(message)}`,
-      "_blank"
-    );
+  const handleUploadManualProof = async (file) => {
+    if (!manualPayment?.payment?.order_id || !file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Ukuran bukti pembayaran maksimal 2MB.");
+      return;
+    }
+
+    setProofUploading(true);
+    try {
+      const proofImage = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const res = await api.post(`/payment/manual/${manualPayment.payment.order_id}/proof`, {
+        proof_image: proofImage,
+        proof_filename: file.name,
+      });
+      setManualPayment((prev) => ({
+        ...(prev || {}),
+        payment: res.data?.payment || prev?.payment,
+      }));
+      toast.success("Bukti pembayaran terkirim. Admin Lapakin akan memverifikasi.");
+      await refresh();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.detail ||
+          "Gagal upload bukti pembayaran. Coba lagi."
+      );
+    } finally {
+      setProofUploading(false);
+    }
   };
 
   const getUpgradeButtonLabel = (plan_id) => {
@@ -141,15 +408,15 @@ export default function Billing() {
       return "Mulai Trial Pro";
     }
 
+    if (manualConfig?.enabled === false) {
+      return "Belum tersedia";
+    }
+
     if (isProPlan && currentTier === "pro" && me?.trial) {
       return "Aktivasi Pro Manual";
     }
 
-    if (plan_id.startsWith("business_")) {
-      return "Hubungi Admin";
-    }
-
-    return "Upgrade Manual";
+    return "Bayar via QRIS";
   };
 
 const canUseTrialForPlan = (plan_id) => {
@@ -209,6 +476,21 @@ const canUseTrialForPlan = (plan_id) => {
           </div>
         )}
 
+        {(manualPaymentNotice || manualConfig?.enabled === false) && !manualPayment?.payment ? (
+          <ManualPaymentDisabledPanel
+            config={manualConfig}
+            notice={manualPaymentNotice}
+            onDismiss={() => setManualPaymentNotice(null)}
+          />
+        ) : null}
+
+        <ManualPaymentPanel
+          manualPayment={manualPayment}
+          uploading={proofUploading}
+          onUploadProof={handleUploadManualProof}
+          onClose={() => setManualPayment(null)}
+        />
+
         {/* Current tier card */}
         <div className={`mt-6 rounded-2xl border-2 p-6 ${TIER_COLOR[data.tier] || TIER_COLOR.free}`}
           data-testid="current-tier-card">
@@ -263,15 +545,14 @@ const canUseTrialForPlan = (plan_id) => {
           <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
             <div className="font-bold">Trial Pro sudah selesai</div>
             <p className="mt-1">
-              Kamu masih bisa memakai fitur Gratis. Untuk membuka kembali fitur Pro, aktivasi paket bisa dilakukan manual dulu via WhatsApp.
+              Kamu masih bisa memakai fitur Gratis. Untuk membuka kembali fitur Pro, aktivasi paket bisa dilakukan via QRIS Lapakin dan upload bukti pembayaran.
             </p>
             <a
-              href="https://wa.me/628123456789?text=Halo%20Lapakin%2C%20saya%20mau%20aktivasi%20paket%20Pro."
-              target="_blank"
-              rel="noreferrer"
+              href="#upgrade-tier"
+              onClick={(e) => { e.preventDefault(); handleUpgrade("pro_monthly"); }}
               className="mt-3 inline-flex rounded-xl bg-orange-900 px-4 py-2 font-bold text-white hover:opacity-90"
             >
-              Aktivasi Pro Manual
+              Bayar Pro via QRIS
             </a>
           </div>
         )}
@@ -321,10 +602,10 @@ const canUseTrialForPlan = (plan_id) => {
           </div>
         </div>
 
-        <div className="mt-8 bg-white rounded-2xl border border-brand-line p-6 shadow-card">
+        <div id="upgrade-tier" className="mt-8 bg-white rounded-2xl border border-brand-line p-6 shadow-card">
           <h2 className="font-heading font-bold text-xl">Upgrade Tier</h2>
           <p className="text-brand-mute text-sm mt-1">
-            Pilih paket yang pas buat tokomu. Untuk sementara, pembayaran online sedang disiapkan. Kamu bisa mulai trial Pro atau aktivasi manual via WhatsApp.
+            Pilih paket yang pas buat tokomu. Untuk sementara, pembayaran upgrade tier diproses manual via QRIS Lapakin dan verifikasi admin.
           </p>
           <div className="grid sm:grid-cols-2 gap-3 mt-4">
             {[
@@ -388,7 +669,7 @@ const canUseTrialForPlan = (plan_id) => {
             ))}
           </div>
           <div className="text-xs text-brand-mute mt-3">
-            Pembayaran online via <b>Midtrans</b> sedang disiapkan. Sementara ini aktivasi paket dilakukan manual oleh tim Lapakin.
+            Pembayaran online via gateway sedang disiapkan. Sementara ini aktivasi paket dilakukan via <b>QRIS Lapakin</b> + upload bukti pembayaran untuk diverifikasi admin.
           </div>
         </div>
 
@@ -398,8 +679,9 @@ const canUseTrialForPlan = (plan_id) => {
             <div className="divide-y divide-brand-line text-sm">
               {history.map((h) => {
                 const statusColor = h.status === "success" ? "text-green-700 bg-green-100"
-                  : h.status === "failed" ? "text-red-700 bg-red-100"
+                  : h.status === "failed" || h.status === "rejected" ? "text-red-700 bg-red-100"
                   : h.status === "refunded" ? "text-orange-700 bg-orange-100"
+                  : h.status === "pending_review" ? "text-blue-800 bg-blue-100"
                   : "text-yellow-800 bg-yellow-100";
                 return (
                   <div key={h.order_id} className="py-3 flex items-center justify-between gap-3" data-testid={`payment-${h.order_id}`}>

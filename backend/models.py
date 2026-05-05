@@ -52,10 +52,30 @@ class ShopIn(BaseModel):
     storefront_promo_text: Optional[str] = ""
     storefront_promo_cta_label: Optional[str] = ""
     storefront_promo_slug: Optional[str] = ""
+    storefront_show_payment_instruction: Optional[bool] = False
+    storefront_payment_method_label: Optional[str] = ""
+    storefront_payment_instruction: Optional[str] = ""
+    storefront_qris_image: Optional[str] = ""
+    storefront_payment_confirmation_text: Optional[str] = ""
+    storefront_whatsapp_checkout_template: Optional[str] = ""
+    storefront_whatsapp_product_template: Optional[str] = ""
+    storefront_show_location_map: Optional[bool] = False
+    storefront_location_title: Optional[str] = ""
+    storefront_location_address: Optional[str] = ""
+    storefront_google_maps_url: Optional[str] = ""
+    storefront_location_embed_url: Optional[str] = ""
+    # Storefront testimonials
+    storefront_show_testimonials: Optional[bool] = False
+    storefront_testimonials: Optional[List[dict]] = []
     storefront_about_title: Optional[str] = ""
     name: str
     tagline: Optional[str] = ""
     description: Optional[str] = ""
+    category_id: Optional[str] = ""
+    category: Optional[str] = ""
+    category_name: Optional[str] = ""
+    is_active: Optional[bool] = True
+    availability_status: Optional[str] = "active"
     business_type: str  # kuliner / kopi / fashion / kerajinan / kecantikan / lainnya
     whatsapp: Optional[str] = ""
     brand_color: Optional[str] = "#C04A3B"

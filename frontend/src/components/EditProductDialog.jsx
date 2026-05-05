@@ -19,7 +19,20 @@ const DAY_LABELS = [
   { idx: 6, short: "Min", long: "Minggu" },
 ];
 
-export default function EditProductDialog({ product, shop, open, onOpenChange, onSaved }) {
+export default function EditProductDialog({ product, shop, categories = [], open, onOpenChange, onSaved }) {
+  // LAPAKIN_EDIT_PRODUCT_CATEGORY_D
+  const categoryOptions = Array.isArray(categories)
+    ? categories.filter((category) => category?.is_active !== false && category?.category_id)
+    : [];
+  const [selectedCategoryId, setSelectedCategoryId] = useState(product?.category_id || "");
+
+  useEffect(() => {
+    if (open && product) {
+      setSelectedCategoryId(product?.category_id || "");
+    }
+  }, [open, product?.product_id, product?.category_id]);
+
+
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
@@ -110,6 +123,14 @@ export default function EditProductDialog({ product, shop, open, onOpenChange, o
         ig_caption: igCaption, tiktok_caption: tiktokCaption, hashtags: tags,
         available_days: availableDays,
       };
+      const selectedCategory = categoryOptions.find(
+        (category) => category.category_id === selectedCategoryId
+      );
+
+      payload.category_id = selectedCategoryId || "";
+      payload.category = selectedCategory?.name || "";
+      payload.category_name = selectedCategory?.name || "";
+
       const { data } = await api.put(`/products/${product.product_id}`, payload);
       toast.success("Produk diperbarui");
       onSaved?.(data);
@@ -262,6 +283,29 @@ export default function EditProductDialog({ product, shop, open, onOpenChange, o
               data-testid="edit-hashtags-input" />
           </div>
         </div>
+
+          <label className="text-sm font-semibold text-brand-dark block" data-testid="edit-product-category-field">
+            Kategori
+            <select
+              value={selectedCategoryId}
+              onChange={(event) => setSelectedCategoryId(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-brand-line px-3 py-2 bg-white"
+              data-testid="edit-product-category-select"
+            >
+              <option value="">Tanpa kategori</option>
+              {categoryOptions.map((category) => (
+                <option key={category.category_id} value={category.category_id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            {categoryOptions.length === 0 ? (
+              <span className="mt-1 block text-xs text-brand-mute">
+                Belum ada kategori. Buat kategori dulu dari halaman Produk.
+              </span>
+            ) : null}
+          </label>
+
         <DialogFooter className="mt-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="edit-cancel-btn">Batal</Button>
           <Button onClick={save} disabled={saving}
