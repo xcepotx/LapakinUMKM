@@ -252,6 +252,256 @@ export default function ShopSettings() {
 
   };
 
+  const autoGenerateStorefrontTemplateFromBusiness = async () => {
+    if (enhancingStorefrontCopy) return;
+
+    if (!storefrontTemplateFeatures.ai) {
+      alert("Auto-generate template tersedia mulai paket Pro.");
+      return;
+    }
+
+    const ok = window.confirm(
+      "Auto-generate template dari data toko dan produk? Mode, style, copy, produk unggulan, dan promo banner akan diisi otomatis. Kamu tetap bisa edit manual sebelum menyimpan."
+    );
+
+    if (!ok) return;
+
+    const products = Array.isArray(storefrontPickerProducts)
+      ? storefrontPickerProducts
+      : [];
+
+    const shopName = shop.name || shop.shop_name || shop.store_name || "Toko Kamu";
+    const shopDescription =
+      shop.description ||
+      shop.about ||
+      shop.bio ||
+      shop.tagline ||
+      "";
+
+    const productText = products
+      .slice(0, 40)
+      .map((product) =>
+        [
+          product.name,
+          product.title,
+          product.category,
+          product.product_category,
+          product.description,
+          product.type,
+          product.product_mode,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      )
+      .join(" ");
+
+    const businessText = [
+      shopName,
+      shopDescription,
+      shop.business_category,
+      shop.category,
+      shop.store_category,
+      productText,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    const hasAnyKeyword = (keywords) =>
+      keywords.some((keyword) => businessText.includes(keyword));
+
+    const foodKeywords = [
+      "makanan",
+      "minuman",
+      "food",
+      "drink",
+      "warung",
+      "menu",
+      "nasi",
+      "ayam",
+      "bakso",
+      "mie",
+      "kopi",
+      "cafe",
+      "resto",
+      "kuliner",
+      "snack",
+      "kue",
+      "roti",
+      "catering",
+    ];
+
+    const serviceKeywords = [
+      "jasa",
+      "layanan",
+      "service",
+      "konsultasi",
+      "studio",
+      "foto",
+      "desain",
+      "design",
+      "video",
+      "branding",
+      "printing",
+      "laundry",
+      "salon",
+      "barber",
+      "repair",
+      "bengkel",
+      "kelas",
+      "kursus",
+    ];
+
+    const inferredMode = hasAnyKeyword(serviceKeywords)
+      ? "services"
+      : hasAnyKeyword(foodKeywords)
+        ? "food_menu"
+        : "catalog";
+
+    const inferredStyle =
+      inferredMode === "services"
+        ? "premium"
+        : inferredMode === "food_menu"
+          ? "playful"
+          : "modern";
+
+    const ctaLabel =
+      inferredMode === "services"
+        ? "Konsultasi Sekarang"
+        : inferredMode === "food_menu"
+          ? "Pesan Sekarang"
+          : "Chat & Order Sekarang";
+
+    const featuredTitle =
+      inferredMode === "services"
+        ? "Layanan Unggulan"
+        : inferredMode === "food_menu"
+          ? "Menu Favorit Hari Ini"
+          : "Produk Favorit";
+
+    const heroTitle =
+      inferredMode === "services"
+        ? `Layanan terpercaya dari ${shopName}`
+        : inferredMode === "food_menu"
+          ? `Menu favorit dari ${shopName}, siap menemani harimu`
+          : `Temukan pilihan terbaik dari ${shopName}`;
+
+    const heroSubtitle =
+      shopDescription ||
+      (inferredMode === "services"
+        ? "Lihat pilihan layanan, konsultasikan kebutuhanmu, lalu hubungi kami langsung via WhatsApp."
+        : inferredMode === "food_menu"
+          ? "Pilih menu favorit, cek harga, lalu pesan praktis lewat WhatsApp."
+          : "Lihat produk pilihan, cek detail dan harga, lalu order langsung lewat WhatsApp.");
+
+    const aboutTitle =
+      inferredMode === "services"
+        ? `Kenal lebih dekat dengan ${shopName}`
+        : inferredMode === "food_menu"
+          ? `Cerita rasa dari ${shopName}`
+          : `Cerita di balik ${shopName}`;
+
+    const productIdOf = (product) =>
+      String(product?.product_id || product?.id || product?._id || "");
+
+    const activeProducts = products.filter((product) => {
+      if (!product) return false;
+      if (product.active === false || product.is_active === false || product.visible === false) {
+        return false;
+      }
+      return Boolean(productIdOf(product));
+    });
+
+    const featuredLimit = storefrontTemplateFeatures.featuredLimit || 0;
+
+    const selectedProductIds = [...activeProducts]
+      .sort((a, b) => {
+        const aFeatured = a.featured || a.is_featured ? 1 : 0;
+        const bFeatured = b.featured || b.is_featured ? 1 : 0;
+        return bFeatured - aFeatured;
+      })
+      .slice(0, Math.max(0, Math.min(featuredLimit || 0, inferredMode === "food_menu" ? 6 : 4)))
+      .map(productIdOf)
+      .filter(Boolean);
+
+    const promoTitle =
+      inferredMode === "services"
+        ? "Konsultasi kebutuhanmu minggu ini"
+        : inferredMode === "food_menu"
+          ? "Promo Minggu Ini"
+          : "Promo Spesial Minggu Ini";
+
+    const promoText =
+      inferredMode === "services"
+        ? "Ceritakan kebutuhanmu dan dapatkan rekomendasi layanan yang paling sesuai."
+        : inferredMode === "food_menu"
+          ? "Pesan menu favorit minggu ini dan tanyakan promo terbaru langsung via WhatsApp."
+          : "Tanyakan stok, rekomendasi produk, dan promo terbaru langsung via WhatsApp.";
+
+    const promoCta =
+      inferredMode === "services"
+        ? "Konsultasi Promo"
+        : inferredMode === "food_menu"
+          ? "Ambil Promo"
+          : "Cek Promo";
+
+    setEnhancingStorefrontCopy(true);
+
+    let aiCopy = {};
+
+    try {
+      const response = await api.post("/shops/storefront-copy-ai", {
+        shop_name: shopName,
+        shop_description: shopDescription,
+        business_category:
+          shop.business_category ||
+          shop.category ||
+          shop.store_category ||
+          inferredMode,
+        instagram: shop.instagram || "",
+        tiktok: shop.tiktok || "",
+        storefront_mode: inferredMode,
+        storefront_style: inferredStyle,
+        current: {
+          storefront_hero_title: heroTitle,
+          storefront_hero_subtitle: heroSubtitle,
+          storefront_cta_label: ctaLabel,
+          storefront_featured_title: featuredTitle,
+          storefront_about_title: aboutTitle,
+        },
+      });
+
+      aiCopy = response?.data?.copy || {};
+    } catch (err) {
+      console.warn("Auto-generate template AI fallback used", err);
+      aiCopy = {};
+    } finally {
+      setEnhancingStorefrontCopy(false);
+    }
+
+    setShop((prev) => ({
+      ...prev,
+      storefront_renderer: "template",
+      storefront_mode: inferredMode,
+      storefront_style: inferredStyle,
+      storefront_hero_title: aiCopy.storefront_hero_title || heroTitle,
+      storefront_hero_subtitle: aiCopy.storefront_hero_subtitle || heroSubtitle,
+      storefront_cta_label: aiCopy.storefront_cta_label || ctaLabel,
+      storefront_featured_title: aiCopy.storefront_featured_title || featuredTitle,
+      storefront_about_title: aiCopy.storefront_about_title || aboutTitle,
+      storefront_featured_product_ids: selectedProductIds,
+      storefront_show_promo: true,
+      storefront_promo_title: promoTitle,
+      storefront_promo_text: promoText,
+      storefront_promo_cta_label: promoCta,
+      storefront_promo_slug: makeStorefrontCampaignSlug(promoTitle),
+    }));
+
+    alert("Template berhasil dibuat otomatis. Cek preview, lalu klik Simpan Semua Perubahan.");
+  };
+
+
+
   const getStorefrontTemplateFeatureConfig = (tierValue) => {
     const normalizedTier = String(tierValue || "free").toLowerCase();
 
@@ -1617,6 +1867,16 @@ export default function ShopSettings() {
                     data-testid="storefront-reset-template-content-btn"
                   >
                     Reset Konten
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={autoGenerateStorefrontTemplateFromBusiness}
+                    disabled={enhancingStorefrontCopy || storefrontAiLocked}
+                    className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-3 py-1 text-xs font-extrabold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                    data-testid="storefront-auto-generate-template-btn"
+                  >
+                    {enhancingStorefrontCopy ? "Membuat..." : storefrontAiLocked ? "Auto Pro" : "Auto Generate"}
                   </button>
                 </div>
               </div>
