@@ -246,6 +246,7 @@ export default function ShopSettings() {
     storefront_promo_title: "",
     storefront_promo_text: "",
     storefront_promo_cta_label: "",
+    storefront_promo_slug: "",
 
     }));
 
@@ -326,6 +327,64 @@ export default function ShopSettings() {
   const storefrontEditorLocked = !storefrontTemplateFeatures.editor;
   const storefrontAiLocked = !storefrontTemplateFeatures.ai;
   const storefrontPromoLocked = !storefrontTemplateFeatures.promo;
+
+  const makeStorefrontCampaignSlug = (value) => {
+    return String(value || "")
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48);
+  };
+
+  const activeCampaignSlug =
+    makeStorefrontCampaignSlug(shop.storefront_promo_slug) ||
+    makeStorefrontCampaignSlug(shop.storefront_promo_title) ||
+    "promo";
+
+  const activeShopSlug = shop.slug || shop.shop_slug || shop.store_slug || "";
+  const storefrontCampaignRenderer = shop.storefront_renderer || "legacy";
+  const storefrontCampaignQuery =
+    storefrontCampaignRenderer === "template"
+      ? `?promo=${encodeURIComponent(activeCampaignSlug)}`
+      : `?renderer=1&promo=${encodeURIComponent(activeCampaignSlug)}`;
+
+  const storefrontCampaignHost =
+    typeof window !== "undefined" ? window.location.hostname : "";
+
+  const isProductionMainDomain =
+    storefrontCampaignHost === "lapakin.my.id" ||
+    storefrontCampaignHost.endsWith(".lapakin.my.id");
+
+  const isDevOrLocalDomain =
+    storefrontCampaignHost === "dev.lapakin.my.id" ||
+    storefrontCampaignHost.endsWith(".dev.lapakin.my.id") ||
+    storefrontCampaignHost === "localhost" ||
+    storefrontCampaignHost === "127.0.0.1";
+
+  const storefrontCampaignPath = activeShopSlug
+    ? `/toko/${activeShopSlug}${storefrontCampaignQuery}#promo`
+    : "";
+
+  const storefrontCampaignUrl =
+    typeof window !== "undefined" && activeShopSlug
+      ? isProductionMainDomain && !isDevOrLocalDomain
+        ? `${window.location.protocol}//${activeShopSlug}.lapakin.my.id${storefrontCampaignQuery}#promo`
+        : `${window.location.origin}${storefrontCampaignPath}`
+      : storefrontCampaignPath;
+
+  const copyStorefrontCampaignLink = async () => {
+    if (!storefrontCampaignUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(storefrontCampaignUrl);
+      alert("Link promo berhasil disalin.");
+    } catch {
+      window.prompt("Salin link promo:", storefrontCampaignUrl);
+    }
+  };
+
 
   const storefrontFeaturedLimit = storefrontTemplateFeatures.featuredLimit || 0;
   const selectedFeaturedProductIds = Array.isArray(shop.storefront_featured_product_ids)
@@ -1796,6 +1855,55 @@ export default function ShopSettings() {
                       data-testid="storefront-promo-text-input"
                     />
                   </label>
+
+                  <label className="block">
+                    <span className="text-sm font-bold text-brand-ink">Slug Link Promo</span>
+                    <input
+                      value={shop.storefront_promo_slug || ""}
+                      onChange={(e) =>
+                        update(
+                          "storefront_promo_slug",
+                          String(e.target.value || "")
+                            .toLowerCase()
+                            .replace(/[^a-z0-9-]+/g, "-")
+                            .replace(/-+/g, "-")
+                            .slice(0, 48)
+                        )
+                      }
+                      disabled={storefrontPromoLocked}
+                      placeholder="Contoh: promo-minggu-ini"
+                      maxLength={48}
+                      className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                      data-testid="storefront-promo-slug-input"
+                    />
+                    <span className="mt-1 block text-xs text-brand-mute">
+                      Dipakai untuk link campaign yang bisa dibagikan ke WhatsApp, Instagram, atau TikTok.
+                    </span>
+                  </label>
+
+                  <div
+                    className="block"
+                    data-testid="storefront-campaign-share-link"
+                  >
+                    <span className="text-sm font-bold text-brand-ink">Link Share Promo</span>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        value={storefrontCampaignUrl}
+                        readOnly
+                        className="min-w-0 flex-1 rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                        data-testid="storefront-campaign-share-input"
+                      />
+                      <button
+                        type="button"
+                        onClick={copyStorefrontCampaignLink}
+                        disabled={!storefrontCampaignUrl || storefrontPromoLocked}
+                        className="inline-flex items-center justify-center rounded-xl bg-brand px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                        data-testid="storefront-campaign-copy-btn"
+                      >
+                        Salin Link
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
