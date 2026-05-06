@@ -724,6 +724,174 @@ async def _admin_try_top_store_aggregation(collection_name: str, limit: int = 8)
 
 
 
+
+
+def _admin_parse_iso_dt(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _admin_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+async def _admin_write_audit_log(
+    admin: dict,
+    action: str,
+    target_type: str,
+    target_id: str,
+    before: dict | None = None,
+    after: dict | None = None,
+    reason: str = "",
+    target_email: str = "",
+):
+    audit = {
+        "audit_id": f"audit_{uuid.uuid4().hex[:12]}",
+        "created_at": _admin_now_iso(),
+        "admin_user_id": (admin or {}).get("user_id"),
+        "admin_email": (admin or {}).get("email"),
+        "action": action,
+        "target_type": target_type,
+        "target_id": target_id,
+        "target_user_id": target_id if target_type == "user" else None,
+        "target_email": target_email,
+        "before": before or {},
+        "after": after or {},
+        "reason": reason or "",
+    }
+    await db.admin_audit_logs.insert_one(audit)
+    audit.pop("_id", None)
+    return audit
+
+
+def _admin_trial_public_state(user: dict) -> dict:
+    return {
+        "trial": bool(user.get("trial")),
+        "trial_used": bool(user.get("trial_used")),
+        "trial_expired": bool(user.get("trial_expired")),
+        "trial_started_at": user.get("trial_started_at"),
+        "trial_expires_at": user.get("trial_expires_at"),
+        "trial_expired_at": user.get("trial_expired_at"),
+        "tier": user.get("tier") or "free",
+    }
+
+
+@router.get("/admin/audit-logs")
+async def admin_audit_logs(request: Request, limit: int = 50, target_user_id: str = ""):
+    await require_admin(request)
+    limit = max(1, min(int(limit or 50), 200))
+    query = {}
+    if target_user_id:
+        query["target_user_id"] = target_user_id
+    items = await db.admin_audit_logs.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"items": items, "limit": limit}
+
+
+@router.post("/admin/users/{user_id}/trial/extend")
+async def admin_extend_user_trial(user_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    days = int(body.get("days") or 7)
+    days = max(1, min(days, 365))
+    reason = str(body.get("reason") or "").strip()
+
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    now = datetime.now(timezone.utc)
+    current_expiry = _admin_parse_iso_dt(user.get("trial_expires_at"))
+    base = current_expiry if current_expiry and current_expiry > now else now
+    new_expiry = base + timedelta(days=days)
+    now_iso = now.isoformat()
+
+    before = _admin_trial_public_state(user)
+    updates = {
+        "trial": True,
+        "trial_used": True,
+        "trial_expired": False,
+        "trial_expires_at": new_expiry.isoformat(),
+        "updated_at": now_iso,
+    }
+    if not user.get("trial_started_at"):
+        updates["trial_started_at"] = now_iso
+
+    await db.users.update_one({"user_id": user_id}, {"$set": updates})
+    updated = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    after = _admin_trial_public_state(updated or {})
+
+    audit = await _admin_write_audit_log(
+        admin=admin or {},
+        action="trial.extend",
+        target_type="user",
+        target_id=user_id,
+        target_email=user.get("email") or "",
+        before=before,
+        after={**after, "extended_days": days},
+        reason=reason,
+    )
+
+    if "_admin_enrich_user_for_admin" in globals():
+        updated = await _admin_enrich_user_for_admin(updated)
+
+    return {"ok": True, "user": updated, "audit": audit}
+
+
+@router.post("/admin/users/{user_id}/trial/end")
+async def admin_end_user_trial(user_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    reason = str(body.get("reason") or "").strip()
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    now_iso = _admin_now_iso()
+    before = _admin_trial_public_state(user)
+    updates = {
+        "trial": False,
+        "trial_used": True,
+        "trial_expired": True,
+        "trial_expired_at": now_iso,
+        "trial_expires_at": now_iso,
+        "updated_at": now_iso,
+    }
+
+    await db.users.update_one({"user_id": user_id}, {"$set": updates})
+    updated = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    after = _admin_trial_public_state(updated or {})
+
+    audit = await _admin_write_audit_log(
+        admin=admin or {},
+        action="trial.end",
+        target_type="user",
+        target_id=user_id,
+        target_email=user.get("email") or "",
+        before=before,
+        after=after,
+        reason=reason,
+    )
+
+    if "_admin_enrich_user_for_admin" in globals():
+        updated = await _admin_enrich_user_for_admin(updated)
+
+    return {"ok": True, "user": updated, "audit": audit}
+
 @router.get("/admin/billing/overview")
 async def admin_billing_overview(request: Request):
     await require_admin(request)

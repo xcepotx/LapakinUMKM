@@ -14,7 +14,7 @@ const ADMIN_ROUTES = [
   {
     path: "/admin/billing",
     name: "Admin billing monitor",
-    keywords: ["Billing Monitor", "Trial", "Payment", "Subscription"],
+    keywords: ["Billing Monitor", "Trial", "Payment", "Subscription", "Audit Log"],
   },
   {
     path: "/admin/users",

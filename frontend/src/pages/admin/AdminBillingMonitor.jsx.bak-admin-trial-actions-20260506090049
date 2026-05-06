@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AdminLayout from "@/components/AdminLayout";
-import AdminAuditLogPanel from "@/components/AdminAuditLogPanel";
 import api, { formatApiError } from "@/lib/api";
-import { AlertCircle, CreditCard, RefreshCw, Search, ShieldCheck, Timer } from "lucide-react";
+import { AlertCircle, CreditCard, RefreshCw, Search, ShieldCheck, Timer, Users } from "lucide-react";
 import { toast } from "sonner";
 
 const BILLING_OVERVIEW_API = "/admin/billing/overview";
@@ -34,7 +33,8 @@ function daysLeft(value) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return Math.ceil((date.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const diff = date.getTime() - Date.now();
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
 function money(value) {
@@ -101,8 +101,6 @@ export default function AdminBillingMonitor() {
   const [q, setQ] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [actingKey, setActingKey] = useState("");
-  const [auditRefreshKey, setAuditRefreshKey] = useState(0);
 
   const load = async (nextFilter = filter, nextQ = q) => {
     setLoading(true);
@@ -143,36 +141,12 @@ export default function AdminBillingMonitor() {
     load(value, q);
   };
 
-  const performTrialAction = async (user, action, days = 0) => {
-    const label = action === "extend" ? `extend trial ${days} hari` : "end trial";
-    const reason = window.prompt(`Alasan admin untuk ${label}:`, "Follow up onboarding UMKM");
-    if (reason === null) return;
-
-    const key = `${user.user_id}:${action}:${days}`;
-    setActingKey(key);
-    try {
-      if (action === "extend") {
-        await api.post(`/admin/users/${user.user_id}/trial/extend`, { days, reason });
-        toast.success(`Trial ${user.email} diperpanjang ${days} hari`);
-      } else {
-        await api.post(`/admin/users/${user.user_id}/trial/end`, { reason });
-        toast.success(`Trial ${user.email} diakhiri`);
-      }
-      await load(filter, q);
-      setAuditRefreshKey((value) => value + 1);
-    } catch (err) {
-      toast.error(formatApiError(err?.response?.data?.detail) || "Gagal menjalankan trial action");
-    } finally {
-      setActingKey("");
-    }
-  };
-
   const stats = overview || {};
 
   return (
     <AdminLayout
       title="Billing Monitor"
-      subtitle="Pantau dan tindak trial, subscription, dan payment pending dari satu tempat."
+      subtitle="Pantau trial, subscription, dan payment pending dari satu tempat."
     >
       <div className="space-y-5" data-testid="admin-billing-monitor-page">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -247,7 +221,6 @@ export default function AdminBillingMonitor() {
                     <th className="px-4 py-3">Sisa</th>
                     <th className="px-4 py-3">Subscription</th>
                     <th className="px-4 py-3">Payment/Deposit</th>
-                    <th className="px-4 py-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -255,9 +228,6 @@ export default function AdminBillingMonitor() {
                     const left = daysLeft(user.trial_expires_at);
                     const deposit = user.admin_deposit || {};
                     const shop = user.admin_shop || {};
-                    const extend7Key = `${user.user_id}:extend:7`;
-                    const extend14Key = `${user.user_id}:extend:14`;
-                    const endKey = `${user.user_id}:end:0`;
                     return (
                       <tr key={user.user_id || user.email} className="border-b border-brand-line align-top">
                         <td className="px-4 py-4">
@@ -295,34 +265,6 @@ export default function AdminBillingMonitor() {
                           <div>Pending: {deposit.pending_count ?? 0}</div>
                           <div>Last: {formatDate(deposit.last_payment_at)}</div>
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="flex min-w-[150px] flex-col gap-2">
-                            <button
-                              type="button"
-                              onClick={() => performTrialAction(user, "extend", 7)}
-                              disabled={actingKey === extend7Key}
-                              className="rounded-xl bg-brand px-3 py-2 text-xs font-extrabold text-white disabled:opacity-60"
-                            >
-                              Extend 7 hari
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => performTrialAction(user, "extend", 14)}
-                              disabled={actingKey === extend14Key}
-                              className="rounded-xl border border-brand-line bg-white px-3 py-2 text-xs font-extrabold text-brand-ink hover:bg-brand-off disabled:opacity-60"
-                            >
-                              Extend 14 hari
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => performTrialAction(user, "end")}
-                              disabled={actingKey === endKey}
-                              className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700 hover:bg-red-100 disabled:opacity-60"
-                            >
-                              End trial
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                     );
                   })}
@@ -331,8 +273,6 @@ export default function AdminBillingMonitor() {
             </div>
           )}
         </div>
-
-        <AdminAuditLogPanel refreshKey={auditRefreshKey} />
       </div>
     </AdminLayout>
   );
