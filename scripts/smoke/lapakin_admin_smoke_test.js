@@ -46,6 +46,18 @@ function fail(message) {
   throw new Error(`[admin-smoke][ERROR] ${message}`);
 }
 
+function isIgnorableFailedRequest(item) {
+  const value = String(item || "").toLowerCase();
+  return (
+    value.includes("401") ||
+    value.includes("favicon") ||
+    value.includes("/cdn-cgi/rum") ||
+    value.includes("cloudflareinsights") ||
+    value.includes("beacon.min.js") ||
+    value.includes("web-vitals")
+  );
+}
+
 async function fillFirst(page, selectors, value, label) {
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
@@ -132,6 +144,15 @@ async function main() {
     });
     page.on("requestfailed", (request) => {
       const url = request.url();
+      const lowerUrl = url.toLowerCase();
+      if (
+        lowerUrl.includes("/cdn-cgi/rum") ||
+        lowerUrl.includes("cloudflareinsights") ||
+        lowerUrl.includes("beacon.min.js") ||
+        lowerUrl.includes("web-vitals")
+      ) {
+        return;
+      }
       if (url.includes("/api/") || url.includes(BASE_URL)) {
         failedRequests.push(`${request.method()} ${url} ${request.failure()?.errorText || ""}`);
       }
@@ -143,6 +164,14 @@ async function main() {
   page.on("response", async (response) => {
     const url = response.url();
     const status = response.status();
+    if (
+      url.toLowerCase().includes("/cdn-cgi/rum") ||
+      url.toLowerCase().includes("cloudflareinsights") ||
+      url.toLowerCase().includes("beacon.min.js") ||
+      url.toLowerCase().includes("web-vitals")
+    ) {
+      return;
+    }
     if (url.startsWith(BASE_URL) && status >= 500) {
       failedRequests.push(`${status} ${url}`);
     }
@@ -175,7 +204,7 @@ async function main() {
       fail(`page errors detected: ${pageErrors.slice(0, 5).join(" | ")}`);
     }
 
-    const hardFailures = failedRequests.filter((item) => !item.includes("401") && !item.includes("favicon"));
+    const hardFailures = failedRequests.filter((item) => !isIgnorableFailedRequest(item));
     if (hardFailures.length) {
       fail(`failed requests detected: ${hardFailures.slice(0, 5).join(" | ")}`);
     }
