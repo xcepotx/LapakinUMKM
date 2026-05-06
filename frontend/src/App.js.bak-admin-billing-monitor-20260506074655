@@ -43,7 +43,6 @@ import AdminManualActivation from "@/pages/admin/AdminManualActivation";
 
 import { detectTenantSlug } from "@/lib/tenant";
 
-import AdminBillingMonitor from "@/pages/admin/AdminBillingMonitor";
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -108,7 +107,6 @@ function AppRouter() {
       <Route path="/toko/:slug" element={<Storefront />} />
       <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
       <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />
-      <Route path="/admin/billing" element={<AdminRoute><AdminBillingMonitor /></AdminRoute>} />
       <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
       <Route path="/admin/pricing" element={<AdminRoute><AdminPricing /></AdminRoute>} />
       <Route path="/admin/products" element={<AdminRoute><AdminProducts /></AdminRoute>} />

@@ -722,6 +722,180 @@ async def _admin_try_top_store_aggregation(collection_name: str, limit: int = 8)
     return []
 
 
+
+
+@router.get("/admin/billing/overview")
+async def admin_billing_overview(request: Request):
+    await require_admin(request)
+    now_iso, soon_iso = _admin_iso_now_window(7)
+    pending_statuses = ["pending", "pending_review", "waiting", "review"]
+
+    [
+        users_total,
+        trial_active,
+        trial_expiring_7d,
+        trial_expired,
+        paid_active,
+        payment_pending,
+    ] = await asyncio.gather(
+        db.users.count_documents({}),
+        db.users.count_documents({"trial": True}),
+        db.users.count_documents({"trial": True, "trial_expires_at": {"$gte": now_iso, "$lte": soon_iso}}),
+        db.users.count_documents({"$or": [{"trial_expired": True}, {"trial_expires_at": {"$lt": now_iso}, "trial_used": True}]}),
+        db.users.count_documents({"tier": {"$in": ["starter", "pro", "business"]}}),
+        db.payments.count_documents({"status": {"$in": pending_statuses}}),
+    )
+
+    return {
+        "users_total": users_total,
+        "trial_active": trial_active,
+        "trial_expiring_7d": trial_expiring_7d,
+        "trial_expired": trial_expired,
+        "paid_active": paid_active,
+        "payment_pending": payment_pending,
+        "window_days": 7,
+    }
+
+
+@router.get("/admin/billing/users")
+async def admin_billing_users(request: Request, filter: str = "all", q: str = "", limit: int = 100):
+    await require_admin(request)
+    limit = max(1, min(int(limit or 100), 300))
+    now_iso, soon_iso = _admin_iso_now_window(7)
+
+    query = _admin_billing_user_query(filter, now_iso, soon_iso)
+
+    if query.pop("__payment_pending__", False):
+        payments = await db.payments.find(
+            {"status": {"$in": ["pending", "pending_review", "waiting", "review"]}},
+            {"_id": 0, "user_id": 1, "email": 1},
+        ).to_list(1000)
+        user_ids = [p.get("user_id") for p in payments if p.get("user_id")]
+        emails = [p.get("email") for p in payments if p.get("email")]
+        query = {"$or": []}
+        if user_ids:
+            query["$or"].append({"user_id": {"$in": user_ids}})
+        if emails:
+            query["$or"].append({"email": {"$in": emails}})
+        if not query["$or"]:
+            return {"items": [], "filter": filter, "limit": limit}
+
+    if q:
+        search = {"$or": [
+            {"email": {"$regex": q, "$options": "i"}},
+            {"name": {"$regex": q, "$options": "i"}},
+        ]}
+        if query:
+            query = {"$and": [query, search]}
+        else:
+            query = search
+
+    users = await db.users.find(query, {"_id": 0, "password_hash": 0}).sort("trial_expires_at", 1).limit(limit).to_list(limit)
+
+    # Prefer existing rich admin user enrichment if present.
+    if "_admin_enrich_user_for_admin" in globals():
+        items = [await _admin_enrich_user_for_admin(user) for user in users]
+    elif "_with_admin_user_lifecycle" in globals():
+        items = [_with_admin_user_lifecycle(user) for user in users]
+    else:
+        items = users
+
+    return {"items": items, "filter": filter, "limit": limit}
+
+
+
+def _admin_iso_now_window(days: int = 7):
+    now = datetime.now(timezone.utc)
+    return now.isoformat(), (now + timedelta(days=days)).isoformat()
+
+
+def _admin_billing_user_query(filter_name: str, now_iso: str, soon_iso: str) -> dict:
+    if filter_name == "trial_active":
+        return {"trial": True}
+    if filter_name == "trial_expiring_7d":
+        return {"trial": True, "trial_expires_at": {"$gte": now_iso, "$lte": soon_iso}}
+    if filter_name == "trial_expired":
+        return {
+            "$or": [
+                {"trial_expired": True},
+                {"trial_expires_at": {"$lt": now_iso}, "trial_used": True},
+            ]
+        }
+    if filter_name == "paid_active":
+        return {"tier": {"$in": ["starter", "pro", "business"]}}
+    if filter_name == "payment_pending":
+        return {"__payment_pending__": True}
+    return {}
+
+
+@router.get("/admin/billing/overview")
+async def admin_billing_overview(request: Request):
+    await require_admin(request)
+    now_iso, soon_iso = _admin_iso_now_window(7)
+    pending_statuses = ["pending", "pending_review", "waiting", "review"]
+
+    users_total, trial_active, trial_expiring_7d, trial_expired, paid_active, payment_pending = await asyncio.gather(
+        db.users.count_documents({}),
+        db.users.count_documents({"trial": True}),
+        db.users.count_documents({"trial": True, "trial_expires_at": {"$gte": now_iso, "$lte": soon_iso}}),
+        db.users.count_documents({"$or": [{"trial_expired": True}, {"trial_expires_at": {"$lt": now_iso}, "trial_used": True}]}),
+        db.users.count_documents({"tier": {"$in": ["starter", "pro", "business"]}}),
+        db.payments.count_documents({"status": {"$in": pending_statuses}}),
+    )
+
+    return {
+        "users_total": users_total,
+        "trial_active": trial_active,
+        "trial_expiring_7d": trial_expiring_7d,
+        "trial_expired": trial_expired,
+        "paid_active": paid_active,
+        "payment_pending": payment_pending,
+        "window_days": 7,
+    }
+
+
+@router.get("/admin/billing/users")
+async def admin_billing_users(request: Request, filter: str = "all", q: str = "", limit: int = 100):
+    await require_admin(request)
+    limit = max(1, min(int(limit or 100), 300))
+    now_iso, soon_iso = _admin_iso_now_window(7)
+
+    query = _admin_billing_user_query(filter, now_iso, soon_iso)
+
+    if query.pop("__payment_pending__", False):
+        payments = await db.payments.find(
+            {"status": {"$in": ["pending", "pending_review", "waiting", "review"]}},
+            {"_id": 0, "user_id": 1, "email": 1},
+        ).to_list(1000)
+        user_ids = [p.get("user_id") for p in payments if p.get("user_id")]
+        emails = [p.get("email") for p in payments if p.get("email")]
+        or_query = []
+        if user_ids:
+            or_query.append({"user_id": {"$in": user_ids}})
+        if emails:
+            or_query.append({"email": {"$in": emails}})
+        if not or_query:
+            return {"items": [], "filter": filter, "limit": limit}
+        query = {"$or": or_query}
+
+    if q:
+        search = {"$or": [
+            {"email": {"$regex": q, "$options": "i"}},
+            {"name": {"$regex": q, "$options": "i"}},
+        ]}
+        query = {"$and": [query, search]} if query else search
+
+    users = await db.users.find(query, {"_id": 0, "password_hash": 0}).sort("trial_expires_at", 1).limit(limit).to_list(limit)
+
+    if "_admin_enrich_user_for_admin" in globals():
+        items = [await _admin_enrich_user_for_admin(user) for user in users]
+    elif "_with_admin_user_lifecycle" in globals():
+        items = [_with_admin_user_lifecycle(user) for user in users]
+    else:
+        items = users
+
+    return {"items": items, "filter": filter, "limit": limit}
+
 @router.get("/admin/analytics/top-stores")
 async def admin_top_stores_visits(request: Request, limit: int = 8):
     await require_admin(request)

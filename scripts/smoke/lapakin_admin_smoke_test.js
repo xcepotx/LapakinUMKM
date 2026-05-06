@@ -12,6 +12,11 @@ const ADMIN_ROUTES = [
     keywords: ["admin", "Toko Paling Banyak Dikunjungi"],
   },
   {
+    path: "/admin/billing",
+    name: "Admin billing monitor",
+    keywords: ["Billing Monitor", "Trial", "Payment", "Subscription"],
+  },
+  {
     path: "/admin/users",
     name: "Admin users",
     keywords: ["user", "pengguna", "email", "tier", "trial", "Detail admin"],
