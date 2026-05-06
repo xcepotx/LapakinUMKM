@@ -304,6 +304,62 @@ async def admin_list_shops(request: Request, q: str = "", limit: int = 100):
     return shops
 
 
+
+def _admin_first_present(doc: dict, *keys):
+    for key in keys:
+        value = doc.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _admin_user_lifecycle_summary(user: dict) -> dict:
+    created_at = _admin_first_present(user, "created_at", "registered_at")
+    updated_at = _admin_first_present(user, "updated_at")
+    trial_started_at = _admin_first_present(user, "trial_started_at", "trial_start_at", "trial_start")
+    trial_expires_at = _admin_first_present(user, "trial_expires_at", "trial_until", "trial_end_at")
+    trial_ended_at = _admin_first_present(user, "trial_expired_at", "trial_ended_at")
+    tier_updated_at = _admin_first_present(user, "tier_updated_at")
+    subscription_started_at = _admin_first_present(user, "subscription_started_at")
+    subscription_expires_at = _admin_first_present(user, "subscription_expires_at")
+
+    return {
+        "account_created_at": created_at,
+        "account_updated_at": updated_at,
+        "trial_started_at": trial_started_at,
+        "trial_expires_at": trial_expires_at,
+        "trial_ended_at": trial_ended_at,
+        "trial": bool(user.get("trial")),
+        "trial_used": bool(user.get("trial_used")),
+        "trial_expired": bool(user.get("trial_expired")),
+        "tier": user.get("tier") or "free",
+        "tier_updated_at": tier_updated_at,
+        "subscription_status": user.get("subscription_status"),
+        "subscription_plan_id": user.get("subscription_plan_id"),
+        "subscription_cycle": user.get("subscription_cycle"),
+        "subscription_started_at": subscription_started_at,
+        "subscription_expires_at": subscription_expires_at,
+    }
+
+
+def _with_admin_user_lifecycle(user: dict) -> dict:
+    doc = dict(user or {})
+    lifecycle = _admin_user_lifecycle_summary(doc)
+    doc["admin_lifecycle"] = lifecycle
+
+    # Explicit top-level aliases for frontend tables/cards.
+    for key, value in lifecycle.items():
+        if key.endswith("_at") and not doc.get(key):
+            doc[key] = value
+    if not doc.get("account_created_at"):
+        doc["account_created_at"] = lifecycle.get("account_created_at")
+    if not doc.get("account_updated_at"):
+        doc["account_updated_at"] = lifecycle.get("account_updated_at")
+
+    return doc
+
+
+
 # 3. List users
 @router.get("/admin/pricing")
 async def admin_get_pricing(request: Request):
@@ -336,7 +392,7 @@ async def admin_list_users(request: Request, q: str = "", limit: int = 200):
         flt["$or"] = [{"email": {"$regex": q, "$options": "i"}},
                       {"name": {"$regex": q, "$options": "i"}}]
     users = await db.users.find(flt, {"_id": 0, "password_hash": 0}).sort("created_at", -1).limit(limit).to_list(limit)
-    return users
+    return [_with_admin_user_lifecycle(user) for user in users]
 
 
 # 4. Suspend / activate shop
