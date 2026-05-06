@@ -14,7 +14,7 @@ from .content_studio import router as content_studio_router
 from .sales import router as sales_router
 from .team import router as team_router
 from .instagram import router as instagram_router
-
+from .bot import router as bot_router
 
 ALL_ROUTERS = [
     auth_router,
@@ -32,4 +32,5 @@ ALL_ROUTERS = [
     stories_router,
     content_studio_router,
     instagram_router,
+    bot_router,
 ]
