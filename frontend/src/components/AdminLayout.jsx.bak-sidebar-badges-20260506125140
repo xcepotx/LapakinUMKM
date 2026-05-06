@@ -1,57 +1,21 @@
-import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard, ClipboardList, Bell } from "lucide-react";
-
-import api from "@/lib/api";
-
-function AdminNavBadge({ count }) {
-  const value = Number(count || 0);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return (
-    <span className="ml-auto inline-flex min-w-[1.35rem] items-center justify-center rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-white">
-      {value > 99 ? "99+" : value}
-    </span>
-  );
-}
 
 export default function AdminLayout({ children, title, subtitle, actions }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
-  
-  const [adminNavBadges, setAdminNavBadges] = useState({});
-
-  useEffect(() => {
-    let alive = true;
-
-    async function loadAdminNavBadges() {
-      try {
-        const { data } = await api.get("/admin/nav-badges");
-        if (alive) setAdminNavBadges(data?.badges || {});
-      } catch (_err) {
-        if (alive) setAdminNavBadges({});
-      }
-    }
-
-    loadAdminNavBadges();
-    const timer = window.setInterval(loadAdminNavBadges, 60000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-const items = [
+  const items = [
     { to: "/admin", icon: ShieldCheck, label: "Overview", tid: "admin-nav-overview" },
-    { label: (<><span>Daily Ops</span><AdminNavBadge count={adminNavBadges.ops} /></>), to: "/admin/ops", icon: Activity },{ to: "/admin/shops", icon: Store, label: "Toko UMKM", tid: "admin-nav-shops" },
-    { label: (<><span>Notifications</span><AdminNavBadge count={adminNavBadges.notifications} /></>), to: "/admin/notifications", icon: Bell },
-    { label: (<><span>Billing</span><AdminNavBadge count={adminNavBadges.billing} /></>), to: "/admin/billing", icon: CreditCard },
-  { label: (<><span>Payments</span><AdminNavBadge count={adminNavBadges.payments} /></>), to: "/admin/payments", icon: CreditCard },
-  { label: (<><span>Store Health</span><AdminNavBadge count={adminNavBadges.store_health} /></>), to: "/admin/store-health", icon: Activity },
-  { label: (<><span>Onboarding</span><AdminNavBadge count={adminNavBadges.onboarding} /></>), to: "/admin/onboarding", icon: ClipboardList },
+    { label: "Daily Ops", to: "/admin/ops", icon: Activity },{ to: "/admin/shops", icon: Store, label: "Toko UMKM", tid: "admin-nav-shops" },
+    { label: "Notifications", to: "/admin/notifications", icon: Bell },
+    { label: "Billing", to: "/admin/billing", icon: CreditCard },
+  { label: "Payments", to: "/admin/payments", icon: CreditCard },
+  { label: "Store Health", to: "/admin/store-health", icon: Activity },
+  { label: "Onboarding", to: "/admin/onboarding", icon: ClipboardList },
   { to: "/admin/users", icon: Users, label: "Pengguna", tid: "admin-nav-users" },
     { to: "/admin/pricing", icon: Tags, label: "Pricing", tid: "admin-nav-pricing" },
     { to: "/admin/products", icon: Trash2, label: "Moderasi Produk", tid: "admin-nav-products" },

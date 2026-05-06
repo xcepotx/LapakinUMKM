@@ -1587,6 +1587,72 @@ def _admin_notification_matches(item: dict, status: str, type_: str, q: str) -> 
     return True
 
 
+
+
+async def _admin_nav_badges_notifications_open():
+    try:
+        if "_admin_build_notification_candidates" in globals() and "_admin_apply_notification_state" in globals():
+            candidates = await _admin_build_notification_candidates(limit=300)
+            items = await _admin_apply_notification_state(candidates)
+            return sum(1 for item in items if item.get("status") == "open")
+    except Exception:
+        return 0
+    return 0
+
+
+async def _admin_nav_badges_store_critical():
+    try:
+        if "_admin_onboarding_build_items" in globals():
+            items, _summary = await _admin_onboarding_build_items(status="all", health="critical", q="", limit=500)
+            return len(items)
+    except Exception:
+        return 0
+    return 0
+
+
+@router.get("/admin/nav-badges")
+async def admin_nav_badges(request: Request):
+    await require_admin(request)
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    soon_7_iso = (now + timedelta(days=7)).isoformat()
+    today_end_iso = now.replace(hour=23, minute=59, second=59, microsecond=999999).isoformat()
+
+    pending_payment_statuses = ["pending", "pending_review", "waiting", "review"]
+
+    trial_expiring_7d, payment_pending, onboarding_open, onboarding_due_today, notifications_open, store_critical = await asyncio.gather(
+        db.users.count_documents({"trial": True, "trial_expires_at": {"$gte": now_iso, "$lte": soon_7_iso}}),
+        db.payments.count_documents({"status": {"$in": pending_payment_statuses}}),
+        db.admin_onboarding_followups.count_documents({"status": {"$ne": "done"}}),
+        db.admin_onboarding_followups.count_documents({"status": {"$ne": "done"}, "next_follow_up_at": {"$lte": today_end_iso}}),
+        _admin_nav_badges_notifications_open(),
+        _admin_nav_badges_store_critical(),
+    )
+
+    ops_tasks = sum(1 for count in [trial_expiring_7d, payment_pending, onboarding_due_today, store_critical, notifications_open] if int(count or 0) > 0)
+
+    badges = {
+        "ops": ops_tasks,
+        "notifications": notifications_open,
+        "billing": trial_expiring_7d,
+        "payments": payment_pending,
+        "store_health": store_critical,
+        "onboarding": onboarding_open,
+    }
+
+    return {
+        "ok": True,
+        "badges": badges,
+        "details": {
+            "trial_expiring_7d": trial_expiring_7d,
+            "payment_pending": payment_pending,
+            "store_critical": store_critical,
+            "onboarding_open": onboarding_open,
+            "onboarding_due_today": onboarding_due_today,
+            "notifications_open": notifications_open,
+        },
+    }
+
 @router.get("/admin/notifications")
 async def admin_notifications(request: Request, status: str = "open", type: str = "all", q: str = "", limit: int = 100):
     await require_admin(request)
