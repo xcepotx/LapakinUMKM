@@ -132,6 +132,7 @@ class ProductIn(BaseModel):
     # Per-product day availability — empty list = setiap hari.
     # 0=Senin … 6=Minggu (Python's weekday() convention).
     available_days: List[int] = []
+    sort_order: Optional[int] = 0
     is_active: Optional[bool] = True
     availability_status: Optional[str] = "active"
 

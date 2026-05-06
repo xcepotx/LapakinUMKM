@@ -17,6 +17,10 @@ def _lapakin_expose_product_status_fields(product):
     if not isinstance(product, dict):
         return product
     out = dict(product)
+    try:
+        out["sort_order"] = int(out.get("sort_order") or 0)
+    except Exception:
+        out["sort_order"] = 0
     raw_status = str(out.get("availability_status") or "").strip().lower()
     allowed_statuses = {"active", "out_of_stock", "hidden"}
     if raw_status not in allowed_statuses:
@@ -24,6 +28,47 @@ def _lapakin_expose_product_status_fields(product):
     out["availability_status"] = raw_status
     out["is_active"] = raw_status != "hidden"
     return out
+
+
+def _lapakin_parse_reorder_items(body, *, id_field, list_keys):
+    # Parse reorder payloads into [(item_id, sort_order)].
+    # Supported:
+    # - {"ordered_product_ids": ["prod_a", "prod_b"]}
+    # - {"items": [{"product_id": "prod_a", "sort_order": 0}]}
+    if not isinstance(body, dict):
+        return []
+
+    raw_items = None
+    for key in list_keys:
+        value = body.get(key)
+        if isinstance(value, list):
+            raw_items = value
+            break
+
+    if raw_items is None:
+        raw_items = body.get("items") if isinstance(body.get("items"), list) else []
+
+    parsed = []
+    seen = set()
+    for index, item in enumerate(raw_items):
+        if isinstance(item, dict):
+            item_id = str(item.get(id_field) or item.get("id") or "").strip()
+            raw_sort = item.get("sort_order", index)
+        else:
+            item_id = str(item or "").strip()
+            raw_sort = index
+
+        if not item_id or item_id in seen:
+            continue
+
+        seen.add(item_id)
+        try:
+            sort_order = int(raw_sort)
+        except Exception:
+            sort_order = index
+        parsed.append((item_id, sort_order))
+
+    return parsed
 
 
 def _now_iso():
@@ -197,6 +242,47 @@ async def create_product_category(request: Request):
     return category
 
 
+@router.patch("/product-categories/reorder")
+@router.patch("/product_categories/reorder")
+async def reorder_product_categories(request: Request):
+    user, shop_id = await _get_shop_id(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    items = _lapakin_parse_reorder_items(
+        body,
+        id_field="category_id",
+        list_keys=("ordered_category_ids", "category_ids", "categories"),
+    )
+    if not items:
+        raise HTTPException(status_code=400, detail="Daftar urutan kategori kosong")
+
+    now = _now_iso()
+    updated = 0
+    matched = 0
+    missing = []
+
+    for category_id, sort_order in items:
+        result = await db.product_categories.update_one(
+            {"shop_id": shop_id, "category_id": category_id},
+            {"$set": {"sort_order": sort_order, "updated_at": now}},
+        )
+        matched += int(getattr(result, "matched_count", 0) or 0)
+        updated += int(getattr(result, "modified_count", 0) or 0)
+        if not getattr(result, "matched_count", 0):
+            missing.append(category_id)
+
+    return {
+        "ok": True,
+        "requested": len(items),
+        "matched": matched,
+        "updated": updated,
+        "missing": missing,
+    }
+
+
 @router.put("/product-categories/{category_id}")
 async def update_product_category_master(category_id: str, request: Request):
     user, shop_id = await _get_shop_id(request)
@@ -280,7 +366,7 @@ async def list_my_products(request: Request):
         return []
     products = await db.products.find(
         {"shop_id": user["shop_id"]}, {"_id": 0}
-    ).sort("created_at", -1).to_list(500)
+    ).sort([("sort_order", 1), ("created_at", -1)]).to_list(500)
     return [_lapakin_expose_product_status_fields(p) for p in products]
 @router.post("/products")
 async def create_product(data: ProductIn, request: Request):
@@ -364,6 +450,46 @@ async def bulk_update_daily_menu(request: Request):
             modified += r.matched_count
 
     return {"ok": True, "updated": modified, "total": len(sane_updates)}
+
+
+@router.patch("/products/reorder")
+async def reorder_products(request: Request):
+    user, shop_id = await _get_shop_id(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    items = _lapakin_parse_reorder_items(
+        body,
+        id_field="product_id",
+        list_keys=("ordered_product_ids", "product_ids", "products"),
+    )
+    if not items:
+        raise HTTPException(status_code=400, detail="Daftar urutan produk kosong")
+
+    now = _now_iso()
+    updated = 0
+    matched = 0
+    missing = []
+
+    for product_id, sort_order in items:
+        result = await db.products.update_one(
+            {"shop_id": shop_id, "product_id": product_id},
+            {"$set": {"sort_order": sort_order, "updated_at": now}},
+        )
+        matched += int(getattr(result, "matched_count", 0) or 0)
+        updated += int(getattr(result, "modified_count", 0) or 0)
+        if not getattr(result, "matched_count", 0):
+            missing.append(product_id)
+
+    return {
+        "ok": True,
+        "requested": len(items),
+        "matched": matched,
+        "updated": updated,
+        "missing": missing,
+    }
 
 
 @router.put("/products/{product_id}")

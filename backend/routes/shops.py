@@ -24,6 +24,10 @@ def _lapakin_expose_product_status_fields(product):
     if not isinstance(product, dict):
         return product
     out = dict(product)
+    try:
+        out["sort_order"] = int(out.get("sort_order") or 0)
+    except Exception:
+        out["sort_order"] = 0
     raw_status = str(out.get("availability_status") or "").strip().lower()
     allowed_statuses = {"active", "out_of_stock", "hidden"}
     if raw_status not in allowed_statuses:
@@ -1291,7 +1295,7 @@ async def get_shop_public(slug: str):
         raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
     if shop.get("status") == "suspended":
         raise HTTPException(status_code=404, detail="Toko tidak tersedia")
-    products = await db.products.find({"shop_id": shop["shop_id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    products = await db.products.find({"shop_id": shop["shop_id"]}, {"_id": 0}).sort([("sort_order", 1), ("created_at", -1)]).to_list(200)
     schedule_status = compute_schedule_status(shop)
     if schedule_status.get("auto") and not shop.get("manual_open_override"):
         shop["is_open"] = bool(schedule_status.get("is_open_now"))

@@ -25,6 +25,10 @@ def _lapakin_expose_product_status_fields(product):
     if not isinstance(product, dict):
         return product
     out = dict(product)
+    try:
+        out["sort_order"] = int(out.get("sort_order") or 0)
+    except Exception:
+        out["sort_order"] = 0
     raw_status = str(out.get("availability_status") or "").strip().lower()
     allowed_statuses = {"active", "out_of_stock", "hidden"}
     if raw_status not in allowed_statuses:

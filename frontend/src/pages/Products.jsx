@@ -307,6 +307,79 @@ export default function Products() {
   };
   const imgCount = (p) => (Array.isArray(p.images) ? p.images.length : (p.image_data ? 1 : 0));
 
+
+  const handleMoveProductSortOrder = async (productId, direction) => {
+    const currentIndex = products.findIndex((product) => product.product_id === productId);
+    if (currentIndex < 0) return;
+
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= products.length) return;
+
+    const nextProducts = [...products];
+    const [moved] = nextProducts.splice(currentIndex, 1);
+    nextProducts.splice(nextIndex, 0, moved);
+
+    const orderedProducts = nextProducts.map((product, index) => ({ ...product, sort_order: index }));
+    setProducts(orderedProducts);
+
+    try {
+      await api.patch("/products/reorder", {
+        ordered_product_ids: orderedProducts.map((product) => product.product_id),
+      });
+      toast.success("Urutan produk diperbarui");
+    } catch (err) {
+      console.error("Failed to reorder products", err);
+      toast.error("Gagal menyimpan urutan produk");
+      await load();
+    }
+  };
+
+  const handleMoveCategorySortOrder = async (categoryId, direction) => {
+    const currentIndex = activeCategories.findIndex((category) => category.category_id === categoryId);
+    if (currentIndex < 0) return;
+
+    const nextIndex = currentIndex + direction;
+    if (nextIndex < 0 || nextIndex >= activeCategories.length) return;
+
+    const nextActiveCategories = [...activeCategories];
+    const [moved] = nextActiveCategories.splice(currentIndex, 1);
+    nextActiveCategories.splice(nextIndex, 0, moved);
+
+    const orderById = new Map(
+      nextActiveCategories
+        .filter((category) => category?.category_id)
+        .map((category, index) => [category.category_id, index])
+    );
+
+    setCategories((items) =>
+      [...items]
+        .map((category) =>
+          orderById.has(category.category_id)
+            ? { ...category, sort_order: orderById.get(category.category_id) }
+            : category
+        )
+        .sort((a, b) => {
+          const aOrder = Number.isFinite(Number(a.sort_order)) ? Number(a.sort_order) : 9999;
+          const bOrder = Number.isFinite(Number(b.sort_order)) ? Number(b.sort_order) : 9999;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return String(a.name || "").localeCompare(String(b.name || ""));
+        })
+    );
+
+    try {
+      await api.patch("/product-categories/reorder", {
+        ordered_category_ids: nextActiveCategories
+          .filter((category) => category?.category_id)
+          .map((category) => category.category_id),
+      });
+      toast.success("Urutan kategori diperbarui");
+    } catch (err) {
+      console.error("Failed to reorder categories", err);
+      toast.error("Gagal menyimpan urutan kategori");
+      await load();
+    }
+  };
+
   const categoryOptions = Array.from(
     new Set([
       ...activeCategories.map((category) => category.name).filter(Boolean),
@@ -418,13 +491,37 @@ export default function Products() {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              {activeCategories.length ? activeCategories.map((category) => (
+              {activeCategories.length ? activeCategories.map((category, index) => (
                 <span
                   key={category.category_id || category.slug || category.name}
                   className="inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-off px-3 py-1.5 text-xs font-bold text-brand-ink"
                   data-testid="product-category-manager-chip"
                 >
                   {category.name}
+
+                  {category.category_id ? (
+                    <span className="inline-flex gap-1" data-testid={`product-category-sort-controls-${category.category_id}`}>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveCategorySortOrder(category.category_id, -1)}
+                        disabled={index === 0}
+                        className="rounded-md border border-brand-line px-2 py-0.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                        title="Naikkan urutan kategori"
+                      >
+                        Naik
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveCategorySortOrder(category.category_id, 1)}
+                        disabled={index === activeCategories.length - 1}
+                        className="rounded-md border border-brand-line px-2 py-0.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                        title="Turunkan urutan kategori"
+                      >
+                        Turun
+                      </button>
+                    </span>
+                  ) : null}
+
                   {category.is_virtual ? (
                     <span className="text-[10px] text-brand-mute">dari produk</span>
                   ) : (
@@ -513,7 +610,7 @@ export default function Products() {
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {visibleProducts.map((p) => {
+              {visibleProducts.map((p, index) => {
             const img = primaryImg(p);
             const cnt = imgCount(p);
             return (
@@ -566,6 +663,28 @@ export default function Products() {
                       >
                         {getProductAvailabilityMeta(p).label}
                       </span>
+
+                      <div className="flex flex-wrap gap-2 pt-1" data-testid={`product-sort-controls-${p.product_id}`}>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveProductSortOrder(p.product_id, -1)}
+                          disabled={index === 0}
+                          className="rounded-lg border border-brand-line px-2.5 py-1 text-xs font-semibold text-brand-ink disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Naikkan urutan produk"
+                        >
+                          Naik
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveProductSortOrder(p.product_id, 1)}
+                          disabled={index === visibleProducts.length - 1}
+                          className="rounded-lg border border-brand-line px-2.5 py-1 text-xs font-semibold text-brand-ink disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Turunkan urutan produk"
+                        >
+                          Turun
+                        </button>
+                      </div>
+
                     </div>
 
                     <label className="text-[11px] font-bold text-brand-mute">
