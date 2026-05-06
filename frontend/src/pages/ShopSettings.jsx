@@ -41,6 +41,7 @@ const WHATSAPP_TEMPLATE_VARIABLES = [
 ];
 import { resolveStorefrontTemplate } from "../storefront/templates";
 
+
 const LAPAKIN_WA_TEMPLATE_PREVIEW_SAMPLE = {
   shop_name: "Warung Bu Sari",
   customer_name: "Siti",

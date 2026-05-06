@@ -48,16 +48,31 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
   const mainItems = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Beranda", tid: "nav-home" },
     { to: "/dashboard/products", icon: Package, label: "Produk", tid: "nav-products" },
-    { to: "/dashboard/content-studio", icon: Sparkles, label: "Konten", tid: "nav-content-studio" },
-    { to: "/dashboard/sales", icon: BookOpen, label: "Buku Jualan", tid: "nav-sales" },
     { to: "/dashboard/whatsapp", icon: MessageSquare, label: "WhatsApp", tid: "nav-whatsapp" },
-    { to: "/dashboard/analytics", icon: BarChart3, label: "Analitik", tid: "nav-analytics" },
-    { to: "/dashboard/leads", icon: MessageSquare, label: "Leads", tid: "nav-leads" },
+  ];
+
+  const navGroups = [
+    {
+      label: "Jualan",
+      tid: "nav-group-sales",
+      children: [
+        { to: "/dashboard/sales", icon: BookOpen, label: "Buku Jualan", tid: "nav-sales" },
+        { to: "/dashboard/leads", icon: MessageSquare, label: "Leads", tid: "nav-leads" },
+      ],
+    },
+    {
+      label: "Marketing",
+      tid: "nav-group-marketing",
+      children: [
+        { to: "/dashboard/content-studio", icon: Sparkles, label: "Konten", tid: "nav-content-studio" },
+        { to: "/dashboard/analytics", icon: BarChart3, label: "Analitik", tid: "nav-analytics" },
+      ],
+    },
   ];
 
   const secondaryItems = [];
 
-  const items = [...mainItems, ...secondaryItems];
+  const items = [...mainItems, ...navGroups.flatMap((group) => group.children), ...secondaryItems];
 
   const tier = user?.tier || "free";
   const badge = TIER_BADGE[tier] || TIER_BADGE.free;
@@ -119,6 +134,49 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     );
   };
 
+  const renderNavGroup = (group) => {
+    const active = group.children.some((child) => location.pathname === child.to || location.pathname.startsWith(`${child.to}/`));
+
+    return (
+      <div key={group.label} className="group relative">
+        <button
+          type="button"
+          data-testid={group.tid}
+          className={`group inline-flex items-center gap-2 rounded-2xl px-3.5 py-2 text-sm font-semibold transition-all ${
+            active
+              ? "bg-brand-off text-brand shadow-sm ring-1 ring-brand-line"
+              : "text-brand-mute hover:bg-brand-off/70 hover:text-brand-ink"
+          }`}
+        >
+          <span className="whitespace-nowrap">{group.label}</span>
+          <ChevronDown className={`h-4 w-4 transition-colors ${active ? "text-brand" : "text-brand-mute group-hover:text-brand"}`} />
+        </button>
+        <div className="invisible absolute left-0 top-full z-50 mt-2 min-w-52 translate-y-1 rounded-2xl border border-brand-line bg-white p-2 opacity-0 shadow-xl transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+          {group.children.map((child) => {
+            const childActive = location.pathname === child.to || location.pathname.startsWith(`${child.to}/`);
+            const ChildIcon = child.icon;
+            return (
+              <Link
+                key={child.to}
+                to={child.to}
+                data-testid={child.tid}
+                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                  childActive
+                    ? "bg-brand-off text-brand"
+                    : "text-brand-ink hover:bg-brand-off/70"
+                }`}
+              >
+                <ChildIcon className={`h-4 w-4 ${childActive ? "text-brand" : "text-brand-mute"}`} />
+                <span className="whitespace-nowrap">{child.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+
   return (
     <div className="min-h-screen bg-brand-sand">
       {/* Top bar */}
@@ -135,6 +193,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
           <div className="hidden lg:flex items-center gap-2">
             <nav className="flex items-center gap-1 rounded-2xl bg-brand-sand/70 p-1">
               {mainItems.map(renderNavItem)}
+              {navGroups.map(renderNavGroup)}
             </nav>
 
             <div className="h-8 w-px bg-brand-line mx-1" />
