@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard, ClipboardList } from "lucide-react";
+import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard } from "lucide-react";
 
 export default function AdminLayout({ children, title, subtitle, actions }) {
   const { user, logout } = useAuth();
@@ -14,7 +14,6 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
     { label: "Billing", to: "/admin/billing", icon: CreditCard },
   { label: "Payments", to: "/admin/payments", icon: CreditCard },
   { label: "Store Health", to: "/admin/store-health", icon: Activity },
-  { label: "Onboarding", to: "/admin/onboarding", icon: ClipboardList },
   { to: "/admin/users", icon: Users, label: "Pengguna", tid: "admin-nav-users" },
     { to: "/admin/pricing", icon: Tags, label: "Pricing", tid: "admin-nav-pricing" },
     { to: "/admin/products", icon: Trash2, label: "Moderasi Produk", tid: "admin-nav-products" },

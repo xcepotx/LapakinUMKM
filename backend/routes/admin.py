@@ -1205,6 +1205,334 @@ def _admin_score_shop_health(shop: dict, user: dict | None, product_counts: dict
     }
 
 
+
+
+def _admin_onboarding_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _admin_followup_public_state(doc: dict | None) -> dict:
+    doc = doc or {}
+    return {
+        "shop_id": doc.get("shop_id"),
+        "status": doc.get("status") or "new",
+        "last_note": doc.get("last_note"),
+        "last_follow_up_at": doc.get("last_follow_up_at"),
+        "next_follow_up_at": doc.get("next_follow_up_at"),
+        "done_at": doc.get("done_at"),
+        "updated_at": doc.get("updated_at"),
+    }
+
+
+async def _admin_find_shop_for_onboarding(shop_id: str) -> dict:
+    shop = await db.shops.find_one({"shop_id": shop_id}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Shop not found")
+    return shop
+
+
+async def _admin_get_onboarding_followup(shop_id: str) -> dict:
+    doc = await db.admin_onboarding_followups.find_one({"shop_id": shop_id}, {"_id": 0})
+    return doc or {
+        "shop_id": shop_id,
+        "status": "new",
+        "notes": [],
+        "last_note": "",
+        "last_follow_up_at": None,
+        "next_follow_up_at": None,
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
+def _admin_onboarding_status_match(followup_status: str, requested: str) -> bool:
+    requested = requested or "open"
+    followup_status = followup_status or "new"
+    if requested == "all":
+        return True
+    if requested == "open":
+        return followup_status != "done"
+    return followup_status == requested
+
+
+def _admin_onboarding_health_match(health_status: str, requested: str) -> bool:
+    requested = requested or "attention"
+    if requested == "all":
+        return True
+    if requested == "attention":
+        return health_status in {"critical", "onboarding"}
+    return health_status == requested
+
+
+async def _admin_onboarding_build_items(status: str, health: str, q: str, limit: int):
+    # Reuse Store Health score helpers when present.
+    if "_admin_product_counts_by_shop" not in globals() or "_admin_health_event_counts" not in globals() or "_admin_score_shop_health" not in globals():
+        raise HTTPException(status_code=500, detail="Store health helpers are not available")
+
+    shop_query = {}
+    if q:
+        shop_query = {"$or": [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"slug": {"$regex": q, "$options": "i"}},
+            {"whatsapp": {"$regex": q, "$options": "i"}},
+        ]}
+
+    shops = await db.shops.find(shop_query, {"_id": 0}).sort("created_at", -1).limit(500).to_list(500)
+    owner_ids = [shop.get("owner_user_id") for shop in shops if shop.get("owner_user_id")]
+    shop_ids = [shop.get("shop_id") for shop in shops if shop.get("shop_id")]
+
+    users = []
+    if owner_ids or shop_ids:
+        user_query = {"$or": []}
+        if owner_ids:
+            user_query["$or"].append({"user_id": {"$in": owner_ids}})
+        if shop_ids:
+            user_query["$or"].append({"shop_id": {"$in": shop_ids}})
+        users = await db.users.find(user_query, {"_id": 0, "password_hash": 0}).to_list(1000)
+
+    by_user_id = {user.get("user_id"): user for user in users if user.get("user_id")}
+    by_shop_id = {user.get("shop_id"): user for user in users if user.get("shop_id")}
+
+    product_counts, event_counts = await asyncio.gather(
+        _admin_product_counts_by_shop(),
+        _admin_health_event_counts(),
+    )
+    visits_map, wa_map = event_counts
+
+    followup_docs = await db.admin_onboarding_followups.find(
+        {"shop_id": {"$in": shop_ids}},
+        {"_id": 0},
+    ).to_list(1000) if shop_ids else []
+    followup_by_shop = {doc.get("shop_id"): doc for doc in followup_docs if doc.get("shop_id")}
+
+    items = []
+    summary = {"open": 0, "new": 0, "contacted": 0, "waiting": 0, "done": 0}
+
+    for shop in shops:
+        user = by_user_id.get(shop.get("owner_user_id")) or by_shop_id.get(shop.get("shop_id"))
+        health_item = _admin_score_shop_health(shop, user, product_counts, visits_map, wa_map)
+        followup = followup_by_shop.get(shop.get("shop_id")) or {}
+        followup_status = followup.get("status") or "new"
+
+        if followup_status != "done":
+            summary["open"] += 1
+        if followup_status in summary:
+            summary[followup_status] += 1
+
+        if not _admin_onboarding_status_match(followup_status, status):
+            continue
+        if not _admin_onboarding_health_match(health_item.get("health_status"), health):
+            continue
+
+        item = {
+            **health_item,
+            "followup_status": followup_status,
+            "last_note": followup.get("last_note") or "",
+            "last_follow_up_at": followup.get("last_follow_up_at"),
+            "next_follow_up_at": followup.get("next_follow_up_at"),
+            "followup_updated_at": followup.get("updated_at"),
+            "owner_whatsapp": (user or {}).get("whatsapp") or (user or {}).get("phone"),
+            "whatsapp": shop.get("whatsapp"),
+        }
+        items.append(item)
+
+    # Prioritize low score and items that have next follow-up date.
+    items.sort(key=lambda item: (
+        1 if item.get("next_follow_up_at") else 2,
+        item.get("next_follow_up_at") or "9999",
+        item.get("score", 0),
+    ))
+
+    return items[:limit], summary
+
+
+@router.get("/admin/onboarding/queue")
+async def admin_onboarding_queue(request: Request, status: str = "open", health: str = "attention", q: str = "", limit: int = 100):
+    await require_admin(request)
+    limit = max(1, min(int(limit or 100), 300))
+    items, summary = await _admin_onboarding_build_items(status=status, health=health, q=q, limit=limit)
+    return {"items": items, "summary": summary, "status": status, "health": health, "limit": limit}
+
+
+@router.post("/admin/onboarding/{shop_id}/note")
+async def admin_onboarding_add_note(shop_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    note = str(body.get("note") or "").strip()
+    if not note:
+        raise HTTPException(status_code=400, detail="Note is required")
+
+    shop = await _admin_find_shop_for_onboarding(shop_id)
+    before_doc = await _admin_get_onboarding_followup(shop_id)
+    before = _admin_followup_public_state(before_doc)
+    now_iso = _admin_onboarding_now_iso()
+    note_doc = {
+        "note_id": f"note_{uuid.uuid4().hex[:12]}",
+        "note": note,
+        "created_at": now_iso,
+        "admin_user_id": (admin or {}).get("user_id"),
+        "admin_email": (admin or {}).get("email"),
+    }
+
+    updates = {
+        "$set": {
+            "shop_id": shop_id,
+            "shop_name": shop.get("name"),
+            "shop_slug": shop.get("slug"),
+            "status": before_doc.get("status") or "new",
+            "last_note": note,
+            "last_follow_up_at": now_iso,
+            "updated_at": now_iso,
+        },
+        "$setOnInsert": {"created_at": now_iso},
+        "$push": {"notes": note_doc},
+    }
+    await db.admin_onboarding_followups.update_one({"shop_id": shop_id}, updates, upsert=True)
+    after_doc = await _admin_get_onboarding_followup(shop_id)
+    after = _admin_followup_public_state(after_doc)
+
+    if "_admin_write_audit_log" in globals():
+        await _admin_write_audit_log(
+            admin=admin or {},
+            action="onboarding.note",
+            target_type="shop",
+            target_id=shop_id,
+            target_email="",
+            before=before,
+            after=after,
+            reason=note,
+        )
+
+    return {"ok": True, "followup": after_doc}
+
+
+@router.post("/admin/onboarding/{shop_id}/status")
+async def admin_onboarding_update_status(shop_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    status = str(body.get("status") or "").strip().lower()
+    if status not in {"new", "contacted", "waiting", "done"}:
+        raise HTTPException(status_code=400, detail="Invalid onboarding status")
+
+    note = str(body.get("note") or "").strip()
+    next_follow_up_at = str(body.get("next_follow_up_at") or "").strip() or None
+
+    shop = await _admin_find_shop_for_onboarding(shop_id)
+    before_doc = await _admin_get_onboarding_followup(shop_id)
+    before = _admin_followup_public_state(before_doc)
+    now_iso = _admin_onboarding_now_iso()
+
+    update_set = {
+        "shop_id": shop_id,
+        "shop_name": shop.get("name"),
+        "shop_slug": shop.get("slug"),
+        "status": status,
+        "next_follow_up_at": next_follow_up_at,
+        "updated_at": now_iso,
+    }
+    if note:
+        update_set["last_note"] = note
+        update_set["last_follow_up_at"] = now_iso
+    if status == "done":
+        update_set["done_at"] = now_iso
+
+    update_doc = {
+        "$set": update_set,
+        "$setOnInsert": {"created_at": now_iso},
+    }
+    if note:
+        update_doc["$push"] = {"notes": {
+            "note_id": f"note_{uuid.uuid4().hex[:12]}",
+            "note": note,
+            "created_at": now_iso,
+            "admin_user_id": (admin or {}).get("user_id"),
+            "admin_email": (admin or {}).get("email"),
+            "status": status,
+        }}
+
+    await db.admin_onboarding_followups.update_one({"shop_id": shop_id}, update_doc, upsert=True)
+    after_doc = await _admin_get_onboarding_followup(shop_id)
+    after = _admin_followup_public_state(after_doc)
+
+    if "_admin_write_audit_log" in globals():
+        await _admin_write_audit_log(
+            admin=admin or {},
+            action="onboarding.status_update",
+            target_type="shop",
+            target_id=shop_id,
+            target_email="",
+            before=before,
+            after=after,
+            reason=note,
+        )
+
+    return {"ok": True, "followup": after_doc}
+
+
+@router.post("/admin/onboarding/{shop_id}/done")
+async def admin_onboarding_mark_done(shop_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    note = str(body.get("note") or "").strip() or "Onboarding selesai"
+    shop = await _admin_find_shop_for_onboarding(shop_id)
+    before_doc = await _admin_get_onboarding_followup(shop_id)
+    before = _admin_followup_public_state(before_doc)
+    now_iso = _admin_onboarding_now_iso()
+
+    await db.admin_onboarding_followups.update_one(
+        {"shop_id": shop_id},
+        {
+            "$set": {
+                "shop_id": shop_id,
+                "shop_name": shop.get("name"),
+                "shop_slug": shop.get("slug"),
+                "status": "done",
+                "last_note": note,
+                "last_follow_up_at": now_iso,
+                "done_at": now_iso,
+                "updated_at": now_iso,
+            },
+            "$setOnInsert": {"created_at": now_iso},
+            "$push": {"notes": {
+                "note_id": f"note_{uuid.uuid4().hex[:12]}",
+                "note": note,
+                "created_at": now_iso,
+                "admin_user_id": (admin or {}).get("user_id"),
+                "admin_email": (admin or {}).get("email"),
+                "status": "done",
+            }},
+        },
+        upsert=True,
+    )
+    after_doc = await _admin_get_onboarding_followup(shop_id)
+    after = _admin_followup_public_state(after_doc)
+
+    if "_admin_write_audit_log" in globals():
+        await _admin_write_audit_log(
+            admin=admin or {},
+            action="onboarding.done",
+            target_type="shop",
+            target_id=shop_id,
+            target_email="",
+            before=before,
+            after=after,
+            reason=note,
+        )
+
+    return {"ok": True, "followup": after_doc}
+
 @router.get("/admin/store-health")
 async def admin_store_health(request: Request, status: str = "all", q: str = "", limit: int = 100):
     await require_admin(request)

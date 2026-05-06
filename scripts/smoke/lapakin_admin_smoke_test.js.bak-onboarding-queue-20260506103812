@@ -12,11 +12,6 @@ const ADMIN_ROUTES = [
     keywords: ["admin", "Toko Paling Banyak Dikunjungi"],
   },
   {
-    path: "/admin/onboarding",
-    name: "Admin onboarding queue",
-    keywords: ["Onboarding Follow-up", "Queue onboarding", "Tambah catatan"],
-  },
-  {
     path: "/admin/store-health",
     name: "Admin store health",
     keywords: ["Store Health Score", "health score", "Sehat", "Perlu onboarding"],
