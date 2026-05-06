@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard, ClipboardList, Bell } from "lucide-react";
+import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard, ClipboardList } from "lucide-react";
 
 export default function AdminLayout({ children, title, subtitle, actions }) {
   const { user, logout } = useAuth();
@@ -9,9 +9,9 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
   const navigate = useNavigate();
 
   const items = [
-    { to: "/admin", icon: ShieldCheck, label: "Overview", tid: "admin-nav-overview" },
-    { label: "Daily Ops", to: "/admin/ops", icon: Activity },{ to: "/admin/shops", icon: Store, label: "Toko UMKM", tid: "admin-nav-shops" },
-    { label: "Notifications", to: "/admin/notifications", icon: Bell },
+    { to: "/admin", icon: ShieldCheck, label: "Overview", tid: "admin-nav-overview" }
+  { label: "Daily Ops", to: "/admin/ops", icon: Activity },,
+    { to: "/admin/shops", icon: Store, label: "Toko UMKM", tid: "admin-nav-shops" },
     { label: "Billing", to: "/admin/billing", icon: CreditCard },
   { label: "Payments", to: "/admin/payments", icon: CreditCard },
   { label: "Store Health", to: "/admin/store-health", icon: Activity },

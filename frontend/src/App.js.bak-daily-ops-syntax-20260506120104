@@ -48,7 +48,6 @@ import AdminPayments from "@/pages/admin/AdminPayments";
 import AdminStoreHealth from "@/pages/admin/AdminStoreHealth";
 import AdminOnboardingQueue from "@/pages/admin/AdminOnboardingQueue";
 import AdminOpsDashboard from "@/pages/admin/AdminOpsDashboard";
-import AdminNotifications from "@/pages/admin/AdminNotifications";
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -113,7 +112,6 @@ function AppRouter() {
       <Route path="/toko/:slug" element={<Storefront />} />
       <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
       <Route path="/admin/ops" element={<AdminRoute><AdminOpsDashboard /></AdminRoute>} />
-      <Route path="/admin/notifications" element={<AdminRoute><AdminNotifications /></AdminRoute>} />
       <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />
       <Route path="/admin/billing" element={<AdminRoute><AdminBillingMonitor /></AdminRoute>} />
       <Route path="/admin/payments" element={<AdminRoute><AdminPayments /></AdminRoute>} />

@@ -1346,6 +1346,413 @@ async def _admin_onboarding_build_items(status: str, health: str, q: str, limit:
     return items[:limit], summary
 
 
+
+
+def _admin_ops_today_window():
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    return now, start.isoformat(), end.isoformat()
+
+
+async def _admin_ops_store_critical_count():
+    try:
+        if "_admin_onboarding_build_items" in globals():
+            items, _summary = await _admin_onboarding_build_items(status="all", health="critical", q="", limit=500)
+            return len(items)
+    except Exception:
+        return 0
+    return 0
+
+
+
+
+def _admin_notifications_now():
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = today_start + timedelta(days=1)
+    return now, today_start, today_end
+
+
+def _admin_notification_followup_message(item: dict) -> str:
+    target = item.get("target_label") or item.get("target_email") or "Bapak/Ibu"
+    if item.get("type") == "trial":
+        return f"Halo {target}, trial Lapakin akan segera berakhir. Mau saya bantu cek toko dan lanjutkan aktivasi agar toko tetap bisa dipakai?"
+    if item.get("type") == "payment":
+        return f"Halo {target}, pembayaran Lapakin Anda sedang menunggu review. Mohon pastikan bukti transfer sudah lengkap agar bisa segera kami proses."
+    if item.get("type") == "onboarding":
+        return f"Halo {target}, kami ingin bantu melengkapi toko Lapakin Anda. Ada beberapa hal yang perlu dicek agar toko siap jualan."
+    if item.get("type") == "store_health":
+        return f"Halo {target}, health score toko Anda masih perlu ditingkatkan. Kami bisa bantu lengkapi produk, WhatsApp, payment, dan template."
+    return f"Halo {target}, ada follow-up dari tim Lapakin."
+
+
+def _admin_notification_base(notification_id: str, type_: str, title: str, message: str, target_label: str = "", target_email: str = "", target_id: str = "", source: str = "", priority: str = "normal", due_at: str | None = None, created_at: str | None = None, extra: dict | None = None) -> dict:
+    item = {
+        "notification_id": notification_id,
+        "type": type_,
+        "title": title,
+        "message": message,
+        "target_label": target_label,
+        "target_email": target_email,
+        "target_id": target_id,
+        "source": source,
+        "priority": priority,
+        "due_at": due_at,
+        "created_at": created_at or _admin_now_iso() if "_admin_now_iso" in globals() else datetime.now(timezone.utc).isoformat(),
+        "extra": extra or {},
+    }
+    item["follow_up_message"] = _admin_notification_followup_message(item)
+    return item
+
+
+async def _admin_build_notification_candidates(limit: int = 100) -> list[dict]:
+    now, today_start, today_end = _admin_notifications_now()
+    now_iso = now.isoformat()
+    soon_7_iso = (now + timedelta(days=7)).isoformat()
+    items = []
+
+    # Trial expiring reminders.
+    trial_users = await db.users.find(
+        {"trial": True, "trial_expires_at": {"$gte": now_iso, "$lte": soon_7_iso}},
+        {"_id": 0, "password_hash": 0},
+    ).sort("trial_expires_at", 1).limit(80).to_list(80)
+    for user in trial_users:
+        email = user.get("email") or ""
+        title = f"Trial mau habis: {email or user.get('name') or user.get('user_id')}"
+        msg = f"Trial berakhir pada {user.get('trial_expires_at') or '-'}."
+        items.append(_admin_notification_base(
+            notification_id=f"trial_{user.get('user_id')}",
+            type_="trial",
+            title=title,
+            message=msg,
+            target_label=user.get("name") or email,
+            target_email=email,
+            target_id=user.get("user_id") or "",
+            source="billing",
+            priority="medium",
+            due_at=user.get("trial_expires_at"),
+            created_at=user.get("updated_at") or user.get("created_at"),
+            extra={"tier": user.get("tier") or "free"},
+        ))
+
+    # Payment pending reminders.
+    pending_statuses = ["pending", "pending_review", "waiting", "review"]
+    payments = await db.payments.find(
+        {"status": {"$in": pending_statuses}},
+        {"_id": 0},
+    ).sort("created_at", 1).limit(80).to_list(80)
+    for payment in payments:
+        payment_id = payment.get("payment_id") or payment.get("id") or ""
+        email = payment.get("email") or payment.get("user_email") or ""
+        amount = _admin_payment_amount(payment) if "_admin_payment_amount" in globals() else (payment.get("amount") or payment.get("total") or 0)
+        title = f"Payment pending: {email or payment_id}"
+        msg = f"Pembayaran {payment_id or '-'} menunggu review. Nominal: {amount}."
+        items.append(_admin_notification_base(
+            notification_id=f"payment_{payment_id}",
+            type_="payment",
+            title=title,
+            message=msg,
+            target_label=email or payment.get("user_id") or payment_id,
+            target_email=email,
+            target_id=payment_id,
+            source="payments",
+            priority="high",
+            due_at=payment.get("created_at"),
+            created_at=payment.get("created_at"),
+            extra={"amount": amount, "status": payment.get("status")},
+        ))
+
+    # Onboarding due reminders.
+    followups = await db.admin_onboarding_followups.find(
+        {"status": {"$ne": "done"}, "next_follow_up_at": {"$lte": today_end.isoformat()}},
+        {"_id": 0},
+    ).sort("next_follow_up_at", 1).limit(80).to_list(80)
+    shop_ids = [doc.get("shop_id") for doc in followups if doc.get("shop_id")]
+    shops = await db.shops.find({"shop_id": {"$in": shop_ids}}, {"_id": 0}).to_list(200) if shop_ids else []
+    shops_by_id = {shop.get("shop_id"): shop for shop in shops if shop.get("shop_id")}
+    owner_ids = [shop.get("owner_user_id") for shop in shops if shop.get("owner_user_id")]
+    users = await db.users.find({"user_id": {"$in": owner_ids}}, {"_id": 0, "password_hash": 0}).to_list(200) if owner_ids else []
+    users_by_id = {user.get("user_id"): user for user in users if user.get("user_id")}
+    for doc in followups:
+        shop = shops_by_id.get(doc.get("shop_id")) or {}
+        user = users_by_id.get(shop.get("owner_user_id")) or {}
+        title = f"Onboarding due: {shop.get('name') or doc.get('shop_name') or doc.get('shop_id')}"
+        msg = doc.get("last_note") or "Follow-up onboarding jatuh tempo."
+        items.append(_admin_notification_base(
+            notification_id=f"onboarding_{doc.get('shop_id')}",
+            type_="onboarding",
+            title=title,
+            message=msg,
+            target_label=shop.get("name") or doc.get("shop_name") or "",
+            target_email=user.get("email") or "",
+            target_id=doc.get("shop_id") or "",
+            source="onboarding",
+            priority="medium",
+            due_at=doc.get("next_follow_up_at"),
+            created_at=doc.get("updated_at") or doc.get("created_at"),
+            extra={"status": doc.get("status"), "slug": shop.get("slug")},
+        ))
+
+    # Critical store health reminders.
+    try:
+        if "_admin_onboarding_build_items" in globals():
+            critical_items, _summary = await _admin_onboarding_build_items(status="open", health="critical", q="", limit=80)
+            for item in critical_items:
+                shop_id = item.get("shop_id")
+                if not shop_id:
+                    continue
+                title = f"Toko critical: {item.get('name') or item.get('slug') or shop_id}"
+                gaps = ", ".join((item.get("gaps") or [])[:3])
+                msg = f"Health score {item.get('score')}/100. Gap: {gaps or 'perlu dicek'}."
+                items.append(_admin_notification_base(
+                    notification_id=f"store_health_{shop_id}",
+                    type_="store_health",
+                    title=title,
+                    message=msg,
+                    target_label=item.get("name") or item.get("slug") or "",
+                    target_email=item.get("owner_email") or "",
+                    target_id=shop_id,
+                    source="store_health",
+                    priority="high",
+                    due_at=today_end.isoformat(),
+                    created_at=item.get("updated_at") or item.get("created_at"),
+                    extra={"score": item.get("score"), "gaps": item.get("gaps") or []},
+                ))
+    except Exception:
+        pass
+
+    # Deduplicate by notification_id.
+    unique = {}
+    for item in items:
+        if item.get("notification_id") and item.get("notification_id") not in unique:
+            unique[item["notification_id"]] = item
+    return list(unique.values())[: max(1, min(limit, 300))]
+
+
+async def _admin_apply_notification_state(items: list[dict]) -> list[dict]:
+    ids = [item.get("notification_id") for item in items if item.get("notification_id")]
+    states = await db.admin_notification_states.find({"notification_id": {"$in": ids}}, {"_id": 0}).to_list(1000) if ids else []
+    by_id = {state.get("notification_id"): state for state in states if state.get("notification_id")}
+    now = datetime.now(timezone.utc)
+
+    output = []
+    for item in items:
+        state = by_id.get(item.get("notification_id")) or {}
+        status = state.get("status") or "open"
+        snoozed_until = state.get("snoozed_until")
+        if status == "snoozed" and snoozed_until:
+            try:
+                snooze_dt = datetime.fromisoformat(str(snoozed_until).replace("Z", "+00:00"))
+                if snooze_dt <= now:
+                    status = "open"
+            except Exception:
+                pass
+        item = {**item, **{
+            "status": status,
+            "state_note": state.get("note") or "",
+            "snoozed_until": snoozed_until,
+            "done_at": state.get("done_at"),
+            "state_updated_at": state.get("updated_at"),
+        }}
+        output.append(item)
+    return output
+
+
+def _admin_notification_matches(item: dict, status: str, type_: str, q: str) -> bool:
+    status = status or "open"
+    type_ = type_ or "all"
+
+    if type_ != "all" and item.get("type") != type_:
+        return False
+
+    if status == "open":
+        if item.get("status") != "open":
+            return False
+    elif status == "done":
+        if item.get("status") != "done":
+            return False
+    elif status == "snoozed":
+        if item.get("status") != "snoozed":
+            return False
+    elif status != "all":
+        return False
+
+    if q:
+        needle = q.lower()
+        haystack = " ".join(str(item.get(key) or "") for key in ["title", "message", "target_label", "target_email", "target_id", "source"]).lower()
+        if needle not in haystack:
+            return False
+
+    return True
+
+
+@router.get("/admin/notifications")
+async def admin_notifications(request: Request, status: str = "open", type: str = "all", q: str = "", limit: int = 100):
+    await require_admin(request)
+    limit = max(1, min(int(limit or 100), 300))
+    candidates = await _admin_build_notification_candidates(limit=300)
+    items_with_state = await _admin_apply_notification_state(candidates)
+
+    summary = {
+        "total": len(items_with_state),
+        "open": sum(1 for item in items_with_state if item.get("status") == "open"),
+        "done": sum(1 for item in items_with_state if item.get("status") == "done"),
+        "snoozed": sum(1 for item in items_with_state if item.get("status") == "snoozed"),
+        "high_priority": sum(1 for item in items_with_state if item.get("status") == "open" and item.get("priority") == "high"),
+        "trial": sum(1 for item in items_with_state if item.get("status") == "open" and item.get("type") == "trial"),
+        "payment": sum(1 for item in items_with_state if item.get("status") == "open" and item.get("type") == "payment"),
+        "onboarding": sum(1 for item in items_with_state if item.get("status") == "open" and item.get("type") == "onboarding"),
+        "store_health": sum(1 for item in items_with_state if item.get("status") == "open" and item.get("type") == "store_health"),
+    }
+
+    filtered = [item for item in items_with_state if _admin_notification_matches(item, status, type, q)]
+    priority_rank = {"high": 0, "medium": 1, "normal": 2}
+    filtered.sort(key=lambda item: (priority_rank.get(item.get("priority"), 3), item.get("due_at") or "9999"))
+
+    return {
+        "items": filtered[:limit],
+        "summary": summary,
+        "status": status,
+        "type": type,
+        "limit": limit,
+    }
+
+
+@router.post("/admin/notifications/{notification_id}/done")
+async def admin_notification_done(notification_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    note = str(body.get("note") or "").strip()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    before = await db.admin_notification_states.find_one({"notification_id": notification_id}, {"_id": 0}) or {}
+
+    update = {
+        "notification_id": notification_id,
+        "status": "done",
+        "note": note,
+        "done_at": now_iso,
+        "updated_at": now_iso,
+        "updated_by": (admin or {}).get("user_id"),
+        "updated_by_email": (admin or {}).get("email"),
+    }
+    await db.admin_notification_states.update_one(
+        {"notification_id": notification_id},
+        {"$set": update, "$setOnInsert": {"created_at": now_iso}},
+        upsert=True,
+    )
+    after = await db.admin_notification_states.find_one({"notification_id": notification_id}, {"_id": 0}) or {}
+
+    if "_admin_write_audit_log" in globals():
+        await _admin_write_audit_log(
+            admin=admin or {},
+            action="notification.done",
+            target_type="notification",
+            target_id=notification_id,
+            before=before,
+            after=after,
+            reason=note,
+        )
+
+    return {"ok": True, "state": after}
+
+
+@router.post("/admin/notifications/{notification_id}/snooze")
+async def admin_notification_snooze(notification_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    days = int(body.get("days") or 3)
+    days = max(1, min(days, 60))
+    note = str(body.get("note") or "").strip()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    snoozed_until = (now + timedelta(days=days)).isoformat()
+    before = await db.admin_notification_states.find_one({"notification_id": notification_id}, {"_id": 0}) or {}
+
+    update = {
+        "notification_id": notification_id,
+        "status": "snoozed",
+        "note": note,
+        "snoozed_until": snoozed_until,
+        "updated_at": now_iso,
+        "updated_by": (admin or {}).get("user_id"),
+        "updated_by_email": (admin or {}).get("email"),
+    }
+    await db.admin_notification_states.update_one(
+        {"notification_id": notification_id},
+        {"$set": update, "$setOnInsert": {"created_at": now_iso}},
+        upsert=True,
+    )
+    after = await db.admin_notification_states.find_one({"notification_id": notification_id}, {"_id": 0}) or {}
+
+    if "_admin_write_audit_log" in globals():
+        await _admin_write_audit_log(
+            admin=admin or {},
+            action="notification.snooze",
+            target_type="notification",
+            target_id=notification_id,
+            before=before,
+            after=after,
+            reason=note,
+        )
+
+    return {"ok": True, "state": after}
+
+@router.get("/admin/ops/overview")
+async def admin_ops_overview(request: Request):
+    await require_admin(request)
+    now, today_start_iso, today_end_iso = _admin_ops_today_window()
+    soon_7_iso = (now + timedelta(days=7)).isoformat()
+    pending_statuses = ["pending", "pending_review", "waiting", "review"]
+    reviewed_statuses = ["approved", "paid", "success", "completed", "rejected", "failed", "cancelled"]
+
+    trial_expiring_7d, payment_pending, users_today, shops_today, payments_reviewed_today, onboarding_due_today, recent_audit_logs, store_critical = await asyncio.gather(
+        db.users.count_documents({"trial": True, "trial_expires_at": {"$gte": now.isoformat(), "$lte": soon_7_iso}}),
+        db.payments.count_documents({"status": {"$in": pending_statuses}}),
+        db.users.count_documents({"created_at": {"$gte": today_start_iso, "$lt": today_end_iso}}),
+        db.shops.count_documents({"created_at": {"$gte": today_start_iso, "$lt": today_end_iso}}),
+        db.payments.count_documents({"reviewed_at": {"$gte": today_start_iso, "$lt": today_end_iso}, "status": {"$in": reviewed_statuses}}),
+        db.admin_onboarding_followups.count_documents({"status": {"$ne": "done"}, "next_follow_up_at": {"$lte": today_end_iso}}),
+        db.admin_audit_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(8).to_list(8),
+        _admin_ops_store_critical_count(),
+    )
+
+    tasks = []
+
+    def add_task(key, label, count, helper, path, priority="normal"):
+        if int(count or 0) > 0:
+            tasks.append({"key": key, "label": label, "count": int(count or 0), "helper": helper, "path": path, "priority": priority})
+
+    add_task("payment_pending", "Review payment pending", payment_pending, "Approve/reject payment manual yang menunggu review.", "/admin/payments", "high")
+    add_task("store_critical", "Follow-up toko critical", store_critical, "Bantu toko dengan Store Health Score kritis.", "/admin/store-health", "high")
+    add_task("trial_expiring_7d", "Follow-up trial mau habis", trial_expiring_7d, "Hubungi owner sebelum trial berakhir.", "/admin/billing")
+    add_task("onboarding_due_today", "Onboarding follow-up due", onboarding_due_today, "Ada follow-up onboarding yang jatuh tempo.", "/admin/onboarding")
+
+    return {
+        "ok": True,
+        "today_start": today_start_iso,
+        "today_end": today_end_iso,
+        "summary": {
+            "trial_expiring_7d": trial_expiring_7d,
+            "payment_pending": payment_pending,
+            "store_critical": store_critical,
+            "onboarding_due_today": onboarding_due_today,
+            "users_today": users_today,
+            "shops_today": shops_today,
+            "payments_reviewed_today": payments_reviewed_today,
+        },
+        "tasks": tasks,
+        "recent_audit_logs": recent_audit_logs,
+    }
+
 @router.get("/admin/onboarding/queue")
 async def admin_onboarding_queue(request: Request, status: str = "open", health: str = "attention", q: str = "", limit: int = 100):
     await require_admin(request)
