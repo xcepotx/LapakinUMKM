@@ -75,6 +75,25 @@ export default function StorefrontLeads() {
     }
   };
 
+  const updateInternalNotes = async (leadId, internalNotes) => {
+    try {
+      const res = await api.put(`/shops/storefront-leads/${leadId}/notes`, {
+        internal_notes: internalNotes,
+      });
+      const updatedLead = res?.data || {};
+      setLeads((items) =>
+        items.map((lead) =>
+          lead.lead_id === leadId ? { ...lead, ...updatedLead, internal_notes: internalNotes } : lead
+        )
+      );
+    } catch (err) {
+      console.error("Failed to update internal lead notes", err);
+      alert("Gagal menyimpan catatan internal");
+    }
+  };
+
+
+
   return (
     <DashboardLayout title="Lead Website" subtitle="Follow up calon pembeli dari storefront, campaign, dan checkout WhatsApp.">
       <div className="rounded-2xl border border-brand-line bg-white p-5 shadow-card" data-testid="lead-inbox-page">
@@ -93,7 +112,15 @@ export default function StorefrontLeads() {
           const meta = STATUS_META[status] || STATUS_META.new;
           const href = waHref(lead.customer_phone, lead);
           const itemNames = (lead.items || []).map((item) => item.name).filter(Boolean).slice(0, 3).join(", ");
-          return <div key={lead.lead_id} className="rounded-2xl border border-brand-line bg-white p-4 shadow-sm" data-testid={`lead-inbox-item-${lead.lead_id}`}><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-xs font-extrabold ${meta.cls}`}>{meta.label}</span><span className="text-xs text-brand-mute">{formatDate(lead.created_at)}</span>{lead.campaign_slug ? <span className="rounded-full bg-brand-off px-2 py-1 text-xs font-bold text-brand">{lead.campaign_slug}</span> : null}</div><h2 className="mt-2 font-heading text-xl font-extrabold text-brand-ink">{lead.customer_name || "Tanpa nama"}</h2><div className="mt-1 text-sm text-brand-mute">{lead.customer_phone || "Nomor tidak diisi"} · Total {formatCurrency(lead.total)}</div>{itemNames ? <div className="mt-2 text-sm"><b>Item:</b> {itemNames}</div> : null}{lead.notes ? <div className="mt-2 rounded-xl bg-brand-off/70 p-3 text-sm text-brand-mute"><b>Catatan:</b> {lead.notes}</div> : null}</div><div className="flex flex-wrap gap-2 lg:justify-end">{href ? <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-xl bg-green-700 px-4 py-2 text-sm font-bold text-white hover:opacity-90"><MessageCircle className="mr-2 h-4 w-4" /> Chat WA</a> : null}{Object.entries(STATUS_META).map(([value, info]) => <Button key={value} type="button" variant={status === value ? "default" : "outline"} className="rounded-xl text-xs" disabled={!!busy || status === value} onClick={() => updateStatus(lead.lead_id, value)} data-testid={`lead-status-${lead.lead_id}-${value}`}>{busy === `${lead.lead_id}:${value}` ? "..." : status === value ? <CheckCircle2 className="h-4 w-4" /> : info.label}</Button>)}</div></div></div>;
+          return <div key={lead.lead_id} className="rounded-2xl border border-brand-line bg-white p-4 shadow-sm" data-testid={`lead-inbox-item-${lead.lead_id}`}><div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-3 py-1 text-xs font-extrabold ${meta.cls}`}>{meta.label}</span><span className="text-xs text-brand-mute">{formatDate(lead.created_at)}</span>{lead.campaign_slug ? <span className="rounded-full bg-brand-off px-2 py-1 text-xs font-bold text-brand">{lead.campaign_slug}</span> : null}</div><h2 className="mt-2 font-heading text-xl font-extrabold text-brand-ink">{lead.customer_name || "Tanpa nama"}</h2><div className="mt-1 text-sm text-brand-mute">{lead.customer_phone || "Nomor tidak diisi"} · Total {formatCurrency(lead.total)}</div>{itemNames ? <div className="mt-2 text-sm"><b>Item:</b> {itemNames}</div> : null}{lead.notes ? <div className="mt-2 rounded-xl bg-brand-off/70 p-3 text-sm text-brand-mute"><b>Catatan customer:</b> {lead.notes}</div> : null}
+<textarea
+  defaultValue={lead.internal_notes || ""}
+  onBlur={(event) => updateInternalNotes(lead.lead_id, event.target.value)}
+  rows={2}
+  className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm text-brand-ink"
+  placeholder="Catatan internal follow-up"
+  data-testid={`lead-internal-notes-${lead.lead_id}`}
+/></div><div className="flex flex-wrap gap-2 lg:justify-end">{href ? <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-xl bg-green-700 px-4 py-2 text-sm font-bold text-white hover:opacity-90"><MessageCircle className="mr-2 h-4 w-4" /> Chat WA</a> : null}{Object.entries(STATUS_META).map(([value, info]) => <Button key={value} type="button" variant={status === value ? "default" : "outline"} className="rounded-xl text-xs" disabled={!!busy || status === value} onClick={() => updateStatus(lead.lead_id, value)} data-testid={`lead-status-${lead.lead_id}-${value}`}>{busy === `${lead.lead_id}:${value}` ? "..." : status === value ? <CheckCircle2 className="h-4 w-4" /> : info.label}</Button>)}</div></div></div>;
         })}</div>}
       </div>
     </DashboardLayout>

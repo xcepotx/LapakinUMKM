@@ -20,6 +20,36 @@ APP_VERSION = "1.0.0"
 router = APIRouter()
 
 
+def _lapakin_normalize_lead_followup_status(value):
+    raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "": "baru",
+        "new": "baru",
+        "baru": "baru",
+        "di_hubungi": "dihubungi",
+        "dihubungi": "dihubungi",
+        "contacted": "dihubungi",
+        "followed_up": "dihubungi",
+        "followup": "dihubungi",
+        "deal": "deal",
+        "won": "deal",
+        "converted": "deal",
+        "success": "deal",
+        "batal": "batal",
+        "cancelled": "batal",
+        "canceled": "batal",
+        "lost": "batal",
+        "failed": "batal",
+    }
+    return aliases.get(raw, "baru")
+
+
+def _lapakin_lead_followup_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+
+
 def _lapakin_expose_product_status_fields(product):
     """Return a product dict with stable status fields for API consumers."""
     if not isinstance(product, dict):
@@ -402,6 +432,92 @@ async def storefront_growth_create_lead(data: StorefrontLeadIn, request: Request
         return {"ok": True, "stored": True, "lead_id": lead_id}
     except Exception:
         return {"ok": True, "stored": False}
+
+
+
+@router.put("/shops/storefront-leads/{lead_id}/notes")
+@router.patch("/shops/storefront-leads/{lead_id}/notes")
+async def update_storefront_lead_internal_notes(lead_id: str, request: Request):
+    user = await require_user(request)
+    shop_id = user.get("shop_id")
+    if not shop_id:
+        raise HTTPException(status_code=400, detail="Toko belum dibuat")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Payload tidak valid")
+
+    internal_notes = str(body.get("internal_notes", body.get("owner_notes", "")) or "").strip()[:2000]
+    now = datetime.now(timezone.utc).isoformat()
+
+    result = await db.storefront_leads.update_one(
+        {"shop_id": shop_id, "lead_id": lead_id},
+        {"$set": {"internal_notes": internal_notes, "updated_at": now}},
+    )
+    if not getattr(result, "matched_count", 0):
+        raise HTTPException(status_code=404, detail="Lead tidak ditemukan")
+
+    lead = await db.storefront_leads.find_one(
+        {"shop_id": shop_id, "lead_id": lead_id},
+        {"_id": 0},
+    )
+    return lead or {"ok": True, "lead_id": lead_id, "internal_notes": internal_notes}
+
+
+
+@router.patch("/shops/storefront-leads/{lead_id}")
+@router.put("/shops/storefront-leads/{lead_id}")
+async def update_storefront_lead_followup(lead_id: str, request: Request):
+    user = await require_user(request)
+    shop_id = user.get("shop_id")
+    if not shop_id:
+        raise HTTPException(status_code=400, detail="Toko belum dibuat")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Payload tidak valid")
+
+    update = {}
+    now = _lapakin_lead_followup_now_iso()
+
+    if "status" in body or "follow_up_status" in body:
+        status_value = body.get("status", body.get("follow_up_status"))
+        normalized_status = _lapakin_normalize_lead_followup_status(status_value)
+        update["status"] = normalized_status
+        update["follow_up_status"] = normalized_status
+        if normalized_status != "baru":
+            update["followed_up_at"] = now
+
+    if any(key in body for key in ("internal_notes", "owner_notes", "follow_up_notes")):
+        notes_value = body.get("internal_notes", body.get("owner_notes", body.get("follow_up_notes", "")))
+        update["internal_notes"] = str(notes_value or "").strip()[:2000]
+
+    if not update:
+        raise HTTPException(status_code=400, detail="Tidak ada perubahan lead")
+
+    update["updated_at"] = now
+
+    result = await db.storefront_leads.update_one(
+        {"shop_id": shop_id, "lead_id": lead_id},
+        {"$set": update},
+    )
+    if not getattr(result, "matched_count", 0):
+        raise HTTPException(status_code=404, detail="Lead tidak ditemukan")
+
+    lead = await db.storefront_leads.find_one(
+        {"shop_id": shop_id, "lead_id": lead_id},
+        {"_id": 0},
+    )
+    return lead or {"ok": True, "lead_id": lead_id, **update}
+
 
 
 @router.get("/shops/storefront-analytics")

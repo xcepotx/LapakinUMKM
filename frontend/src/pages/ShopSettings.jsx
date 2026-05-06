@@ -39,7 +39,6 @@ const WHATSAPP_TEMPLATE_VARIABLES = [
   "{product_name}",
   "{product_price}",
 ];
-
 import { resolveStorefrontTemplate } from "../storefront/templates";
 
 const LAPAKIN_WA_TEMPLATE_PREVIEW_SAMPLE = {
