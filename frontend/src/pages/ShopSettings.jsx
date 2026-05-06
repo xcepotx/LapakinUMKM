@@ -40,6 +40,7 @@ const WHATSAPP_TEMPLATE_VARIABLES = [
   "{product_price}",
 ];
 import { resolveStorefrontTemplate } from "../storefront/templates";
+import StorefrontSeoEditor from "@/components/StorefrontSeoEditor";
 
 
 const LAPAKIN_WA_TEMPLATE_PREVIEW_SAMPLE = {
@@ -2203,6 +2204,8 @@ return () => {
               </div>
             </Section>
             <Section title="Lead Terbaru" desc="Calon pembeli yang lanjut ke WhatsApp lewat website.">
+
+              <StorefrontSeoEditor shop={shop} setShop={setShop} />
 
               <div data-testid="storefront-leads-card" className="space-y-3">
                 {storefrontLeads.length === 0 ? (
