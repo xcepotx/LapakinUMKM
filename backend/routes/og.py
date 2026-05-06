@@ -86,9 +86,9 @@ async def og_html(slug: str, request: Request):
         og_img_url = ""
     else:
         title = f"{shop.get('name') or 'Toko'} · Lapakin"
-        desc = (shop.get("tagline") or shop.get("description")
+        desc = (shop.get("storefront_seo_description") or shop.get("tagline") or shop.get("description")
                 or shop.get("about") or "Toko online UMKM Indonesia di Lapakin.")[:200]
-        og_img_url = f"{base}/api/og/shop/{slug}.png"
+        og_img_url = shop.get("storefront_seo_image") or f"{base}/api/og/shop/{slug}.png"
 
     canonical = f"{base}/toko/{slug}"
     html = f"""<!doctype html>

@@ -85,6 +85,9 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_payment_method_label", "")
     shop.setdefault("storefront_payment_instruction", "")
     shop.setdefault("storefront_qris_image", "")
+    shop.setdefault("storefront_seo_title", "")
+    shop.setdefault("storefront_seo_description", "")
+    shop.setdefault("storefront_seo_image", "")
     shop.setdefault("storefront_payment_confirmation_text", "")
     shop.setdefault("storefront_whatsapp_checkout_template", "Halo {shop_name}, saya mau pesan:\n\n{items}\n\nTotal: {total}\nNama: {customer_name}\nCatatan: {notes}\n{payment_instruction}")
     shop.setdefault("storefront_whatsapp_product_template", "Halo {shop_name}, saya mau tanya produk:\n\n{product_name}\nHarga: {product_price}\n\nApakah masih tersedia?")
@@ -606,6 +609,14 @@ def _clean_storefront_payment_text(value, max_len=500, *extra_args):
     return text[:max_len]
 
 
+
+
+def _clean_storefront_seo_text(value, max_len=180):
+    text = str(value or "").strip()
+    text = " ".join(text.split())
+    return text[:max_len]
+
+
 def _clean_storefront_qris_image(value, *extra_args):
     if value is None:
         return ""
@@ -704,6 +715,22 @@ def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
         payload["storefront_payment_confirmation_text"] = _clean_storefront_payment_text(
             payload.get("storefront_payment_confirmation_text"),
             160,
+        )
+
+
+    if "storefront_seo_title" in payload:
+        payload["storefront_seo_title"] = _clean_storefront_seo_text(
+            payload.get("storefront_seo_title"),
+            70,
+        )
+    if "storefront_seo_description" in payload:
+        payload["storefront_seo_description"] = _clean_storefront_seo_text(
+            payload.get("storefront_seo_description"),
+            160,
+        )
+    if "storefront_seo_image" in payload:
+        payload["storefront_seo_image"] = _clean_storefront_qris_image(
+            payload.get("storefront_seo_image"),
         )
 
     if "storefront_qris_image" in payload:
@@ -1021,6 +1048,9 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_payment_method_label", "")
     doc.setdefault("storefront_payment_instruction", "")
     doc.setdefault("storefront_qris_image", "")
+    doc.setdefault("storefront_seo_title", "")
+    doc.setdefault("storefront_seo_description", "")
+    doc.setdefault("storefront_seo_image", "")
     doc.setdefault("storefront_payment_confirmation_text", "")
     doc.setdefault("storefront_whatsapp_checkout_template", "Halo {shop_name}, saya mau pesan:\n\n{items}\n\nTotal: {total}\nNama: {customer_name}\nCatatan: {notes}\n{payment_instruction}")
     doc.setdefault("storefront_whatsapp_product_template", "Halo {shop_name}, saya mau tanya produk:\n\n{product_name}\nHarga: {product_price}\n\nApakah masih tersedia?")

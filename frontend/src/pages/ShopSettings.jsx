@@ -65,7 +65,7 @@ function renderLapakinWhatsAppTemplatePreview(template = "", overrides = {}) {
 
 function LapakinWhatsAppTemplatePreview({ title, template, overrides }) {
   const preview = renderLapakinWhatsAppTemplatePreview(template, overrides);
-  return (
+return (
     <div className="mt-3 rounded-2xl border border-brand-line bg-white/70 p-4 shadow-sm" data-testid="whatsapp-template-preview">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-sm font-bold text-brand-ink">{title}</p>
@@ -138,8 +138,7 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
           setStorefrontPickerProducts([]);
         }
       });
-
-    return () => {
+return () => {
       alive = false;
     };
   }, []);
@@ -2203,6 +2202,7 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
               </div>
             </Section>
             <Section title="Lead Terbaru" desc="Calon pembeli yang lanjut ke WhatsApp lewat website.">
+
               <div data-testid="storefront-leads-card" className="space-y-3">
                 {storefrontLeads.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-brand-line bg-white p-4 text-sm text-brand-mute">Belum ada lead dari website.</div>
