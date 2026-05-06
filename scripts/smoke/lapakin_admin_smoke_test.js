@@ -49,6 +49,7 @@ function fail(message) {
 function isIgnorableFailedRequest(item) {
   const value = String(item || "").toLowerCase();
   return (
+    value.includes("net::err_aborted") ||
     value.includes("401") ||
     value.includes("favicon") ||
     value.includes("/cdn-cgi/rum") ||
