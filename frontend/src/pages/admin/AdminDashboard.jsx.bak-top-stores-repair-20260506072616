@@ -17,7 +17,13 @@ export default function AdminDashboard() {
   }, []);
 
   if (!stats) {
-    return <AdminLayout title="Overview"><div className="text-brand-mute" data-testid="admin-stats-loading">Memuat statistik…</div></AdminLayout>;
+    return <AdminLayout title="Overview"><div className="text-brand-mute" data-testid="admin-stats-loading">Memuat statistik…</div>      <div className="mt-6">
+</div>
+    
+      <div className="mt-6">
+        <AdminTopStoresVisitsCard />
+      </div>
+    </AdminLayout>;
   }
 
   return (
@@ -48,11 +54,6 @@ export default function AdminDashboard() {
           </ResponsiveContainer>
         </div>
 </div>
-
-
-      <div className="mt-6">
-        <AdminTopStoresVisitsCard />
-      </div>
 
       {/* AI provider health */}
       <AdminLLMStatusCard />

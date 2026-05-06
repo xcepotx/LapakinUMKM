@@ -305,6 +305,7 @@ async def admin_list_shops(request: Request, q: str = "", limit: int = 100):
 
 
 
+
 def _admin_first_present(doc: dict, *keys):
     for key in keys:
         value = doc.get(key)
@@ -342,12 +343,111 @@ def _admin_user_lifecycle_summary(user: dict) -> dict:
     }
 
 
-def _with_admin_user_lifecycle(user: dict) -> dict:
+def _admin_amount_value(doc: dict) -> float:
+    for key in ("amount", "amount_total", "total", "total_amount", "nominal", "price"):
+        value = doc.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return float(value)
+        except Exception:
+            continue
+    return 0.0
+
+
+async def _admin_user_shop_summary(user: dict) -> dict:
+    query = None
+    if user.get("shop_id"):
+        query = {"shop_id": user.get("shop_id")}
+
+    shop = None
+    if query:
+        shop = await db.shops.find_one(query, {"_id": 0})
+
+    if not shop and user.get("user_id"):
+        shop = await db.shops.find_one({"owner_user_id": user.get("user_id")}, {"_id": 0})
+
+    if not shop:
+        return {
+            "shop_id": user.get("shop_id"),
+            "name": None,
+            "slug": None,
+            "status": None,
+            "created_at": None,
+            "updated_at": None,
+        }
+
+    return {
+        "shop_id": shop.get("shop_id"),
+        "name": shop.get("name"),
+        "slug": shop.get("slug"),
+        "status": shop.get("status"),
+        "renderer": shop.get("storefront_renderer"),
+        "mode": shop.get("storefront_mode"),
+        "style": shop.get("storefront_style"),
+        "created_at": shop.get("created_at"),
+        "updated_at": shop.get("updated_at"),
+    }
+
+
+async def _admin_user_deposit_summary(user: dict) -> dict:
+    user_id = user.get("user_id")
+    email = user.get("email")
+    query_parts = []
+    if user_id:
+        query_parts.append({"user_id": user_id})
+    if email:
+        query_parts.append({"email": email})
+    query = {"$or": query_parts} if query_parts else {"user_id": "__none__"}
+
+    payments = await db.payments.find(query, {"_id": 0}).sort("created_at", -1).limit(25).to_list(25)
+
+    total_success = 0.0
+    pending_count = 0
+    last_payment_at = None
+    last_payment_status = None
+
+    for idx, payment in enumerate(payments):
+        status = str(payment.get("status") or "").lower()
+        if idx == 0:
+            last_payment_at = payment.get("created_at") or payment.get("updated_at")
+            last_payment_status = payment.get("status")
+        if status in {"success", "paid", "approved", "completed"}:
+            total_success += _admin_amount_value(payment)
+        elif status in {"pending", "pending_review", "waiting", "review"}:
+            pending_count += 1
+
+    wallet = None
+    if user_id:
+        wallet = await db.wallets.find_one({"user_id": user_id}, {"_id": 0})
+        if not wallet:
+            wallet = await db.deposits.find_one({"user_id": user_id}, {"_id": 0})
+
+    balance = 0.0
+    if wallet:
+        for key in ("balance", "deposit_balance", "saldo", "amount"):
+            if wallet.get(key) not in (None, ""):
+                try:
+                    balance = float(wallet.get(key))
+                    break
+                except Exception:
+                    pass
+
+    return {
+        "balance": balance,
+        "total_success_amount": total_success,
+        "pending_count": pending_count,
+        "last_payment_at": last_payment_at,
+        "last_payment_status": last_payment_status,
+        "payments_count_sample": len(payments),
+    }
+
+
+async def _admin_enrich_user_for_admin(user: dict) -> dict:
     doc = dict(user or {})
     lifecycle = _admin_user_lifecycle_summary(doc)
     doc["admin_lifecycle"] = lifecycle
 
-    # Explicit top-level aliases for frontend tables/cards.
     for key, value in lifecycle.items():
         if key.endswith("_at") and not doc.get(key):
             doc[key] = value
@@ -355,6 +455,15 @@ def _with_admin_user_lifecycle(user: dict) -> dict:
         doc["account_created_at"] = lifecycle.get("account_created_at")
     if not doc.get("account_updated_at"):
         doc["account_updated_at"] = lifecycle.get("account_updated_at")
+
+    shop = await _admin_user_shop_summary(doc)
+    doc["admin_shop"] = shop
+    doc["shop_name"] = shop.get("name")
+    doc["shop_slug"] = shop.get("slug")
+    doc["shop_status"] = shop.get("status")
+
+    deposit = await _admin_user_deposit_summary(doc)
+    doc["admin_deposit"] = deposit
 
     return doc
 
@@ -392,7 +501,7 @@ async def admin_list_users(request: Request, q: str = "", limit: int = 200):
         flt["$or"] = [{"email": {"$regex": q, "$options": "i"}},
                       {"name": {"$regex": q, "$options": "i"}}]
     users = await db.users.find(flt, {"_id": 0, "password_hash": 0}).sort("created_at", -1).limit(limit).to_list(limit)
-    return [_with_admin_user_lifecycle(user) for user in users]
+    return [await _admin_enrich_user_for_admin(user) for user in users]
 
 
 # 4. Suspend / activate shop
@@ -516,6 +625,138 @@ async def admin_set_user_tier(user_id: str, data: TierIn, request: Request):
                            {"from": old_tier, "to": data.tier})
     return {"ok": True, "user_id": user_id, "tier": data.tier}
 
+
+
+
+async def _admin_enrich_top_store_rows(rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+
+    shop_ids = [row.get("shop_id") for row in rows if row.get("shop_id")]
+    slugs = [row.get("slug") for row in rows if row.get("slug")]
+    query_parts = []
+    if shop_ids:
+        query_parts.append({"shop_id": {"$in": shop_ids}})
+    if slugs:
+        query_parts.append({"slug": {"$in": slugs}})
+
+    shops = []
+    if query_parts:
+        shops = await db.shops.find({"$or": query_parts}, {"_id": 0}).to_list(500)
+
+    by_shop_id = {shop.get("shop_id"): shop for shop in shops if shop.get("shop_id")}
+    by_slug = {shop.get("slug"): shop for shop in shops if shop.get("slug")}
+
+    enriched = []
+    for row in rows:
+        shop = by_shop_id.get(row.get("shop_id")) or by_slug.get(row.get("slug")) or {}
+        enriched.append({
+            "shop_id": row.get("shop_id") or shop.get("shop_id"),
+            "slug": row.get("slug") or shop.get("slug"),
+            "shop_name": shop.get("name") or row.get("shop_name") or row.get("slug") or row.get("shop_id") or "Toko tanpa nama",
+            "visits": int(row.get("visits") or 0),
+        })
+    return enriched
+
+
+async def _admin_try_top_store_aggregation(collection_name: str, limit: int = 8) -> list[dict]:
+    collection = db[collection_name]
+    event_names = ["page_view", "storefront_view", "visit", "store_visit"]
+
+    pipelines = [
+        [
+            {"$match": {"$or": [
+                {"event": {"$in": event_names}},
+                {"event_type": {"$in": event_names}},
+                {"type": {"$in": event_names}},
+                {"action": {"$in": event_names}},
+            ]}},
+            {"$group": {"_id": {"shop_id": "$shop_id", "slug": "$shop_slug"}, "visits": {"$sum": 1}}},
+            {"$sort": {"visits": -1}},
+            {"$limit": limit},
+        ],
+        [
+            {"$match": {"$or": [
+                {"event": {"$in": event_names}},
+                {"event_type": {"$in": event_names}},
+                {"type": {"$in": event_names}},
+                {"action": {"$in": event_names}},
+            ]}},
+            {"$group": {"_id": {"shop_id": "$shop_id", "slug": "$slug"}, "visits": {"$sum": 1}}},
+            {"$sort": {"visits": -1}},
+            {"$limit": limit},
+        ],
+        [
+            {"$group": {"_id": {"shop_id": "$shop_id", "slug": "$shop_slug"}, "visits": {"$sum": {"$ifNull": ["$visits", {"$ifNull": ["$count", 1]}]}}}},
+            {"$sort": {"visits": -1}},
+            {"$limit": limit},
+        ],
+        [
+            {"$group": {"_id": {"shop_id": "$shop_id", "slug": "$slug"}, "visits": {"$sum": {"$ifNull": ["$visits", {"$ifNull": ["$count", 1]}]}}}},
+            {"$sort": {"visits": -1}},
+            {"$limit": limit},
+        ],
+    ]
+
+    for pipeline in pipelines:
+        try:
+            docs = await collection.aggregate(pipeline).to_list(limit)
+        except Exception:
+            continue
+
+        rows = []
+        for doc in docs:
+            key = doc.get("_id") or {}
+            shop_id = key.get("shop_id") if isinstance(key, dict) else None
+            slug = key.get("slug") if isinstance(key, dict) else None
+            visits = int(doc.get("visits") or 0)
+            if not shop_id and not slug:
+                continue
+            if visits <= 0:
+                continue
+            rows.append({"shop_id": shop_id, "slug": slug, "visits": visits})
+
+        if rows:
+            return rows
+
+    return []
+
+
+@router.get("/admin/analytics/top-stores")
+async def admin_top_stores_visits(request: Request, limit: int = 8):
+    await require_admin(request)
+    limit = max(1, min(int(limit or 8), 20))
+
+    collection_names = set(await db.list_collection_names())
+    candidates = [
+        "analytics_events",
+        "storefront_events",
+        "storefront_analytics",
+        "storefront_analytics_daily",
+        "shop_analytics_daily",
+        "storefront_visits",
+        "visit_logs",
+    ]
+
+    rows = []
+    used_collection = None
+    for name in candidates:
+        if name not in collection_names:
+            continue
+        rows = await _admin_try_top_store_aggregation(name, limit=limit)
+        if rows:
+            used_collection = name
+            break
+
+    enriched = await _admin_enrich_top_store_rows(rows)
+    total_visits = sum(int(row.get("visits") or 0) for row in enriched)
+    return {
+        "ok": True,
+        "limit": limit,
+        "source_collection": used_collection,
+        "total_visits": total_visits,
+        "rows": enriched,
+    }
 
 # Manual QRIS tier payment review
 async def _activate_manual_tier_payment(payment: dict, admin: dict):

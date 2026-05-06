@@ -9,12 +9,12 @@ const ADMIN_ROUTES = [
   {
     path: "/admin",
     name: "Admin dashboard",
-    keywords: ["admin"],
+    keywords: ["admin", "Toko Paling Banyak Dikunjungi"],
   },
   {
     path: "/admin/users",
     name: "Admin users",
-    keywords: ["user", "pengguna", "email", "tier", "trial"],
+    keywords: ["user", "pengguna", "email", "tier", "trial", "Detail admin"],
   },
   {
     path: "/admin/shops",
