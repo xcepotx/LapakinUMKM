@@ -892,6 +892,515 @@ async def admin_end_user_trial(user_id: str, request: Request):
 
     return {"ok": True, "user": updated, "audit": audit}
 
+
+
+def _admin_payment_amount(payment: dict) -> float:
+    for key in ("amount", "amount_total", "total", "total_amount", "nominal", "price"):
+        value = payment.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            return float(value)
+        except Exception:
+            continue
+    return 0.0
+
+
+def _admin_payment_public_state(payment: dict) -> dict:
+    return {
+        "payment_id": payment.get("payment_id") or payment.get("id"),
+        "user_id": payment.get("user_id"),
+        "email": payment.get("email") or payment.get("user_email"),
+        "status": payment.get("status"),
+        "plan_id": payment.get("plan_id"),
+        "tier": payment.get("tier"),
+        "amount": _admin_payment_amount(payment),
+        "updated_at": payment.get("updated_at"),
+    }
+
+
+async def _admin_find_payment(payment_id: str):
+    return await db.payments.find_one(
+        {"$or": [{"payment_id": payment_id}, {"id": payment_id}]},
+        {"_id": 0},
+    )
+
+
+async def _admin_enrich_payment_row(payment: dict) -> dict:
+    row = dict(payment or {})
+    user = None
+    if row.get("user_id"):
+        user = await db.users.find_one({"user_id": row.get("user_id")}, {"_id": 0, "password_hash": 0})
+    if not user and (row.get("email") or row.get("user_email")):
+        user = await db.users.find_one({"email": row.get("email") or row.get("user_email")}, {"_id": 0, "password_hash": 0})
+
+    if user:
+        row["email"] = row.get("email") or user.get("email")
+        row["user_email"] = row.get("user_email") or user.get("email")
+        row["user_name"] = user.get("name")
+        row["tier"] = row.get("tier") or user.get("tier")
+
+        shop = None
+        if user.get("shop_id"):
+            shop = await db.shops.find_one({"shop_id": user.get("shop_id")}, {"_id": 0})
+        if not shop and user.get("user_id"):
+            shop = await db.shops.find_one({"owner_user_id": user.get("user_id")}, {"_id": 0})
+        if shop:
+            row["shop_id"] = shop.get("shop_id")
+            row["shop_name"] = shop.get("name")
+            row["shop_slug"] = shop.get("slug")
+    return row
+
+
+def _admin_payment_status_query(status: str) -> dict:
+    status = (status or "pending").lower()
+    if status == "all":
+        return {}
+    if status == "pending":
+        return {"status": {"$in": ["pending", "pending_review", "waiting", "review"]}}
+    if status == "approved":
+        return {"status": {"$in": ["approved", "paid", "success", "completed"]}}
+    if status == "rejected":
+        return {"status": {"$in": ["rejected", "failed", "cancelled"]}}
+    return {"status": status}
+
+
+
+
+def _admin_truthy_string(value) -> bool:
+    return bool(str(value or "").strip())
+
+
+def _admin_store_health_status(score: int) -> str:
+    if score >= 80:
+        return "healthy"
+    if score >= 50:
+        return "onboarding"
+    return "critical"
+
+
+async def _admin_health_event_counts() -> tuple[dict, dict]:
+    collection_names = set(await db.list_collection_names())
+    candidates = [
+        "analytics_events",
+        "storefront_events",
+        "storefront_analytics",
+        "storefront_analytics_daily",
+        "shop_analytics_daily",
+        "storefront_visits",
+        "visit_logs",
+    ]
+
+    visits = {}
+    whatsapp_clicks = {}
+
+    for name in candidates:
+        if name not in collection_names:
+            continue
+
+        collection = db[name]
+        try:
+            docs = await collection.aggregate([
+                {"$group": {
+                    "_id": {"shop_id": "$shop_id", "slug": {"$ifNull": ["$shop_slug", "$slug"]}},
+                    "visits": {"$sum": {"$cond": [
+                        {"$or": [
+                            {"$in": ["$event", ["page_view", "storefront_view", "visit", "store_visit"]]},
+                            {"$in": ["$event_type", ["page_view", "storefront_view", "visit", "store_visit"]]},
+                            {"$in": ["$type", ["page_view", "storefront_view", "visit", "store_visit"]]},
+                            {"$in": ["$action", ["page_view", "storefront_view", "visit", "store_visit"]]},
+                        ]},
+                        {"$ifNull": ["$visits", {"$ifNull": ["$count", 1]}]},
+                        0,
+                    ]}},
+                    "wa": {"$sum": {"$cond": [
+                        {"$or": [
+                            {"$in": ["$event", ["whatsapp_click", "wa_click", "contact_click"]]},
+                            {"$in": ["$event_type", ["whatsapp_click", "wa_click", "contact_click"]]},
+                            {"$in": ["$type", ["whatsapp_click", "wa_click", "contact_click"]]},
+                            {"$in": ["$action", ["whatsapp_click", "wa_click", "contact_click"]]},
+                        ]},
+                        {"$ifNull": ["$count", 1]},
+                        0,
+                    ]}},
+                }},
+                {"$limit": 5000},
+            ]).to_list(5000)
+        except Exception:
+            continue
+
+        for doc in docs:
+            key = doc.get("_id") or {}
+            for ref in [key.get("shop_id"), key.get("slug")]:
+                if not ref:
+                    continue
+                visits[ref] = visits.get(ref, 0) + int(doc.get("visits") or 0)
+                whatsapp_clicks[ref] = whatsapp_clicks.get(ref, 0) + int(doc.get("wa") or 0)
+
+    return visits, whatsapp_clicks
+
+
+async def _admin_product_counts_by_shop() -> dict:
+    counts = {}
+    try:
+        docs = await db.products.aggregate([
+            {"$group": {
+                "_id": "$shop_id",
+                "count": {"$sum": 1},
+                "active": {"$sum": {"$cond": [{"$ne": ["$is_active", False]}, 1, 0]}},
+            }},
+            {"$limit": 5000},
+        ]).to_list(5000)
+    except Exception:
+        docs = []
+
+    for doc in docs:
+        key = doc.get("_id")
+        if key:
+            counts[key] = {"count": int(doc.get("count") or 0), "active": int(doc.get("active") or 0)}
+    return counts
+
+
+def _admin_shop_payment_ready(shop: dict) -> bool:
+    keys = [
+        "store_qris",
+        "qris_image",
+        "qris_image_url",
+        "payment_instruction",
+        "storefront_payment_instruction",
+        "bank_account",
+    ]
+    return any(_admin_truthy_string(shop.get(key)) for key in keys)
+
+
+def _admin_shop_template_ready(shop: dict) -> bool:
+    keys = [
+        "storefront_whatsapp_template",
+        "storefront_whatsapp_product_template",
+        "storefront_whatsapp_cart_template",
+        "whatsapp_template",
+    ]
+    return any(_admin_truthy_string(shop.get(key)) for key in keys)
+
+
+def _admin_shop_seo_ready(shop: dict) -> bool:
+    return _admin_truthy_string(shop.get("storefront_seo_title")) and _admin_truthy_string(shop.get("storefront_seo_description"))
+
+
+def _admin_storefront_ready(shop: dict) -> bool:
+    if shop.get("is_active") is False:
+        return False
+    if str(shop.get("status") or "").lower() in {"inactive", "suspended", "disabled"}:
+        return False
+    return True
+
+
+def _admin_billing_ready(user: dict | None) -> bool:
+    if not user:
+        return False
+    tier = str(user.get("tier") or "free").lower()
+    if tier in {"starter", "pro", "business"}:
+        return True
+    if user.get("trial") and not user.get("trial_expired"):
+        return True
+    return False
+
+
+def _admin_score_shop_health(shop: dict, user: dict | None, product_counts: dict, visits_map: dict, wa_map: dict) -> dict:
+    shop_id = shop.get("shop_id")
+    slug = shop.get("slug")
+    product_info = product_counts.get(shop_id, {})
+    products_count = int(product_info.get("count") or 0)
+    active_products = int(product_info.get("active") or 0)
+    visits = int(visits_map.get(shop_id, 0) or visits_map.get(slug, 0) or 0)
+    wa_clicks = int(wa_map.get(shop_id, 0) or wa_map.get(slug, 0) or 0)
+
+    checks = {
+        "products_ok": products_count >= 3 or active_products >= 3,
+        "whatsapp_ok": _admin_truthy_string(shop.get("whatsapp")),
+        "payment_ok": _admin_shop_payment_ready(shop),
+        "seo_ok": _admin_shop_seo_ready(shop),
+        "template_ok": _admin_shop_template_ready(shop),
+        "storefront_ok": _admin_storefront_ready(shop),
+        "traffic_ok": visits > 0,
+        "billing_ok": _admin_billing_ready(user),
+    }
+
+    score = 0
+    gaps = []
+
+    if checks["products_ok"]:
+        score += 20
+    elif products_count > 0:
+        score += 10
+        gaps.append("Produk kurang dari 3")
+    else:
+        gaps.append("Belum ada produk")
+
+    if checks["whatsapp_ok"]:
+        score += 15
+    else:
+        gaps.append("Nomor WhatsApp belum lengkap")
+
+    if checks["payment_ok"]:
+        score += 15
+    else:
+        gaps.append("QRIS/instruksi pembayaran belum lengkap")
+
+    if checks["seo_ok"]:
+        score += 10
+    else:
+        gaps.append("SEO title/description belum lengkap")
+
+    if checks["template_ok"]:
+        score += 10
+    else:
+        gaps.append("Template WhatsApp belum lengkap")
+
+    if checks["storefront_ok"]:
+        score += 10
+    else:
+        gaps.append("Storefront tidak aktif")
+
+    if checks["traffic_ok"]:
+        score += 10
+    else:
+        gaps.append("Belum ada kunjungan storefront tercatat")
+
+    if wa_clicks > 0:
+        score += 5
+    else:
+        gaps.append("Belum ada klik WhatsApp tercatat")
+
+    if checks["billing_ok"]:
+        score += 5
+    else:
+        gaps.append("Billing/trial owner belum aktif")
+
+    score = max(0, min(100, int(score)))
+    status = _admin_store_health_status(score)
+
+    public_url = f"/toko/{slug}" if slug else ""
+
+    return {
+        "shop_id": shop_id,
+        "slug": slug,
+        "name": shop.get("name"),
+        "created_at": shop.get("created_at"),
+        "updated_at": shop.get("updated_at"),
+        "public_url": public_url,
+        "score": score,
+        "health_status": status,
+        "checks": checks,
+        "gaps": gaps,
+        "products_count": products_count,
+        "active_products_count": active_products,
+        "visits": visits,
+        "whatsapp_clicks": wa_clicks,
+        "owner_user_id": (user or {}).get("user_id"),
+        "owner_email": (user or {}).get("email"),
+        "owner_tier": (user or {}).get("tier") or "free",
+        "owner_trial": bool((user or {}).get("trial")),
+        "owner_trial_expired": bool((user or {}).get("trial_expired")),
+    }
+
+
+@router.get("/admin/store-health")
+async def admin_store_health(request: Request, status: str = "all", q: str = "", limit: int = 100):
+    await require_admin(request)
+    limit = max(1, min(int(limit or 100), 500))
+
+    query = {}
+    if q:
+        query = {"$or": [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"slug": {"$regex": q, "$options": "i"}},
+            {"whatsapp": {"$regex": q, "$options": "i"}},
+        ]}
+
+    shops = await db.shops.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    owner_ids = [shop.get("owner_user_id") for shop in shops if shop.get("owner_user_id")]
+    shop_ids = [shop.get("shop_id") for shop in shops if shop.get("shop_id")]
+
+    users = []
+    if owner_ids or shop_ids:
+        user_query = {"$or": []}
+        if owner_ids:
+            user_query["$or"].append({"user_id": {"$in": owner_ids}})
+        if shop_ids:
+            user_query["$or"].append({"shop_id": {"$in": shop_ids}})
+        users = await db.users.find(user_query, {"_id": 0, "password_hash": 0}).to_list(5000)
+
+    by_user_id = {user.get("user_id"): user for user in users if user.get("user_id")}
+    by_shop_id = {user.get("shop_id"): user for user in users if user.get("shop_id")}
+
+    product_counts, event_counts = await asyncio.gather(
+        _admin_product_counts_by_shop(),
+        _admin_health_event_counts(),
+    )
+    visits_map, wa_map = event_counts
+
+    items = []
+    for shop in shops:
+        user = by_user_id.get(shop.get("owner_user_id")) or by_shop_id.get(shop.get("shop_id"))
+        item = _admin_score_shop_health(shop, user, product_counts, visits_map, wa_map)
+        items.append(item)
+
+    summary = {
+        "total": len(items),
+        "healthy": sum(1 for item in items if item.get("health_status") == "healthy"),
+        "onboarding": sum(1 for item in items if item.get("health_status") == "onboarding"),
+        "critical": sum(1 for item in items if item.get("health_status") == "critical"),
+    }
+
+    if status and status != "all":
+        items = [item for item in items if item.get("health_status") == status]
+
+    items.sort(key=lambda item: item.get("score", 0))
+    return {"items": items, "summary": summary, "status": status, "limit": limit}
+
+@router.get("/admin/payments")
+async def admin_list_payments(request: Request, status: str = "pending", q: str = "", limit: int = 100):
+    await require_admin(request)
+    limit = max(1, min(int(limit or 100), 300))
+    query = _admin_payment_status_query(status)
+
+    if q:
+        search = {"$or": [
+            {"payment_id": {"$regex": q, "$options": "i"}},
+            {"id": {"$regex": q, "$options": "i"}},
+            {"email": {"$regex": q, "$options": "i"}},
+            {"user_email": {"$regex": q, "$options": "i"}},
+            {"user_id": {"$regex": q, "$options": "i"}},
+            {"plan_id": {"$regex": q, "$options": "i"}},
+        ]}
+        query = {"$and": [query, search]} if query else search
+
+    docs = await db.payments.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    items = [await _admin_enrich_payment_row(payment) for payment in docs]
+
+    pending_query = _admin_payment_status_query("pending")
+    approved_query = _admin_payment_status_query("approved")
+    rejected_query = _admin_payment_status_query("rejected")
+    pending_docs = await db.payments.find(pending_query, {"_id": 0}).to_list(1000)
+
+    pending, approved, rejected = await asyncio.gather(
+        db.payments.count_documents(pending_query),
+        db.payments.count_documents(approved_query),
+        db.payments.count_documents(rejected_query),
+    )
+
+    return {
+        "items": items,
+        "status": status,
+        "limit": limit,
+        "summary": {
+            "pending": pending,
+            "approved": approved,
+            "rejected": rejected,
+            "pending_amount": sum(_admin_payment_amount(payment) for payment in pending_docs),
+        },
+    }
+
+
+@router.post("/admin/payments/{payment_id}/approve")
+async def admin_approve_payment(payment_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    note = str(body.get("note") or "").strip()
+    payment = await _admin_find_payment(payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    before = _admin_payment_public_state(payment)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "status": "approved",
+        "approved_at": now_iso,
+        "reviewed_at": now_iso,
+        "reviewed_by": (admin or {}).get("user_id"),
+        "admin_note": note,
+        "updated_at": now_iso,
+    }
+    await db.payments.update_one(
+        {"$or": [{"payment_id": payment_id}, {"id": payment_id}]},
+        {"$set": updates},
+    )
+
+    updated = await _admin_find_payment(payment_id)
+    after = _admin_payment_public_state(updated or {})
+
+    # If existing manual activation helper exists, call it so paid tier activation stays consistent.
+    activation_result = None
+    try:
+        if "_activate_manual_tier_payment" in globals():
+            activation_result = await _activate_manual_tier_payment(updated or payment, admin or {})
+    except Exception as exc:
+        activation_result = {"activation_error": str(exc)}
+
+    if "_admin_write_audit_log" in globals():
+        await _admin_write_audit_log(
+            admin=admin or {},
+            action="payment.approve",
+            target_type="payment",
+            target_id=payment_id,
+            target_email=payment.get("email") or payment.get("user_email") or "",
+            before=before,
+            after={**after, "activation_result": activation_result},
+            reason=note,
+        )
+
+    return {"ok": True, "payment": updated, "activation_result": activation_result}
+
+
+@router.post("/admin/payments/{payment_id}/reject")
+async def admin_reject_payment(payment_id: str, request: Request):
+    admin = await require_admin(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    note = str(body.get("note") or "").strip()
+    payment = await _admin_find_payment(payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    before = _admin_payment_public_state(payment)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    updates = {
+        "status": "rejected",
+        "rejected_at": now_iso,
+        "reviewed_at": now_iso,
+        "reviewed_by": (admin or {}).get("user_id"),
+        "admin_note": note,
+        "updated_at": now_iso,
+    }
+    await db.payments.update_one(
+        {"$or": [{"payment_id": payment_id}, {"id": payment_id}]},
+        {"$set": updates},
+    )
+    updated = await _admin_find_payment(payment_id)
+    after = _admin_payment_public_state(updated or {})
+
+    if "_admin_write_audit_log" in globals():
+        await _admin_write_audit_log(
+            admin=admin or {},
+            action="payment.reject",
+            target_type="payment",
+            target_id=payment_id,
+            target_email=payment.get("email") or payment.get("user_email") or "",
+            before=before,
+            after=after,
+            reason=note,
+        )
+
+    return {"ok": True, "payment": updated}
+
 @router.get("/admin/billing/overview")
 async def admin_billing_overview(request: Request):
     await require_admin(request)

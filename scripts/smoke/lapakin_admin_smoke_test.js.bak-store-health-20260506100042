@@ -12,11 +12,6 @@ const ADMIN_ROUTES = [
     keywords: ["admin", "Toko Paling Banyak Dikunjungi"],
   },
   {
-    path: "/admin/store-health",
-    name: "Admin store health",
-    keywords: ["Store Health Score", "health score", "Sehat", "Perlu onboarding"],
-  },
-  {
     path: "/admin/payments",
     name: "Admin payments",
     keywords: ["Payment Pending", "Approve", "Reject"],

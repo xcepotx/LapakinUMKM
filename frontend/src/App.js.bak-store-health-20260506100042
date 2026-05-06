@@ -45,7 +45,6 @@ import { detectTenantSlug } from "@/lib/tenant";
 
 import AdminBillingMonitor from "@/pages/admin/AdminBillingMonitor";
 import AdminPayments from "@/pages/admin/AdminPayments";
-import AdminStoreHealth from "@/pages/admin/AdminStoreHealth";
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -112,7 +111,6 @@ function AppRouter() {
       <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />
       <Route path="/admin/billing" element={<AdminRoute><AdminBillingMonitor /></AdminRoute>} />
       <Route path="/admin/payments" element={<AdminRoute><AdminPayments /></AdminRoute>} />
-      <Route path="/admin/store-health" element={<AdminRoute><AdminStoreHealth /></AdminRoute>} />
       <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
       <Route path="/admin/pricing" element={<AdminRoute><AdminPricing /></AdminRoute>} />
       <Route path="/admin/products" element={<AdminRoute><AdminProducts /></AdminRoute>} />

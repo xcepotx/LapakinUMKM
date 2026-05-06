@@ -12,8 +12,6 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
     { to: "/admin", icon: ShieldCheck, label: "Overview", tid: "admin-nav-overview" },
     { to: "/admin/shops", icon: Store, label: "Toko UMKM", tid: "admin-nav-shops" },
     { label: "Billing", to: "/admin/billing", icon: CreditCard },
-  { label: "Payments", to: "/admin/payments", icon: CreditCard },
-  { label: "Store Health", to: "/admin/store-health", icon: Activity },
   { to: "/admin/users", icon: Users, label: "Pengguna", tid: "admin-nav-users" },
     { to: "/admin/pricing", icon: Tags, label: "Pricing", tid: "admin-nav-pricing" },
     { to: "/admin/products", icon: Trash2, label: "Moderasi Produk", tid: "admin-nav-products" },
