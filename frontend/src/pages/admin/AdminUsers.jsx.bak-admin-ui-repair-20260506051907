@@ -15,6 +15,51 @@ import {
 import { toast } from "sonner";
 
 
+function formatAdminLifecycleDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getAdminLifecycleValue(user, key, fallbackKey) {
+  return user?.admin_lifecycle?.[key] || user?.[key] || (fallbackKey ? user?.[fallbackKey] : null);
+}
+
+function AdminUserLifecycleSummary({ user }) {
+  const items = [
+    ["Dibuat", getAdminLifecycleValue(user, "account_created_at", "created_at")],
+    ["Update", getAdminLifecycleValue(user, "account_updated_at", "updated_at")],
+    ["Trial mulai", getAdminLifecycleValue(user, "trial_started_at")],
+    ["Trial berakhir", getAdminLifecycleValue(user, "trial_expires_at")],
+    ["Tier diubah", getAdminLifecycleValue(user, "tier_updated_at")],
+    ["Langganan berakhir", getAdminLifecycleValue(user, "subscription_expires_at")],
+  ];
+
+  return (
+    <div className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-brand-mute sm:grid-cols-2" data-testid={`admin-user-lifecycle-${user?.user_id || user?.email || "unknown"}`}>
+      {items.map(([label, value]) => (
+        <div key={label} className="rounded-lg bg-brand-off/60 px-2 py-1">
+          <span className="font-bold text-brand-ink">{label}:</span> {formatAdminLifecycleDate(value)}
+        </div>
+      ))}
+      <div className="rounded-lg bg-brand-off/60 px-2 py-1">
+        <span className="font-bold text-brand-ink">Trial:</span> {user?.trial ? "aktif" : user?.trial_used ? "pernah" : "belum"}
+      </div>
+      <div className="rounded-lg bg-brand-off/60 px-2 py-1">
+        <span className="font-bold text-brand-ink">Subscription:</span> {user?.subscription_status || "-"}
+      </div>
+    </div>
+  );
+}
+
+
 const TIER_OPTIONS = [
   { value: "free", label: "Free" },
   { value: "starter", label: "Starter" },
@@ -157,7 +202,8 @@ export default function AdminUsers() {
         ].map(([label, value]) => (
           <div key={label} className="bg-white border border-brand-line rounded-2xl p-4 shadow-card">
             <div className="text-xs text-brand-mute font-bold uppercase">{label}</div>
-<div className="text-2xl font-heading font-extrabold mt-1">{value}</div>
+                  <AdminUserLifecycleSummary user={u} />
+            <div className="text-2xl font-heading font-extrabold mt-1">{value}</div>
           </div>
         ))}
       </div>
