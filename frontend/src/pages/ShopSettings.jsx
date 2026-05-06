@@ -41,6 +41,50 @@ const WHATSAPP_TEMPLATE_VARIABLES = [
 ];
 
 import { resolveStorefrontTemplate } from "../storefront/templates";
+
+const LAPAKIN_WA_TEMPLATE_PREVIEW_SAMPLE = {
+  shop_name: "Warung Bu Sari",
+  customer_name: "Siti",
+  items: "2x Bakso Spesial - Rp 50.000\n1x Es Teh Manis - Rp 5.000",
+  total: "Rp 55.000",
+  notes: "Pedas sedang, tanpa sambal terpisah",
+  payment_instruction: "Transfer/QRIS sesuai instruksi toko, lalu kirim bukti pembayaran.",
+  campaign_slug: "promo-minggu-ini",
+  product_name: "Bakso Spesial",
+  product_price: "Rp 25.000",
+};
+
+function renderLapakinWhatsAppTemplatePreview(template = "", overrides = {}) {
+  const sample = { ...LAPAKIN_WA_TEMPLATE_PREVIEW_SAMPLE, ...overrides };
+  const source = String(template || "").trim();
+  if (!source) return "Template masih kosong. Isi template untuk melihat preview.";
+  return source.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) => {
+    if (Object.prototype.hasOwnProperty.call(sample, key)) return sample[key];
+    return match;
+  });
+}
+
+function LapakinWhatsAppTemplatePreview({ title, template, overrides }) {
+  const preview = renderLapakinWhatsAppTemplatePreview(template, overrides);
+  return (
+    <div className="mt-3 rounded-2xl border border-brand-line bg-white/70 p-4 shadow-sm" data-testid="whatsapp-template-preview">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-sm font-bold text-brand-ink">{title}</p>
+        <span className="rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand-primary">
+          Preview sample
+        </span>
+      </div>
+      <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-slate-950 p-3 text-xs leading-5 text-slate-50">
+        {preview}
+      </pre>
+      <p className="mt-2 text-xs text-brand-mute">
+        Sample memakai Warung Bu Sari, customer Siti, item bakso/es teh, total, notes, payment instruction, campaign slug, dan data produk contoh.
+      </p>
+    </div>
+  );
+}
+
+
 const BUSINESS_TYPES = [
   { id: "kuliner", label: "Kuliner / Makanan" },
   { id: "kopi", label: "Kopi / Minuman" },
@@ -1836,6 +1880,15 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                     className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 font-mono text-xs font-semibold leading-relaxed text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
                     data-testid="storefront-whatsapp-checkout-template-input"
                   />
+
+                <div data-preview-for="storefront_whatsapp_checkout_template" className="contents">
+                  <LapakinWhatsAppTemplatePreview
+                    title="Preview template checkout WhatsApp"
+                    template={shop.storefront_whatsapp_checkout_template || ""}
+                    overrides={{}}
+                  />
+                </div>
+
                   <p className="mt-1 text-xs text-brand-mute">
                     Cocok untuk cart checkout. Gunakan variable seperti {"{items}"}, {"{total}"}, dan {"{payment_instruction}"}.
                   </p>
@@ -1862,6 +1915,15 @@ export default function ShopSettings({ settingsView = "shop" } = {}) {
                     className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 font-mono text-xs font-semibold leading-relaxed text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
                     data-testid="storefront-whatsapp-product-template-input"
                   />
+
+                <div data-preview-for="storefront_whatsapp_product_template" className="contents">
+                  <LapakinWhatsAppTemplatePreview
+                    title="Preview template tanya produk WhatsApp"
+                    template={shop.storefront_whatsapp_product_template || ""}
+                    overrides={{ items: "", total: "", notes: "Saya mau tanya stok dan varian produk ini.", payment_instruction: "" }}
+                  />
+                </div>
+
                   <p className="mt-1 text-xs text-brand-mute">
                     Dipakai nanti untuk tombol tanya produk atau CTA produk satuan.
                   </p>
