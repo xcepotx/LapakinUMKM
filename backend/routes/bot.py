@@ -865,3 +865,54 @@ async def validate_connect_token(token: str, request: Request):
         "ok":      True,
         "payload": rec["payload"],
     }
+
+
+# ─────────────────────────────────────────────
+# QUICK ACCESS — untuk user yang sudah connect
+# ─────────────────────────────────────────────
+
+@router.get("/bot/access-url")
+async def get_bot_access_url(request: Request):
+    """
+    Return URL untuk akses AI WA Bot dashboard.
+    Kalau sudah connect → generate login token langsung.
+    Kalau belum → generate connect token (first time flow).
+    """
+    import os, base64, hashlib, hmac, json as _json
+
+    user  = await require_user(request)
+    shop  = await _get_user_shop(user)
+    now   = datetime.now(timezone.utc)
+    bot_url = os.environ.get("BOT_DASHBOARD_URL", "https://bot.dev.lapakin.my.id")
+    secret  = os.environ.get("BOT_SERVICE_TOKEN", "fallback-secret")
+
+    payload = {
+        "user_id":   user["user_id"],
+        "email":     user["email"],
+        "name":      user["name"],
+        "shop_id":   shop["shop_id"],
+        "shop_name": shop.get("name", ""),
+        "whatsapp":  shop.get("whatsapp", ""),
+        "exp":       int((now + timedelta(minutes=10)).timestamp()),
+        "iat":       int(now.timestamp()),
+    }
+
+    payload_str = _json.dumps(payload, separators=(",", ":"))
+    payload_b64 = base64.urlsafe_b64encode(payload_str.encode()).decode().rstrip("=")
+    sig   = hmac.new(secret.encode(), payload_b64.encode(), hashlib.sha256).hexdigest()[:16]
+    token = f"{payload_b64}.{sig}"
+
+    await db.bot_connect_tokens.insert_one({
+        "token":      token,
+        "user_id":    user["user_id"],
+        "shop_id":    shop["shop_id"],
+        "payload":    payload,
+        "used":       False,
+        "expires_at": payload["exp"],
+        "created_at": now.isoformat(),
+    })
+
+    return {
+        "ok":          True,
+        "redirect_url": f"{bot_url}/connect?token={token}",
+    }
