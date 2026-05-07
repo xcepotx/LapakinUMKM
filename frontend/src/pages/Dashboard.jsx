@@ -65,7 +65,7 @@ function AIWaBotBanner() {
       <div className="flex items-center gap-3">
         <span style={{fontSize:20}}>🤖</span>
         <div>
-          <div className="font-bold text-sm text-green-800">AI WA Bot Terhubung</div>
+          <div className="font-bold text-sm text-green-800">Lapakin Asisten Terhubung</div>
           <div className="text-xs text-green-700">Kelola bot WhatsApp toko kamu</div>
         </div>
       </div>
@@ -80,7 +80,7 @@ function AIWaBotBanner() {
     <div className="mb-6 rounded-2xl p-5 shadow-sm flex items-center justify-between gap-4 flex-wrap" style={{background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff"}}>
       <div className="flex items-center gap-4">
         <div style={{width:48,height:48,background:"rgba(255,255,255,0.2)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>🤖</div>
-        <div><div className="font-extrabold text-base">AI WA Bot</div><div className="text-sm" style={{opacity:0.85}}>Aktifkan asisten WhatsApp otomatis untuk toko kamu</div></div>
+        <div><div className="font-extrabold text-base">Lapakin Asisten</div><div className="text-sm" style={{opacity:0.85}}>Aktifkan asisten WhatsApp otomatis untuk toko kamu</div></div>
       </div>
       <div className="flex flex-col items-end gap-2">
         <button onClick={handleConnect} disabled={loading} className="shrink-0 font-bold px-5 py-2.5 rounded-xl text-sm transition hover:opacity-90" style={{background:"#fff",color:"#16a34a",cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1}}>{loading?"Memproses...":"🚀 Aktifkan Sekarang"}</button>
@@ -286,7 +286,7 @@ export default function Dashboard() {
         </div>
       }
     >
-    {/* AI WA Bot Banner */}
+    {/* Lapakin Asisten Banner */}
     <AIWaBotBanner />
     {user?.trial_expired && !user?.trial && (
       <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-5 text-orange-950 shadow-sm">

@@ -1,5 +1,5 @@
 /**
- * Komponen tombol "Aktifkan AI WA Bot" untuk dashboard Lapakin.
+ * Komponen tombol "Aktifkan Lapakin Asisten" untuk dashboard Lapakin.
  * 
  * Cara pakai di dashboard Lapakin:
  * import AIWaBotConnect from './AIWaBotConnect';
@@ -50,7 +50,7 @@ export default function AIWaBotConnect() {
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 800, fontSize: '1rem', marginBottom: 4 }}>
-            AI WA Bot
+            Lapakin Asisten
           </div>
           <div style={{ fontSize: '0.82rem', opacity: 0.85 }}>
             Aktifkan asisten WhatsApp otomatis untuk toko kamu
