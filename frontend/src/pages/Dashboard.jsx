@@ -1,3 +1,4 @@
+import React from "react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {Wand2, Package, ExternalLink, ChevronDown, ChevronUp, Plus, Sparkles, Share2, Copy, Power, PowerOff, Coffee, X, Calendar, Wallet, ShoppingBag, AlertCircle, TrendingUp, } from "lucide-react";
 import { rupiah } from "@/lib/api";
 import { toast } from "sonner";
+import { useState as useWaBotState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import ShareHealthCard from "@/components/ShareHealthCard";
 import DailyTipCard from "@/components/DailyTipCard";
@@ -39,6 +41,33 @@ function formatRupiah(value) {
   }).format(number);
 }
 
+
+function AIWaBotBanner() {
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const handleConnect = async () => {
+    setLoading(true); setError("");
+    try {
+      const r = await api.post("/bot/connect-token");
+      window.location.href = r.data.redirect_url;
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Gagal. Coba lagi.");
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="mb-6 rounded-2xl p-5 shadow-sm flex items-center justify-between gap-4 flex-wrap" style={{background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff"}}>
+      <div className="flex items-center gap-4">
+        <div style={{width:48,height:48,background:"rgba(255,255,255,0.2)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>🤖</div>
+        <div><div className="font-extrabold text-base">AI WA Bot</div><div className="text-sm" style={{opacity:0.85}}>Aktifkan asisten WhatsApp otomatis untuk toko kamu</div></div>
+      </div>
+      <div className="flex flex-col items-end gap-2">
+        <button onClick={handleConnect} disabled={loading} className="shrink-0 font-bold px-5 py-2.5 rounded-xl text-sm transition hover:opacity-90" style={{background:"#fff",color:"#16a34a",cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1}}>{loading?"Memproses...":"🚀 Aktifkan Sekarang"}</button>
+        {error&&<div className="text-xs" style={{opacity:0.9}}>⚠ {error}</div>}
+      </div>
+    </div>
+  );
+}
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -236,6 +265,8 @@ export default function Dashboard() {
         </div>
       }
     >
+    {/* AI WA Bot Banner */}
+    <AIWaBotBanner />
     {user?.trial_expired && !user?.trial && (
       <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-5 text-orange-950 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
