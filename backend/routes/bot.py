@@ -9,7 +9,9 @@ Mount di: /api/bot/*
 """
 
 import uuid
-from datetime import datetime, timezone
+import hmac
+import hashlib
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Request, Query
@@ -758,3 +760,108 @@ async def admin_bot_disable(shop_id: str, request: Request):
     )
     await log_admin_action(admin, "ai_bot.disable", "shop", shop_id)
     return {"ok": True}
+
+
+# ─────────────────────────────────────────────
+# CONNECT TOKEN — untuk redirect ke ai-wa-bot
+# ─────────────────────────────────────────────
+
+@router.post("/bot/connect-token")
+async def generate_connect_token(request: Request):
+    """
+    Generate short-lived token untuk connect akun Lapakin ke AI WA Bot.
+    Token valid 10 menit.
+    Owner klik tombol di dashboard → hit endpoint ini → redirect ke bot.dev
+    """
+    import hashlib, hmac, base64
+    
+    user = await require_user(request)
+    shop = await _get_user_shop(user)
+    shop_id = shop["shop_id"]
+    now = datetime.now(timezone.utc)
+    
+    # Build payload
+    payload = {
+        "user_id":    user["user_id"],
+        "email":      user["email"],
+        "name":       user["name"],
+        "shop_id":    shop_id,
+        "shop_name":  shop.get("name", ""),
+        "whatsapp":   shop.get("whatsapp", ""),
+        "exp":        int((now + timedelta(minutes=10)).timestamp()),
+        "iat":        int(now.timestamp()),
+    }
+    
+    # Encode payload
+    import json as _json
+    payload_str = _json.dumps(payload, separators=(",", ":"))
+    payload_b64 = base64.urlsafe_b64encode(payload_str.encode()).decode().rstrip("=")
+    
+    # Sign dengan BOT_SERVICE_TOKEN sebagai secret
+    import os
+    secret = os.environ.get("BOT_SERVICE_TOKEN", "fallback-secret")
+    sig = hmac.new(
+        secret.encode(),
+        payload_b64.encode(),
+        hashlib.sha256
+    ).hexdigest()[:16]
+    
+    token = f"{payload_b64}.{sig}"
+    
+    # Simpan token ke DB untuk validasi nanti
+    await db.bot_connect_tokens.insert_one({
+        "token":   token,
+        "user_id": user["user_id"],
+        "shop_id": shop_id,
+        "payload": payload,
+        "used":    False,
+        "expires_at": payload["exp"],
+        "created_at": now.isoformat(),
+    })
+    
+    # URL redirect ke ai-wa-bot
+    bot_url = os.environ.get("BOT_DASHBOARD_URL", "https://bot.dev.lapakin.my.id")
+    redirect_url = f"{bot_url}/connect?token={token}"
+    
+    return {
+        "ok":           True,
+        "token":        token,
+        "redirect_url": redirect_url,
+        "expires_in":   600,  # 10 menit
+    }
+
+
+@router.get("/bot/connect-token/validate/{token}")
+async def validate_connect_token(token: str, request: Request):
+    """
+    Validate token dari ai-wa-bot service.
+    Dipanggil oleh ai-wa-bot saat user redirect ke /connect
+    """
+    import os
+    bot_token_header = request.headers.get("X-Bot-Token", "")
+    valid_token = os.environ.get("BOT_SERVICE_TOKEN", "")
+    
+    if valid_token and bot_token_header != valid_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    now = int(datetime.now(timezone.utc).timestamp())
+    
+    # Cari token di DB
+    rec = await db.bot_connect_tokens.find_one({"token": token}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="Token tidak ditemukan")
+    if rec.get("used"):
+        raise HTTPException(status_code=400, detail="Token sudah dipakai")
+    if rec.get("expires_at", 0) < now:
+        raise HTTPException(status_code=400, detail="Token sudah expired")
+    
+    # Mark as used
+    await db.bot_connect_tokens.update_one(
+        {"token": token},
+        {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {
+        "ok":      True,
+        "payload": rec["payload"],
+    }
