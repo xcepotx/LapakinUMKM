@@ -222,12 +222,18 @@ export default function Products() {
     }
   };
 
-  const handleAssignCategory = async (product, categoryId) => {
-    const category = activeCategories.find((item) => item.category_id === categoryId);
+  const handleAssignCategory = async (product, rawCategoryValue) => {
+    const value = String(rawCategoryValue || "").trim();
+
+    const category = activeCategories.find((item) => {
+      const categoryId = String(item.category_id || "").trim();
+      const categoryName = String(item.name || item.category || "").trim();
+      return categoryId === value || categoryName.toLowerCase() === value.toLowerCase();
+    });
 
     try {
       const { data } = await api.put(`/products/${product.product_id}/category`, {
-        category_id: categoryId || "",
+        category_id: category?.category_id || "",
         category: category?.name || "",
         category_name: category?.name || "",
       });
@@ -235,7 +241,7 @@ export default function Products() {
       setProducts((arr) =>
         arr.map((p) => (p.product_id === product.product_id ? data : p))
       );
-      toast.success(categoryId ? "Kategori produk diperbarui" : "Kategori produk dikosongkan");
+      toast.success(value ? "Kategori produk diperbarui" : "Kategori produk dikosongkan");
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || "Gagal update kategori");
     }
@@ -609,166 +615,242 @@ export default function Products() {
               <p className="text-brand-mute mt-1">Coba ubah pencarian atau filter kategori.</p>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {visibleProducts.map((p, index) => {
-            const img = primaryImg(p);
-            const cnt = imgCount(p);
-            return (
-              <div key={p.product_id}
-                className="bg-white border border-brand-line rounded-2xl overflow-hidden shadow-card card-hover hover:shadow-cardHover hover:border-brand/40"
-                data-testid={`product-card-${p.product_id}`}
-              >
-                <div className="aspect-square bg-brand-off relative">
-                  {img ? (
-                    <img src={img} alt={p.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full grid place-items-center text-brand-mute">
-                      <Package className="w-8 h-8" />
-                    </div>
-                  )}
-                  {cnt > 1 && (
-                    <span className="absolute top-2 right-2 bg-black/65 text-white text-[11px] font-bold rounded-full px-2 py-0.5">+{cnt - 1}</span>
-                  )}
-                  {p.source === "whatsapp" && (
-                    <span className="absolute top-2 left-2 bg-green-600 text-white text-[10px] font-bold tracking-wider uppercase rounded-full px-2 py-0.5">via WA</span>
-                  )}
-                </div>
-                <div className="p-4">
-                  <h3 className="font-heading font-bold truncate">{p.name}</h3>
-                  <div className="text-brand text-lg font-extrabold mt-1">{rupiah(p.price)}</div>
-                  {(shop?.sells_by || "stock") === "stock" && (
-                    <div className="text-xs text-brand-mute mt-1">Stok: {p.stock || 0}</div>
-                  )}
-                  {(shop?.sells_by || "stock") === "hours" && (
-                    <div className="text-xs text-brand-mute mt-1" data-testid={`days-label-${p.product_id}`}>
-                      {p.available_days?.length ? `Tersedia: ${formatDays(p.available_days)}` : "Setiap hari"}
-                    </div>
-                  )}
-                  {(shop?.sells_by || "stock") === "always" && (
-                    <div className="text-xs text-brand-mute mt-1">Selalu tersedia</div>
-                  )}
-                  <div className="mt-3 grid gap-2">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span
-                        className="inline-flex w-fit items-center gap-1 rounded-full bg-brand-off border border-brand-line px-2.5 py-1 text-[11px] font-bold text-brand-ink"
-                        data-testid={`product-category-badge-${p.product_id}`}
-                      >
-                        <Tag className="w-3 h-3" />
-                        {getProductCategoryName(p) || "Tanpa kategori"}
-                      </span>
+                const img = primaryImg(p);
+                const cnt = imgCount(p);
+                const availabilityMeta = getProductAvailabilityMeta(p);
+                const categoryName = getProductCategoryName(p) || "Tanpa kategori";
+                const sellsByMode = shop?.sells_by || "stock";
+                const availabilityText =
+                  sellsByMode === "stock"
+                    ? `Stok: ${p.stock || 0}`
+                    : sellsByMode === "hours"
+                      ? (p.available_days?.length ? formatDays(p.available_days) : "Setiap hari")
+                      : "Selalu tersedia";
 
-                      <span
-                        className={`inline-flex w-fit rounded-full border px-2.5 py-1 text-[11px] font-bold ${getProductAvailabilityMeta(p).badge}`}
-                        data-testid={`product-availability-badge-${p.product_id}`}
-                      >
-                        {getProductAvailabilityMeta(p).label}
-                      </span>
+                return (
+                  <div
+                    key={p.product_id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setEditing(p)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setEditing(p);
+                      }
+                    }}
+                    className="group cursor-pointer overflow-hidden rounded-2xl border border-brand-line bg-white p-2 shadow-card transition hover:-translate-y-0.5 hover:border-brand/50 hover:shadow-cardHover focus:outline-none focus:ring-4 focus:ring-brand-soft/70"
+                    data-testid={`product-card-${p.product_id}`}
+                    title="Klik untuk edit produk"
+                  >
+                    <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-brand-off">
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={p.name}
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="grid h-full w-full place-items-center text-brand-mute">
+                          <Package className="h-7 w-7" />
+                        </div>
+                      )}
 
-                      <div className="flex flex-wrap gap-2 pt-1" data-testid={`product-sort-controls-${p.product_id}`}>
+                      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 to-transparent p-2">
+                        <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-extrabold text-brand-ink">
+                          {cnt || 0} foto
+                        </span>
+                        {cnt > 1 && (
+                          <span className="rounded-full bg-black/65 px-2 py-0.5 text-[10px] font-extrabold text-white">
+                            +{cnt - 1}
+                          </span>
+                        )}
+                      </div>
+
+                      {p.source === "whatsapp" && (
+                        <span className="absolute left-2 top-2 rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                          via WA
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="px-1 pb-1 pt-2">
+                      <h3 className="truncate text-sm font-black text-brand-ink" title={p.name}>
+                        {p.name}
+                      </h3>
+                      <div className="mt-0.5 text-sm font-extrabold text-brand">
+                        {rupiah(p.price)}
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span
+                          className="inline-flex max-w-full items-center gap-1 rounded-full border border-brand-line bg-brand-off px-2 py-0.5 text-[10px] font-bold text-brand-ink"
+                          data-testid={`product-category-badge-${p.product_id}`}
+                          title={categoryName}
+                        >
+                          <Tag className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{categoryName}</span>
+                        </span>
+
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${availabilityMeta.badge}`}
+                          data-testid={`product-availability-badge-${p.product_id}`}
+                        >
+                          {availabilityMeta.label}
+                        </span>
+                      </div>
+
+                      <p className="mt-1 truncate text-[11px] font-semibold text-brand-mute">
+                        {availabilityText}
+                      </p>
+
+                      <div
+                        className="mt-3 flex items-center gap-1.5 border-t border-brand-line/70 pt-2"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div className="flex gap-1" data-testid={`product-sort-controls-${p.product_id}`}>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveProductSortOrder(p.product_id, -1)}
+                            disabled={index === 0}
+                            className="grid h-8 w-8 place-items-center rounded-lg border border-brand-line bg-white text-xs font-black text-brand-ink hover:bg-brand-off disabled:cursor-not-allowed disabled:opacity-35"
+                            title="Naikkan urutan produk"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveProductSortOrder(p.product_id, 1)}
+                            disabled={index === visibleProducts.length - 1}
+                            className="grid h-8 w-8 place-items-center rounded-lg border border-brand-line bg-white text-xs font-black text-brand-ink hover:bg-brand-off disabled:cursor-not-allowed disabled:opacity-35"
+                            title="Turunkan urutan produk"
+                          >
+                            ↓
+                          </button>
+                        </div>
+
+                        <a
+                          href={`/api/og/product/${p.product_id}/post.png`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-brand-line bg-brand-off text-brand-ink hover:bg-white"
+                          data-testid={`download-post-${p.product_id}`}
+                          title="Unduh kartu IG Post"
+                          aria-label="Unduh kartu IG Post"
+                        >
+                          <ImageIcon className="h-3.5 w-3.5" />
+                        </a>
+
+                        <a
+                          href={`/api/og/product/${p.product_id}/story.png`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-brand-line bg-brand-off text-brand-ink hover:bg-white"
+                          data-testid={`download-story-${p.product_id}`}
+                          title="Unduh kartu IG Story"
+                          aria-label="Unduh kartu IG Story"
+                        >
+                          <Smartphone className="h-3.5 w-3.5" />
+                        </a>
+
                         <button
                           type="button"
-                          onClick={() => handleMoveProductSortOrder(p.product_id, -1)}
-                          disabled={index === 0}
-                          className="rounded-lg border border-brand-line px-2.5 py-1 text-xs font-semibold text-brand-ink disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Naikkan urutan produk"
+                          onClick={() => handleShareWA(p)}
+                          className="grid h-8 w-8 place-items-center rounded-lg bg-green-500 text-white hover:bg-green-600"
+                          data-testid={`share-wa-${p.product_id}`}
+                          title="Bagikan ke WhatsApp"
+                          aria-label="Bagikan ke WhatsApp"
                         >
-                          Naik
+                          <Share2 className="h-3.5 w-3.5" />
                         </button>
+
                         <button
                           type="button"
-                          onClick={() => handleMoveProductSortOrder(p.product_id, 1)}
-                          disabled={index === visibleProducts.length - 1}
-                          className="rounded-lg border border-brand-line px-2.5 py-1 text-xs font-semibold text-brand-ink disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Turunkan urutan produk"
+                          onClick={() => handlePostIG(p)}
+                          disabled={publishingIG === p.product_id}
+                          className="grid h-8 w-8 place-items-center rounded-lg bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-60"
+                          data-testid={`post-ig-${p.product_id}`}
+                          title="Post langsung ke Instagram"
+                          aria-label="Post langsung ke Instagram"
                         >
-                          Turun
+                          {publishingIG === p.product_id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Instagram className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setEditing(p)}
+                          className="ml-auto grid h-8 w-8 place-items-center rounded-lg border border-brand-line bg-white text-brand-ink hover:bg-brand-off hover:text-brand"
+                          data-testid={`edit-${p.product_id}`}
+                          title="Edit produk"
+                          aria-label="Edit produk"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => remove(p.product_id)}
+                          className="grid h-8 w-8 place-items-center rounded-lg border border-red-100 bg-white text-red-600 hover:bg-red-50 hover:text-red-700"
+                          data-testid={`delete-${p.product_id}`}
+                          title="Hapus produk"
+                          aria-label="Hapus produk"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
 
+                      <details
+                        className="mt-2 rounded-xl border border-brand-line bg-brand-off/40 text-xs"
+                        onClick={(event) => event.stopPropagation()}
+                        data-testid={`product-quick-edit-${p.product_id}`}
+                      >
+                        <summary className="cursor-pointer select-none px-3 py-2 font-extrabold text-brand-mute">
+                          Quick edit kategori/status
+                        </summary>
+
+                        <div className="grid gap-2 border-t border-brand-line p-2">
+                          <label className="text-[11px] font-bold text-brand-mute">
+                            Kategori
+                            <select
+                              value={p.category_id || ""}
+                              onChange={(event) => handleAssignCategory(p, event.target.value)}
+                              className="mt-1 h-9 w-full rounded-xl border border-brand-line bg-white px-2 text-xs font-semibold text-brand-ink"
+                              data-testid={`product-category-select-${p.product_id}`}
+                            >
+                              <option value="">Tanpa kategori</option>
+                              {assignableCategories.map((category) => (
+                                <option key={category.category_id || category.slug || category.name} value={category.category_id || ""}>
+                                  {category.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          <label className="text-[11px] font-bold text-brand-mute">
+                            Status Produk
+                            <select
+                              value={getProductAvailabilityStatus(p)}
+                              onChange={(event) => handleUpdateAvailability(p, event.target.value)}
+                              className="mt-1 h-9 w-full rounded-xl border border-brand-line bg-white px-2 text-xs font-semibold text-brand-ink"
+                              data-testid={`product-availability-select-${p.product_id}`}
+                            >
+                              {PRODUCT_AVAILABILITY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </details>
                     </div>
-
-                    <label className="text-[11px] font-bold text-brand-mute">
-                      Kategori
-                      <select
-                        value={p.category_id || ""}
-                        onChange={(event) => handleAssignCategory(p, event.target.value)}
-                        className="mt-1 w-full h-9 rounded-xl border border-brand-line px-2 text-xs font-semibold text-brand-ink bg-white"
-                        data-testid={`product-category-select-${p.product_id}`}
-                      >
-                        <option value="">Tanpa kategori</option>
-                        {assignableCategories.map((category) => (
-                          <option key={category.category_id || category.slug || category.name} value={category.category_id || ""}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="text-[11px] font-bold text-brand-mute">
-                      Status Produk
-                      <select
-                        value={getProductAvailabilityStatus(p)}
-                        onChange={(event) => handleUpdateAvailability(p, event.target.value)}
-                        className="mt-1 w-full h-9 rounded-xl border border-brand-line px-2 text-xs font-semibold text-brand-ink bg-white"
-                        data-testid={`product-availability-select-${p.product_id}`}
-                      >
-                        {PRODUCT_AVAILABILITY_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </label>
                   </div>
-
-                  {/* TOKO CARDS (IG Post + Story + WA Status) */}
-                  <div className="mt-3 flex gap-1.5">
-                    <a href={`/api/og/product/${p.product_id}/post.png`} target="_blank" rel="noopener noreferrer"
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-2 py-2 bg-brand-off border border-brand-line hover:bg-white text-brand-ink"
-                      data-testid={`download-post-${p.product_id}`}
-                      title="Unduh kartu IG Post 1080×1080">
-                      <ImageIcon className="w-3.5 h-3.5" /> IG Post
-                    </a>
-                    <a href={`/api/og/product/${p.product_id}/story.png`} target="_blank" rel="noopener noreferrer"
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-semibold rounded-lg px-2 py-2 bg-brand-off border border-brand-line hover:bg-white text-brand-ink"
-                      data-testid={`download-story-${p.product_id}`}
-                      title="Unduh kartu IG Story 1080×1920">
-                      <Smartphone className="w-3.5 h-3.5" /> Story
-                    </a>
-                    <button onClick={() => handleShareWA(p)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg px-2 py-2 bg-green-500 text-white hover:bg-green-600"
-                      data-testid={`share-wa-${p.product_id}`}
-                      title="Bagikan ke WhatsApp Status / kontak">
-                      <Share2 className="w-3.5 h-3.5" /> WA
-                    </button>
-                    <button onClick={() => handlePostIG(p)}
-                      disabled={publishingIG === p.product_id}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg px-2 py-2 bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-60"
-                      data-testid={`post-ig-${p.product_id}`}
-                      title="Post langsung ke Instagram">
-                      {publishingIG === p.product_id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Instagram className="w-3.5 h-3.5" />
-                      )}
-                      IG
-                    </button>
-                  </div>
-
-                  <div className="mt-2 flex justify-end gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(p)}
-                      className="text-brand-ink hover:text-brand hover:bg-brand-off"
-                      data-testid={`edit-${p.product_id}`}>
-                      <Pencil className="w-4 h-4 mr-1" /> Edit
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => remove(p.product_id)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      data-testid={`delete-${p.product_id}`}>
-                      <Trash2 className="w-4 h-4 mr-1" /> Hapus
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
             </div>
           )}
         </div>

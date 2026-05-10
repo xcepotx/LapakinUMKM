@@ -97,7 +97,134 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_google_maps_url", "")
     shop.setdefault("storefront_location_embed_url", "")
     shop.setdefault("storefront_renderer", "legacy")
+
+    # LAPAKIN_SHOP_SETTINGS_CONTRACT_V1
+    # Defaults + legacy alias sync for Pengaturan Toko.
+    shop.setdefault("order_whatsapp_enabled", True)
+    shop.setdefault("pickup_available", False)
+    shop.setdefault("delivery_available", False)
+    shop.setdefault("has_offline_store", bool(shop.get("show_location", False)))
+    shop.setdefault("show_location", bool(shop.get("has_offline_store", False)))
+
+    whatsapp = str(shop.get("whatsapp") or shop.get("whatsapp_number") or "").strip()
+    shop["whatsapp"] = whatsapp
+    shop["whatsapp_number"] = whatsapp
+
+    payment_instruction = str(
+        shop.get("payment_instruction")
+        or shop.get("storefront_payment_instruction")
+        or shop.get("payment_notes")
+        or ""
+    ).strip()
+    shop["payment_instruction"] = payment_instruction
+    shop["storefront_payment_instruction"] = payment_instruction
+    shop["payment_notes"] = payment_instruction
+
+    store_address = str(
+        shop.get("store_address")
+        or shop.get("address")
+        or shop.get("location_address")
+        or shop.get("storefront_location_address")
+        or ""
+    ).strip()
+    shop["store_address"] = store_address
+    shop["address"] = store_address
+    shop["location_address"] = store_address
+    shop["storefront_location_address"] = store_address
+
+    google_maps_url = str(
+        shop.get("google_maps_url")
+        or shop.get("google_maps_link")
+        or shop.get("storefront_google_maps_url")
+        or ""
+    ).strip()
+    shop["google_maps_url"] = google_maps_url
+    shop["google_maps_link"] = google_maps_url
+    shop["storefront_google_maps_url"] = google_maps_url
+
+    shop.setdefault("service_area", "")
     return shop
+
+
+def _normalize_shop_settings_payload(payload):
+    """Normalize dashboard Pengaturan Toko fields before saving.
+
+    Keeps canonical dashboard fields and legacy/storefront aliases in sync so
+    no frontend field disappears after save/reload.
+    """
+    if not isinstance(payload, dict):
+        return payload
+
+    if "whatsapp" in payload or "whatsapp_number" in payload:
+        whatsapp = str(payload.get("whatsapp") or payload.get("whatsapp_number") or "").strip()[:40]
+        payload["whatsapp"] = whatsapp
+        payload["whatsapp_number"] = whatsapp
+
+    for field in ["order_whatsapp_enabled", "pickup_available", "delivery_available"]:
+        if field in payload:
+            payload[field] = bool(payload.get(field))
+
+    if "has_offline_store" in payload or "show_location" in payload:
+        has_offline_store = bool(payload.get("has_offline_store") or payload.get("show_location"))
+        payload["has_offline_store"] = has_offline_store
+        payload["show_location"] = has_offline_store
+
+    if (
+        "payment_instruction" in payload
+        or "storefront_payment_instruction" in payload
+        or "payment_notes" in payload
+    ):
+        payment_instruction = _clean_storefront_payment_text(
+            payload.get("payment_instruction")
+            or payload.get("storefront_payment_instruction")
+            or payload.get("payment_notes")
+            or "",
+            500,
+        )
+        payload["payment_instruction"] = payment_instruction
+        payload["storefront_payment_instruction"] = payment_instruction
+        payload["payment_notes"] = payment_instruction
+
+    if (
+        "store_address" in payload
+        or "address" in payload
+        or "location_address" in payload
+        or "storefront_location_address" in payload
+    ):
+        store_address = _clean_storefront_location_text(
+            payload.get("store_address")
+            or payload.get("address")
+            or payload.get("location_address")
+            or payload.get("storefront_location_address")
+            or "",
+            300,
+        )
+        payload["store_address"] = store_address
+        payload["address"] = store_address
+        payload["location_address"] = store_address
+        payload["storefront_location_address"] = store_address
+
+    if (
+        "google_maps_url" in payload
+        or "google_maps_link" in payload
+        or "storefront_google_maps_url" in payload
+    ):
+        google_maps_url = _clean_google_maps_url(
+            payload.get("google_maps_url")
+            or payload.get("google_maps_link")
+            or payload.get("storefront_google_maps_url")
+            or ""
+        )
+        payload["google_maps_url"] = google_maps_url
+        payload["google_maps_link"] = google_maps_url
+        payload["storefront_google_maps_url"] = google_maps_url
+
+    if "service_area" in payload:
+        payload["service_area"] = _clean_storefront_location_text(payload.get("service_area"), 120)
+
+    return payload
+
+
 
 
 
@@ -683,6 +810,8 @@ def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
         "storefront_testimonials",
         "storefront_payment_method_label",
         "storefront_payment_instruction",
+        "payment_instruction",
+        "payment_notes",
         "storefront_qris_image",
         "storefront_payment_confirmation_text",
     ]
@@ -703,11 +832,7 @@ def _sanitize_storefront_payment_payload(payload, templates_enabled=True):
 
     if "storefront_payment_instruction" in payload:
         payload["storefront_payment_instruction"] = _clean_storefront_payment_text(
-        "storefront_show_testimonials",
-        "storefront_testimonials",
             payload.get("storefront_payment_instruction"),
-            "storefront_show_testimonials",
-            "storefront_testimonials",
             500,
         )
 
@@ -795,7 +920,12 @@ def _clean_google_maps_embed_url(value, max_len=1000, *extra_args):
     return value[:max_len]
 
 
-def _make_google_maps_search_embed_url(address):
+def _make_google_maps_search_embed_url(address, *extra_args):
+    """Build Google Maps embed URL from address.
+
+    Defensive signature: some older sanitizer patches may pass extra args.
+    Ignore extras and use only the first argument as address.
+    """
     address = _clean_storefront_location_text(address, 300)
     if not address:
         return ""
@@ -829,18 +959,12 @@ def _sanitize_storefront_location_payload(payload):
 
     if "storefront_location_embed_url" in payload:
         payload["storefront_location_embed_url"] = _clean_google_maps_embed_url(
-        "storefront_show_testimonials",
-        "storefront_testimonials",
             payload.get("storefront_location_embed_url"),
-            "storefront_show_testimonials",
-            "storefront_testimonials",
             1000,
         )
 
     if not payload.get("storefront_location_embed_url") and payload.get("storefront_location_address"):
         payload["storefront_location_embed_url"] = _make_google_maps_search_embed_url(
-        "storefront_show_testimonials",
-        "storefront_testimonials",
             payload.get("storefront_location_address")
         )
 
@@ -940,6 +1064,588 @@ async def generate_storefront_copy_ai(data: StorefrontCopyAIIn):
     }
 
 
+
+
+# ----------- Shop Readiness -----------
+def _readiness_has_text(value):
+    return bool(str(value or "").strip())
+
+
+def _readiness_product_has_image(product):
+    images = product.get("images")
+    return bool(product.get("image_data") or (isinstance(images, list) and len(images) > 0))
+
+
+def _readiness_product_category(product):
+    return str(
+        product.get("category_name")
+        or product.get("category")
+        or product.get("product_category")
+        or ""
+    ).strip()
+
+
+def _readiness_item(key, label, ok, points, max_points, href, action_label, description=""):
+    return {
+        "key": key,
+        "label": label,
+        "status": "done" if ok else "todo",
+        "points": points if ok else 0,
+        "max_points": max_points,
+        "href": href,
+        "action_label": action_label,
+        "description": description,
+    }
+
+
+def _readiness_group(key, title, items, description=""):
+    max_points = sum(int(item.get("max_points") or 0) for item in items)
+    points = sum(int(item.get("points") or 0) for item in items)
+    score = round((points / max_points) * 100) if max_points else 0
+
+    if score >= 90:
+        status = "excellent"
+    elif score >= 70:
+        status = "ready"
+    elif score >= 40:
+        status = "needs_work"
+    else:
+        status = "not_ready"
+
+    return {
+        "key": key,
+        "title": title,
+        "description": description,
+        "score": score,
+        "points": points,
+        "max_points": max_points,
+        "status": status,
+        "items": items,
+    }
+
+
+def _build_shop_readiness(shop, products):
+    shop = _with_storefront_defaults(dict(shop or {}))
+    products = [_lapakin_expose_product_status_fields(dict(p or {})) for p in (products or [])]
+
+    active_products = [
+        p for p in products
+        if p.get("is_active") is not False and p.get("availability_status") != "hidden"
+    ]
+
+    products_with_image = [p for p in active_products if _readiness_product_has_image(p)]
+    products_with_detail = [
+        p for p in active_products
+        if _readiness_has_text(p.get("description")) or _readiness_has_text(_readiness_product_category(p))
+    ]
+
+    whatsapp = str(shop.get("whatsapp") or shop.get("whatsapp_number") or "").strip()
+    payment_instruction = str(
+        shop.get("payment_instruction")
+        or shop.get("storefront_payment_instruction")
+        or shop.get("payment_notes")
+        or ""
+    ).strip()
+
+    has_offline_store = bool(shop.get("has_offline_store") or shop.get("show_location"))
+    store_address = str(
+        shop.get("store_address")
+        or shop.get("address")
+        or shop.get("location_address")
+        or shop.get("storefront_location_address")
+        or ""
+    ).strip()
+    google_maps_url = str(
+        shop.get("google_maps_url")
+        or shop.get("google_maps_link")
+        or shop.get("storefront_google_maps_url")
+        or ""
+    ).strip()
+
+    profile_items = [
+        _readiness_item(
+            "shop_name",
+            "Nama toko",
+            _readiness_has_text(shop.get("name")),
+            5,
+            5,
+            "/dashboard/settings#identity",
+            "Lengkapi",
+            "Nama toko tampil di website, kartu share, dan jawaban asisten.",
+        ),
+        _readiness_item(
+            "business_type",
+            "Jenis bisnis",
+            _readiness_has_text(shop.get("business_type")),
+            5,
+            5,
+            "/dashboard/settings#identity",
+            "Pilih jenis",
+            "Dipakai AI untuk menyesuaikan copy, layout, dan rekomendasi.",
+        ),
+        _readiness_item(
+            "tagline",
+            "Tagline toko",
+            _readiness_has_text(shop.get("tagline")),
+            5,
+            5,
+            "/dashboard/settings#identity",
+            "Isi tagline",
+            "Tagline membantu pelanggan cepat paham keunggulan toko.",
+        ),
+        _readiness_item(
+            "description",
+            "Deskripsi singkat",
+            _readiness_has_text(shop.get("description") or shop.get("about")),
+            5,
+            5,
+            "/dashboard/settings#identity",
+            "Isi deskripsi",
+            "Deskripsi toko dipakai untuk SEO, halaman website, dan Lapakin Asisten.",
+        ),
+    ]
+
+    product_items = [
+        _readiness_item(
+            "has_product",
+            "Minimal 1 produk aktif",
+            len(active_products) >= 1,
+            10,
+            10,
+            "/dashboard/ai-studio",
+            "Tambah produk",
+            "Website dan asisten butuh minimal satu produk untuk ditawarkan.",
+        ),
+        _readiness_item(
+            "has_three_products",
+            "Minimal 3 produk",
+            len(active_products) >= 3,
+            5,
+            5,
+            "/dashboard/products",
+            "Kelola produk",
+            "Tiga produk membuat website terlihat lebih siap dan tidak kosong.",
+        ),
+        _readiness_item(
+            "product_images",
+            "Produk punya foto",
+            len(products_with_image) >= 1,
+            5,
+            5,
+            "/dashboard/products",
+            "Tambah foto",
+            "Foto produk meningkatkan kepercayaan pelanggan.",
+        ),
+        _readiness_item(
+            "product_details",
+            "Produk punya detail/kategori",
+            len(products_with_detail) >= 1,
+            5,
+            5,
+            "/dashboard/products",
+            "Lengkapi detail",
+            "Detail produk membantu pelanggan dan asisten menjawab lebih akurat.",
+        ),
+    ]
+
+    order_items = [
+        _readiness_item(
+            "whatsapp",
+            "Nomor WhatsApp toko",
+            _readiness_has_text(whatsapp),
+            8,
+            8,
+            "/dashboard/settings?section=contact#contact",
+            "Isi WhatsApp",
+            "Nomor ini dipakai tombol order dan checkout.",
+        ),
+        _readiness_item(
+            "order_whatsapp_enabled",
+            "Order via WhatsApp aktif",
+            bool(shop.get("order_whatsapp_enabled", True)),
+            4,
+            4,
+            "/dashboard/settings?section=order#order",
+            "Aktifkan order",
+            "Pelanggan bisa langsung mengirim pesanan ke WhatsApp.",
+        ),
+        _readiness_item(
+            "pickup_or_delivery",
+            "Pickup atau delivery tersedia",
+            bool(shop.get("pickup_available") or shop.get("delivery_available")),
+            5,
+            5,
+            "/dashboard/settings?section=order#order",
+            "Atur pengiriman",
+            "Pilih minimal salah satu cara pemenuhan pesanan.",
+        ),
+        _readiness_item(
+            "payment_instruction",
+            "Instruksi pembayaran",
+            _readiness_has_text(payment_instruction),
+            5,
+            5,
+            "/dashboard/settings?section=payment#payment",
+            "Isi pembayaran",
+            "Instruksi pembayaran membantu pelanggan tahu langkah berikutnya.",
+        ),
+        _readiness_item(
+            "payment_qris_or_label",
+            "QRIS atau label pembayaran",
+            _readiness_has_text(shop.get("storefront_qris_image") or shop.get("storefront_payment_method_label")),
+            3,
+            3,
+            "/dashboard/settings?section=payment#payment",
+            "Lengkapi QRIS",
+            "Opsional, tapi membuat checkout manual lebih jelas.",
+        ),
+    ]
+
+    location_items = [
+        _readiness_item(
+            "service_area",
+            "Area layanan",
+            _readiness_has_text(shop.get("service_area")),
+            5,
+            5,
+            "/dashboard/settings?section=location#location",
+            "Isi area",
+            "Area layanan membantu pelanggan tahu apakah toko melayani lokasi mereka.",
+        ),
+        _readiness_item(
+            "offline_address",
+            "Alamat toko / online-only",
+            (not has_offline_store) or _readiness_has_text(store_address),
+            5,
+            5,
+            "/dashboard/settings?section=location#location",
+            "Isi alamat",
+            "Jika toko online-only, alamat tidak wajib. Jika punya lokasi offline, alamat sebaiknya diisi.",
+        ),
+        _readiness_item(
+            "google_maps",
+            "Google Maps / online-only",
+            (not has_offline_store) or _readiness_has_text(google_maps_url),
+            5,
+            5,
+            "/dashboard/settings?section=location#location",
+            "Tambah Maps",
+            "Google Maps direkomendasikan untuk toko offline atau lokasi pickup.",
+        ),
+    ]
+
+    website_items = [
+        _readiness_item(
+            "storefront_template",
+            "Template website aktif",
+            str(shop.get("storefront_renderer") or "legacy") == "template",
+            4,
+            4,
+            "/dashboard/website",
+            "Atur website",
+            "Template baru membuat tampilan website lebih siap dipromosikan.",
+        ),
+        _readiness_item(
+            "storefront_mode_style",
+            "Mode dan style website",
+            _readiness_has_text(shop.get("storefront_mode")) and _readiness_has_text(shop.get("storefront_style")),
+            4,
+            4,
+            "/dashboard/website",
+            "Pilih tampilan",
+            "Mode dan style membantu AI memilih layout yang cocok.",
+        ),
+        _readiness_item(
+            "storefront_copy",
+            "Hero, subtitle, dan CTA",
+            _readiness_has_text(shop.get("storefront_hero_title"))
+            and _readiness_has_text(shop.get("storefront_hero_subtitle"))
+            and _readiness_has_text(shop.get("storefront_cta_label")),
+            4,
+            4,
+            "/dashboard/website",
+            "Lengkapi copy",
+            "Copy utama menentukan kesan pertama pelanggan.",
+        ),
+        _readiness_item(
+            "featured_products",
+            "Produk unggulan",
+            isinstance(shop.get("storefront_featured_product_ids"), list)
+            and len(shop.get("storefront_featured_product_ids") or []) > 0,
+            3,
+            3,
+            "/dashboard/website",
+            "Pilih produk",
+            "Produk unggulan membantu pelanggan langsung melihat produk terbaik.",
+        ),
+    ]
+
+    groups = [
+        _readiness_group("profile", "Profil Toko", profile_items, "Identitas dasar toko untuk website dan asisten."),
+        _readiness_group("products", "Produk", product_items, "Katalog yang akan ditampilkan dan dijelaskan oleh asisten."),
+        _readiness_group("order", "Order & Pembayaran", order_items, "Data penting agar pelanggan bisa order dengan lancar."),
+        _readiness_group("location", "Lokasi & Layanan", location_items, "Area layanan, pickup, dan data lokasi jika ada toko offline."),
+        _readiness_group("website", "Website Content", website_items, "Bahan untuk membuat website dengan AI."),
+    ]
+
+    total_points = sum(group["points"] for group in groups)
+    total_max = sum(group["max_points"] for group in groups)
+    score = round((total_points / total_max) * 100) if total_max else 0
+
+    assistant_points = (
+        groups[0]["points"]
+        + groups[1]["points"]
+        + groups[2]["points"]
+        + groups[3]["points"]
+    )
+    assistant_max = (
+        groups[0]["max_points"]
+        + groups[1]["max_points"]
+        + groups[2]["max_points"]
+        + groups[3]["max_points"]
+    )
+    assistant_score = round((assistant_points / assistant_max) * 100) if assistant_max else 0
+
+    if score >= 90:
+        level = "excellent"
+        summary = "Toko sudah siap dipromosikan. Website dan data operasional terlihat matang."
+    elif score >= 70:
+        level = "ready_for_ai"
+        summary = "Toko sudah cukup siap untuk dibuatkan website dengan AI."
+    elif score >= 40:
+        level = "almost_ready"
+        summary = "Toko hampir siap. Lengkapi beberapa data penting agar hasil website lebih bagus."
+    else:
+        level = "not_ready"
+        summary = "Lengkapi data dasar toko, produk, dan order sebelum membuat website."
+
+    next_item = None
+    for group in groups:
+        for item in group["items"]:
+            if item["status"] != "done":
+                next_item = item
+                break
+        if next_item:
+            break
+
+    next_best_action = None
+    if next_item:
+        next_best_action = {
+            "label": next_item["action_label"],
+            "title": next_item["label"],
+            "href": next_item["href"],
+            "description": next_item.get("description", ""),
+        }
+
+    return {
+        "score": score,
+        "level": level,
+        "summary": summary,
+        "can_generate_website": score >= 70,
+        "assistant_score": assistant_score,
+        "can_enable_assistant": assistant_score >= 70,
+        "points": total_points,
+        "max_points": total_max,
+        "products_count": len(products),
+        "active_products_count": len(active_products),
+        "groups": groups,
+        "next_best_action": next_best_action,
+    }
+
+
+@router.get("/shops/readiness")
+async def get_shop_readiness(request: Request):
+    user = await require_user(request)
+
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+
+    shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    shop = _with_storefront_defaults(shop)
+
+    products = await db.products.find(
+        {"shop_id": user["shop_id"]},
+        {"_id": 0},
+    ).sort("sort_order", 1).to_list(length=500)
+
+    return _build_shop_readiness(shop, products)
+
+
+
+# ----------- Website AI Generate -----------
+def _website_ai_infer_mode(shop):
+    current = str(shop.get("storefront_mode") or "").strip()
+    if current in ALLOWED_STOREFRONT_MODES:
+        return current
+
+    business_type = str(shop.get("business_type") or shop.get("category") or "").lower()
+    if business_type in {"kuliner", "kopi", "makanan", "minuman", "fnb", "f&b"}:
+        return "food_menu"
+    if business_type in {"jasa", "service", "layanan"}:
+        return "services"
+    return "catalog"
+
+
+def _website_ai_infer_style(shop, user):
+    current = str(shop.get("storefront_style") or "").strip()
+    tier = _normalize_storefront_tier(user)
+    features = _storefront_features_for_tier(tier)
+    allowed_styles = features.get("styles") or {"classic"}
+
+    if current in allowed_styles:
+        return current
+
+    if "modern" in allowed_styles:
+        return "modern"
+
+    return "classic"
+
+
+def _website_ai_pick_featured_product_ids(products, max_items=6):
+    cleaned = []
+
+    def has_image(product):
+        images = product.get("images")
+        return bool(product.get("image_data") or (isinstance(images, list) and images))
+
+    active_products = [
+        dict(product or {})
+        for product in (products or [])
+        if product.get("is_active") is not False and product.get("availability_status") != "hidden"
+    ]
+
+    preferred = sorted(
+        active_products,
+        key=lambda item: (
+            0 if has_image(item) else 1,
+            int(item.get("sort_order") or 0),
+            str(item.get("name") or ""),
+        ),
+    )
+
+    seen = set()
+    for product in preferred:
+        product_id = str(product.get("product_id") or "").strip()
+        if not product_id or product_id in seen:
+            continue
+        seen.add(product_id)
+        cleaned.append(product_id)
+        if len(cleaned) >= max_items:
+            break
+
+    return cleaned
+
+
+@router.post("/shops/website-ai/generate")
+async def generate_shop_website_ai(request: Request):
+    user = await require_user(request)
+
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+
+    shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    shop = _with_storefront_defaults(shop)
+
+    products = await db.products.find(
+        {"shop_id": user["shop_id"]},
+        {"_id": 0},
+    ).sort("sort_order", 1).to_list(length=500)
+
+    readiness = _build_shop_readiness(shop, products)
+    if readiness.get("score", 0) < 70:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Readiness toko belum cukup untuk membuat website dengan AI.",
+                "readiness": readiness,
+                "next_best_action": readiness.get("next_best_action"),
+            },
+        )
+
+    tier = _normalize_storefront_tier(user)
+    features = _storefront_features_for_tier(tier)
+    if not features.get("templates"):
+        raise HTTPException(
+            status_code=403,
+            detail="Fitur website template/AI tersedia mulai paket Starter.",
+        )
+
+    featured_limit_by_tier = {
+        "starter": 3,
+        "pro": 6,
+        "business": 12,
+    }
+    featured_limit = featured_limit_by_tier.get(tier, 3)
+
+    storefront_mode = _website_ai_infer_mode(shop)
+    storefront_style = _website_ai_infer_style(shop, user)
+
+    current_copy = {
+        "storefront_hero_title": shop.get("storefront_hero_title") or "",
+        "storefront_hero_subtitle": shop.get("storefront_hero_subtitle") or "",
+        "storefront_cta_label": shop.get("storefront_cta_label") or "",
+        "storefront_featured_title": shop.get("storefront_featured_title") or "",
+        "storefront_about_title": shop.get("storefront_about_title") or "",
+    }
+
+    copy, source = await _generate_storefront_copy_with_ai(StorefrontCopyAIIn(
+        shop_name=shop.get("name") or "",
+        shop_description=shop.get("description") or shop.get("about") or "",
+        business_category=shop.get("business_type") or shop.get("category") or "",
+        instagram=shop.get("instagram") or "",
+        tiktok=shop.get("tiktok") or "",
+        storefront_mode=storefront_mode,
+        storefront_style=storefront_style,
+        current=current_copy,
+    ))
+
+    update_payload = {
+        "storefront_renderer": "template",
+        "storefront_mode": storefront_mode,
+        "storefront_style": storefront_style,
+        **copy,
+        "storefront_featured_product_ids": _website_ai_pick_featured_product_ids(products, featured_limit),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if not shop.get("storefront_seo_title"):
+        update_payload["storefront_seo_title"] = f"{shop.get('name') or 'Toko UMKM'} · Lapakin"
+    if not shop.get("storefront_seo_description"):
+        update_payload["storefront_seo_description"] = (
+            shop.get("description")
+            or shop.get("tagline")
+            or "Toko online UMKM Indonesia di Lapakin."
+        )[:160]
+
+    update_payload = _apply_storefront_tier_guard(update_payload, user)
+    update_payload = _normalize_shop_settings_payload(update_payload)
+
+    await db.shops.update_one(
+        {"shop_id": user["shop_id"]},
+        {"$set": update_payload},
+    )
+
+    OG_PNG_CACHE.pop(user["shop_id"], None)
+
+    updated_shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    updated_shop = _with_storefront_defaults(updated_shop)
+    readiness_after = _build_shop_readiness(updated_shop, products)
+
+    return {
+        "ok": True,
+        "source": source,
+        "message": "Draft website berhasil dibuat dengan AI.",
+        "generated": update_payload,
+        "readiness": readiness_after,
+    }
+
+
 @router.get("/shops/me")
 async def get_my_shop(request: Request):
     user = await require_user(request)
@@ -955,7 +1661,9 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     user = await require_user(request)
     now = datetime.now(timezone.utc).isoformat()
     payload = data.model_dump()
-    # featured_picker_persist_guard
+    
+    payload = _normalize_shop_settings_payload(payload)
+# featured_picker_persist_guard
     if "storefront_featured_product_ids" in payload:
         current_tier_for_featured = (locals().get("user") or {}).get("tier") or "free"
         featured_limit_by_tier = {
@@ -1006,6 +1714,10 @@ async def create_or_update_shop(data: ShopIn, request: Request):
         templates_enabled=(payload.get("storefront_renderer") or "template") != "legacy" or bool(user.get("shop_id")),
     )
     payload = _sanitize_storefront_location_payload(payload)
+
+    # Keep dashboard Pengaturan Toko canonical fields and legacy aliases synced
+    # after storefront sanitizers mutate payment/location fields.
+    payload = _normalize_shop_settings_payload(payload)
 
     if user.get("shop_id"):
         # update

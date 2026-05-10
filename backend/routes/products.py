@@ -167,16 +167,29 @@ def normalize_product_availability_payload(payload):
 
 
 async def _resolve_category_for_product(shop_id: str, payload: dict):
+    """Normalize product category fields.
+
+    Accepts both:
+    - category_id as real category_id, e.g. cat_xxx
+    - category_id accidentally sent as category name, e.g. "Makanan"
+    """
     category_id = str(payload.get("category_id") or "").strip()[:80]
     category_name = normalize_product_category_name(
         payload.get("category_name") or payload.get("category") or ""
     )
 
     category = None
+
     if category_id:
         category = await _find_category_by_id(shop_id, category_id)
-        if not category:
-            raise HTTPException(status_code=400, detail="Kategori tidak ditemukan")
+
+        # Defensive fallback: some older frontend paths may send the category
+        # name in category_id. Treat it as category_name instead of clearing it.
+        if not category and not category_name:
+            maybe_name = normalize_product_category_name(category_id)
+            if maybe_name:
+                category = await _ensure_category(shop_id, maybe_name)
+
     elif category_name:
         category = await _ensure_category(shop_id, category_name)
 

@@ -437,14 +437,71 @@ function hasAboutContent(shop) {
   );
 }
 
+function normalizeProductCategory(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) return "";
+
+  const normalized = value.toLowerCase();
+
+  // Ignore non-category labels/badges that should not become category chips
+  if (["pilihan", "siap pesan", "tampil", "aktif", "tersedia"].includes(normalized)) {
+    return "";
+  }
+
+  if (
+    normalized.includes("minuman") ||
+    normalized.includes("kopi") ||
+    normalized.includes("tea") ||
+    normalized.includes("teh") ||
+    normalized.includes("jus")
+  ) {
+    return "Minuman";
+  }
+
+  if (
+    normalized.includes("makanan") ||
+    normalized.includes("kuliner") ||
+    normalized.includes("food") ||
+    normalized.includes("menu")
+  ) {
+    return "Makanan";
+  }
+
+  return value
+    .split(/[\s/_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
 function getCategories(products) {
-  return Array.from(
-    new Set(
-      products
-        .map((product) => getProductCategory(product))
-        .filter(Boolean)
-    )
-  ).slice(0, 8);
+  const seen = new Set();
+  const categories = [];
+
+  (products || []).forEach((product) => {
+    const candidates = [
+      product?.category,
+      product?.category_name,
+      product?.product_category,
+      product?.catalog_category,
+      product?.group,
+      product?.group_name,
+      product?.product_type,
+      product?.business_category,
+    ];
+
+    candidates.forEach((candidate) => {
+      const normalized = normalizeProductCategory(candidate);
+      if (!normalized) return;
+
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      categories.push(normalized);
+    });
+  });
+
+  return categories;
 }
 
 function getModeFromTemplate(template) {
@@ -452,6 +509,28 @@ function getModeFromTemplate(template) {
   if (key.startsWith("food_")) return "food_menu";
   if (key.startsWith("services_")) return "services";
   return "catalog";
+}
+
+
+function ensureSmallFoodMenuCategories(sections, products, template) {
+  if (!Array.isArray(sections)) return sections;
+  if (!Array.isArray(products) || products.length > 6) return sections;
+  if (getModeFromTemplate(template) !== "food_menu") return sections;
+  if (getCategories(products).length <= 1) return sections;
+  if (sections.includes("categories")) return sections;
+
+  const next = [...sections];
+  const menuIndex = next.findIndex((key) =>
+    ["featured_products", "today_menu", "menu_list", "menu_grid", "signature_menu"].includes(key)
+  );
+
+  if (menuIndex >= 0) {
+    next.splice(menuIndex + 1, 0, "categories");
+  } else {
+    next.unshift("categories");
+  }
+
+  return next;
 }
 
 function getSectionTitle(section, mode) {
@@ -473,6 +552,7 @@ function getSectionTitle(section, mode) {
     promo_banner: "Promo Spesial",
     faq: "Pertanyaan Umum",
     business_hours: "Jam Operasional",
+    operational_info: "Info Order",
     contact: "Hubungi Toko",
   };
 
@@ -509,6 +589,29 @@ function getHeroCopy(mode, template) {
   };
 }
 
+
+
+function cleanStorefrontHeroTitle(title, shopName, mode) {
+  const raw = String(title || "").trim();
+  if (!raw) return "";
+
+  let cleaned = raw
+    .replace(/^Menu\s+Menu\b/i, "Menu")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // AI fallback kadang terlalu generik untuk toko kuliner.
+  // Untuk food menu, buat judul lebih pendek dan natural.
+  if (
+    mode === "food_menu" &&
+    /^Menu enak dari/i.test(cleaned) &&
+    shopName
+  ) {
+    cleaned = `Menu Rumahan ${shopName}`;
+  }
+
+  return cleaned;
+}
 
 function getShopSlug(shop) {
   return getValue(shop, ["slug", "shop_slug", "store_slug", "subdomain"], "storefront");
@@ -678,7 +781,8 @@ function CategoryChips({
     <div
       className="ltr-category-filter-panel"
       data-testid={showControls ? "storefront-template-category-search-filter" : undefined}
-      style={{ display: "grid", gap: 14 }}
+      data-small-catalog={totalCount <= 6 ? "true" : "false"}
+      style={{ display: "grid", gap: totalCount <= 6 ? 8 : 14 }}
     >
       {showControls ? (
         <div
@@ -812,7 +916,8 @@ function HeroSection({ shop, products, template }) {
   const mode = getModeFromTemplate(template);
   const copy = getHeroCopy(mode, template);
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
-  const customHeroTitle = getValue(shop, ["storefront_hero_title"], "");
+  const rawCustomHeroTitle = getValue(shop, ["storefront_hero_title"], "");
+  const customHeroTitle = cleanStorefrontHeroTitle(rawCustomHeroTitle, shopName, mode);
   const description =
     getValue(shop, ["storefront_hero_subtitle"], "") ||
     getValue(shop, ["description", "tagline", "bio", "about"], "") ||
@@ -826,7 +931,11 @@ function HeroSection({ shop, products, template }) {
       <div className="ltr-hero-content">
         <div className="ltr-eyebrow">{copy.eyebrow}</div>
         <h1>
-          {customHeroTitle ? (
+          {mode === "food_menu" && shopName ? (
+            <>
+              <span>Masakan</span> Rumahan {shopName}
+            </>
+          ) : customHeroTitle ? (
             customHeroTitle
           ) : (
             <>
@@ -1172,49 +1281,229 @@ function getSelectedFeaturedProducts(shop, products) {
 }
 
 
-function ProductSection({ title, products, shop, template, limit, titleOverride, onAddToCart, preferSelectedFeatured = false }) {
+function formatCompactProductPrice(product) {
+  const value = Number(product?.price || product?.sale_price || product?.base_price || 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value).replace("IDR", "Rp").trim();
+}
+
+function getCompactProductName(product) {
+  return String(product?.name || product?.title || "Produk").trim();
+}
+
+function getCompactProductDescription(product) {
+  return String(product?.description || product?.short_description || product?.caption || "").trim();
+}
+
+function getCompactProductCategory(product) {
+  return String(product?.category_name || product?.category || "").trim();
+}
+
+function CompactProductCard({ product, shop, template, index, onAddToCart, featured = false }) {
+  const name = getCompactProductName(product);
+  const description = getCompactProductDescription(product);
+  const price = formatCompactProductPrice(product);
+  const category = getCompactProductCategory(product);
+  const waHref = buildWhatsappLink(shop, product);
+
+  return (
+    <article
+      className="lpk-tile"
+      data-featured={featured ? "true" : "false"}
+      data-testid={featured ? "storefront-featured-menu-tile" : "storefront-main-menu-tile"}
+    >
+      <div className="lpk-tile-media">
+        <ProductImage product={product} className="lpk-tile-img" />
+      </div>
+
+      <div className="lpk-tile-body">
+        <div className="lpk-tile-badges">
+          {category ? <span>{category}</span> : null}
+          {!featured ? <span>Siap pesan</span> : null}
+        </div>
+
+        <h3>{name}</h3>
+
+        {!featured && description ? (
+          <p>{description}</p>
+        ) : null}
+
+        {price ? <strong>{price}</strong> : null}
+      </div>
+
+      <div className="lpk-tile-actions">
+        <button
+          type="button"
+          className="lpk-tile-cart"
+          onClick={() => onAddToCart?.(product)}
+          aria-label={`Tambah ${name} ke keranjang`}
+        >
+          +
+        </button>
+
+        <a className="lpk-tile-order" href={waHref} target="_blank" rel="noreferrer">
+          Pesan
+        </a>
+      </div>
+    </article>
+  );
+}
+
+function ProductSection({
+  title,
+  products,
+  shop,
+  template,
+  limit,
+  titleOverride,
+  onAddToCart,
+  preferSelectedFeatured = false,
+  allProducts,
+  productSearch = "",
+  setProductSearch,
+  categoryFilter = "all",
+  setCategoryFilter,
+  showControls = false,
+}) {
+  const lapakinSectionTitle = String(titleOverride || title || "").trim();
+  const lapakinIsFeaturedMenuSection =
+    getModeFromTemplate(template) === "food_menu" &&
+    /menu favorit|favorit hari ini|unggulan|signature/i.test(lapakinSectionTitle);
+  const lapakinIsMainMenuSection =
+    getModeFromTemplate(template) === "food_menu" &&
+    /pilihan menu|semua menu|daftar menu/i.test(lapakinSectionTitle);
+
   const pickedFeaturedProducts = preferSelectedFeatured
     ? getSelectedFeaturedProducts(shop, products)
     : [];
+
   const sourceProducts = pickedFeaturedProducts.length ? pickedFeaturedProducts : (products || []);
-  const computedLimit = pickedFeaturedProducts.length
-    ? pickedFeaturedProducts.length
-    : (limit || sourceProducts.length);
+  const productSectionType = lapakinIsFeaturedMenuSection
+    ? "featured-menu"
+    : lapakinIsMainMenuSection
+      ? "main-menu"
+      : "default";
+
+  const density = String(shop?.storefront_product_density || "compact").trim();
+  const useCompactCards = density !== "comfortable" && getModeFromTemplate(template) === "food_menu";
+
+  const featuredLimit = limit || 4;
+  const initialMainCount = 20;
+  const [visibleCount, setVisibleCount] = useState(initialMainCount);
+
+  useEffect(() => {
+    setVisibleCount(initialMainCount);
+  }, [productSearch, categoryFilter]);
+
+  const computedLimit = lapakinIsFeaturedMenuSection
+    ? Math.min(featuredLimit, sourceProducts.length)
+    : lapakinIsMainMenuSection
+      ? Math.min(visibleCount, sourceProducts.length)
+      : (limit ? Math.min(Number(limit), sourceProducts.length) : sourceProducts.length);
+
   const visibleProducts = sourceProducts.slice(0, computedLimit);
   const finalTitle = titleOverride || title;
+  const shouldShowMenuFilters = lapakinIsMainMenuSection && showControls;
+  const hasMoreProducts = lapakinIsMainMenuSection && visibleProducts.length < sourceProducts.length;
 
   if (!visibleProducts.length) {
     return (
-      <section className="ltr-section">
+      <section className="ltr-section" data-lapakin-product-section={productSectionType}>
         <div className="ltr-section-heading">
           <span>Segera hadir</span>
           <h2>{finalTitle}</h2>
           <p>Belum ada item yang ditampilkan untuk bagian ini.</p>
         </div>
+
+        {shouldShowMenuFilters ? (
+          <CategoryChips
+            products={visibleProducts}
+            allProducts={allProducts || sourceProducts}
+            template={template}
+            showControls
+            productSearch={productSearch}
+            setProductSearch={setProductSearch}
+            categoryFilter={categoryFilter}
+            setCategoryFilter={setCategoryFilter}
+          />
+        ) : null}
       </section>
     );
   }
 
   return (
-    <section className="ltr-section">
+    <section className="ltr-section" data-lapakin-product-section={productSectionType}>
       <div className="ltr-section-heading">
-        <span>{template.label}</span>
+        <span>{lapakinIsFeaturedMenuSection ? "Menu Unggulan" : template.label}</span>
         <h2>{finalTitle}</h2>
-        <p>{template.description}</p>
+        <p>
+          {lapakinIsFeaturedMenuSection
+            ? "Pilihan favorit yang paling cepat dipilih pelanggan."
+            : template.description}
+        </p>
       </div>
 
-      <div className={cx("ltr-products-grid", `ltr-products-${template.productCard}`)}>
+      {shouldShowMenuFilters ? (
+        <CategoryChips
+          products={visibleProducts}
+          allProducts={allProducts || sourceProducts}
+          template={template}
+          showControls
+          productSearch={productSearch}
+          setProductSearch={setProductSearch}
+          categoryFilter={categoryFilter}
+          setCategoryFilter={setCategoryFilter}
+        />
+      ) : null}
+
+      <div
+        className={
+          useCompactCards
+            ? `lpk-tile-grid ${lapakinIsFeaturedMenuSection ? "lpk-tile-grid-featured" : "lpk-tile-grid-main"}`
+            : cx("ltr-products-grid", `ltr-products-${template.productCard}`)
+        }
+      >
         {visibleProducts.map((product, index) => (
-          <ProductCard
-            key={getProductId(product, index)}
-            product={product}
-            shop={shop}
-            template={template}
-            index={index}
-            onAddToCart={onAddToCart}
-          />
+          useCompactCards ? (
+            <CompactProductCard
+              key={getProductId(product, index)}
+              product={product}
+              shop={shop}
+              template={template}
+              index={index}
+              onAddToCart={onAddToCart}
+              featured={lapakinIsFeaturedMenuSection}
+            />
+          ) : (
+            <ProductCard
+              key={getProductId(product, index)}
+              product={product}
+              shop={shop}
+              template={template}
+              index={index}
+              onAddToCart={onAddToCart}
+            />
+          )
         ))}
       </div>
+
+      {hasMoreProducts ? (
+        <div className="ltr-load-more-wrap">
+          <p>Menampilkan {visibleProducts.length} dari {sourceProducts.length} menu</p>
+          <button
+            type="button"
+            onClick={() => setVisibleCount((current) => current + initialMainCount)}
+          >
+            Lihat menu lainnya
+          </button>
+        </div>
+      ) : lapakinIsMainMenuSection ? (
+        <p className="ltr-menu-count-note">Menampilkan {visibleProducts.length} menu</p>
+      ) : null}
     </section>
   );
 }
@@ -1402,6 +1691,111 @@ const LAPAKIN_DAYS = [
   "Sabtu",
   "Minggu",
 ];
+
+
+function getTemplateFulfillmentOptions(shop) {
+  const options = [];
+  if (shop?.pickup_available) options.push("Pickup tersedia");
+  if (shop?.delivery_available) options.push("Delivery tersedia");
+  return options;
+}
+
+function getTemplateServiceArea(shop) {
+  return String(shop?.service_area || "").trim();
+}
+
+function shouldShowOperationalInfo(shop) {
+  return Boolean(
+    shop?.order_whatsapp_enabled !== false ||
+    shop?.pickup_available ||
+    shop?.delivery_available ||
+    getTemplateServiceArea(shop) ||
+    shouldShowPaymentInstruction(shop) ||
+    getLocationAddress(shop) ||
+    getGoogleMapsUrl(shop)
+  );
+}
+
+function OperationalInfoSection({ shop }) {
+  if (!shouldShowOperationalInfo(shop)) return null;
+
+  const fulfillmentOptions = getTemplateFulfillmentOptions(shop);
+  const serviceArea = getTemplateServiceArea(shop);
+  const address = getLocationAddress(shop);
+  const mapsUrl = getGoogleMapsUrl(shop);
+  const orderEnabled = shop?.order_whatsapp_enabled !== false;
+
+  return (
+    <section className="ltr-section ltr-operational-info" data-testid="storefront-template-operational-info">
+      <div className="ltr-section-heading">
+        <span>Info Order</span>
+        <h2>Cara order & layanan toko</h2>
+        <p>Cek cara order, pembayaran, area layanan, dan lokasi sebelum checkout.</p>
+      </div>
+
+      <div
+        className="ltr-operational-grid"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 14,
+        }}
+      >
+        <div className="ltr-operational-card" style={{ border: "1px solid rgba(15,23,42,.10)", borderRadius: 18, padding: 16, background: "rgba(255,255,255,.78)" }}>
+          <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>Order</span>
+          <strong style={{ display: "block", marginTop: 4, color: "#0f172a" }}>
+            {orderEnabled ? "Order via WhatsApp" : "Order WhatsApp nonaktif"}
+          </strong>
+          <p style={{ margin: "6px 0 0", color: "#64748b", lineHeight: 1.5 }}>
+            {orderEnabled ? "Pesanan diarahkan ke WhatsApp toko." : "Hubungi toko untuk info cara order."}
+          </p>
+        </div>
+
+        <div className="ltr-operational-card" style={{ border: "1px solid rgba(15,23,42,.10)", borderRadius: 18, padding: 16, background: "rgba(255,255,255,.78)" }}>
+          <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>Pickup / Delivery</span>
+          <strong style={{ display: "block", marginTop: 4, color: "#0f172a" }}>
+            {fulfillmentOptions.length ? fulfillmentOptions.join(" · ") : "Konfirmasi ke toko"}
+          </strong>
+          <p style={{ margin: "6px 0 0", color: "#64748b", lineHeight: 1.5 }}>
+            {serviceArea ? `Area layanan: ${serviceArea}` : "Tanyakan opsi pengambilan atau pengiriman ke toko."}
+          </p>
+        </div>
+
+        {shouldShowPaymentInstruction(shop) ? (
+          <div className="ltr-operational-card" style={{ border: "1px solid rgba(15,23,42,.10)", borderRadius: 18, padding: 16, background: "rgba(255,255,255,.78)" }}>
+            <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>Pembayaran</span>
+            <strong style={{ display: "block", marginTop: 4, color: "#0f172a" }}>{getPaymentMethodLabel(shop)}</strong>
+            <p style={{ margin: "6px 0 0", color: "#64748b", lineHeight: 1.5, whiteSpace: "pre-line" }}>
+              {getPaymentInstruction(shop)}
+            </p>
+            {shop?.storefront_qris_image ? (
+              <small style={{ display: "block", marginTop: 8, color: "#0f172a", fontWeight: 800 }}>QRIS tersedia.</small>
+            ) : null}
+          </div>
+        ) : null}
+
+        {(address || mapsUrl) ? (
+          <div className="ltr-operational-card" style={{ border: "1px solid rgba(15,23,42,.10)", borderRadius: 18, padding: 16, background: "rgba(255,255,255,.78)" }}>
+            <span style={{ fontSize: 12, fontWeight: 900, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 }}>Lokasi</span>
+            <strong style={{ display: "block", marginTop: 4, color: "#0f172a" }}>{address || "Lokasi toko"}</strong>
+            {mapsUrl ? (
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="storefront-template-google-maps-link"
+                style={{ display: "inline-flex", marginTop: 8, fontSize: 14, fontWeight: 900, color: "#C04A3B", textDecoration: "none" }}
+              >
+                Buka Google Maps →
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 
 function shouldShowBusinessHours(shop) {
   return Boolean(
@@ -1644,7 +2038,7 @@ function BusinessHoursSection({ shop }) {
 
 
 function getGoogleMapsEmbedUrl(shop) {
-  const rawEmbed = String(
+  const explicit = String(
     shop?.storefront_location_embed_url ||
     shop?.storefront_google_maps_embed_url ||
     shop?.google_maps_embed_url ||
@@ -1652,51 +2046,74 @@ function getGoogleMapsEmbedUrl(shop) {
     ""
   ).trim();
 
-  if (rawEmbed && /^https?:\/\//i.test(rawEmbed)) return rawEmbed;
+  if (explicit) return explicit;
 
-  const address = String(
-    shop?.storefront_location_address ||
-    shop?.address ||
-    shop?.location ||
-    ""
-  ).trim();
-
+  const address = getLocationAddress(shop);
   if (!address) return "";
 
   return `https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
 }
+
 
 function getLocationTitle(shop) {
   return String(shop?.storefront_location_title || "").trim() || `Lokasi ${getValue(shop, ["name", "shop_name", "store_name"], "Toko")}`;
 }
 
 function getLocationAddress(shop) {
-  return String(shop?.storefront_location_address || shop?.address || shop?.location || shop?.store_address || "").trim();
+  return String(
+    shop?.storefront_location_address ||
+    shop?.store_address ||
+    shop?.address ||
+    shop?.location_address ||
+    shop?.location ||
+    ""
+  ).trim();
 }
 
+
 function getGoogleMapsUrl(shop) {
-  const explicit = String(shop?.storefront_google_maps_url || "").trim();
-  if (explicit && /^https?:\/\//i.test(explicit)) return explicit;
+  const explicit = String(
+    shop?.storefront_google_maps_url ||
+    shop?.google_maps_url ||
+    shop?.google_maps_link ||
+    ""
+  ).trim();
+  if (explicit) return explicit;
+
   const address = getLocationAddress(shop);
   if (!address) return "";
+
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
+
 function getLocationEmbedUrl(shop) {
-  const explicit = String(shop?.storefront_location_embed_url || "").trim();
-  if (explicit && /^https?:\/\//i.test(explicit)) return explicit;
+  const explicit = String(
+    shop?.storefront_location_embed_url ||
+    shop?.storefront_google_maps_embed_url ||
+    ""
+  ).trim();
+  if (explicit) return explicit;
+
   const address = getLocationAddress(shop);
   if (!address) return "";
   return `https://maps.google.com/maps?q=${encodeURIComponent(address)}&output=embed`;
 }
 
+
 function shouldShowLocationMap(shop) {
-  if (!shop?.storefront_show_location_map) return false;
+  const locationEnabled = Boolean(
+    shop?.storefront_show_location_map ||
+    shop?.has_offline_store ||
+    shop?.show_location
+  );
+
+  if (!locationEnabled) return false;
+
   return Boolean(getLocationAddress(shop) || getGoogleMapsUrl(shop) || getLocationEmbedUrl(shop));
 }
 
 
-// LAPAKIN_TESTIMONIAL_SECTION_MVP
 function normalizeTestimonials(shop) {
   const raw = Array.isArray(shop?.storefront_testimonials)
     ? shop.storefront_testimonials
@@ -1936,7 +2353,7 @@ function ContactSection({ shop, template }) {
   const mode = getModeFromTemplate(template);
   const socialLinks = getStorefrontSocialLinks(shop);
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
-  const address = getValue(shop, ["address", "location", "store_address"], "");
+  const address = getValue(shop, ["store_address", "storefront_location_address", "address", "location_address", "location"], "");
   const ctaLabel =
     getValue(shop, ["storefront_cta_label"], "") ||
     (mode === "services" ? "Konsultasi Sekarang" : "Chat WhatsApp");
@@ -2020,6 +2437,10 @@ function renderSection(section, context) {
       return <HeroSection key={section} shop={shop} products={allProducts || products} template={template} />;
 
     case "categories":
+      // In food menu templates, category/search belongs inside "Pilihan Menu".
+      // Avoid showing a duplicate standalone Kategori section.
+      if (mode === "food_menu") return null;
+
       return (
         <section key={section} className="ltr-section ltr-category-section">
           <div className="ltr-section-heading">
@@ -2051,7 +2472,7 @@ function renderSection(section, context) {
           shop={shop}
           template={template}
           onAddToCart={onAddToCart}
-          limit={4}
+          limit={3}
           titleOverride={getValue(shop, ["storefront_featured_title"], "")}
           preferSelectedFeatured={true}
         />
@@ -2066,9 +2487,15 @@ function renderSection(section, context) {
           key={section}
           title={title}
           products={products}
+          allProducts={allProducts}
           shop={shop}
           template={template}
           onAddToCart={onAddToCart}
+          showControls
+          productSearch={productSearch}
+          setProductSearch={setProductSearch}
+          categoryFilter={categoryFilter}
+          setCategoryFilter={setCategoryFilter}
         />
       );
 
@@ -2138,7 +2565,7 @@ function MobileStickyOrderBar({ shop, template, cartCount, onOpenCart }) {
 
 
 
-function LeadCaptureModal({ open, onSkip, onContinue }) {
+function LeadCaptureModal({ open, onClose, onSkip, onContinue }) {
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", fulfillment_method: "discuss", notes: "" });
   useEffect(() => { if (open) setForm({ customer_name: "", customer_phone: "", fulfillment_method: "discuss", notes: "" }); }, [open]);
   if (!open) return null;
@@ -2181,7 +2608,19 @@ function LeadCaptureModal({ open, onSkip, onContinue }) {
       >
         <div style={{ marginBottom: 16 }}>
           <span style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#C04A3B", letterSpacing: 0.8, textTransform: "uppercase" }}>Data Pesanan</span>
-          <h2 style={{ margin: "4px 0 6px", fontSize: 22, fontWeight: 900, color: "#1f2933" }}>Lengkapi sebelum lanjut WhatsApp</h2>
+          <div className="ltr-order-modal-title-row">
+  <h2 style={{ margin: "4px 0 6px", fontSize: 22, fontWeight: 900, color: "#1f2933" }}>Lengkapi sebelum lanjut WhatsApp</h2>
+  <button
+    type="button"
+    className="ltr-order-modal-close"
+    aria-label="Tutup popup pesanan"
+    title="Tutup"
+    onClick={onClose}
+  >
+    ×
+  </button>
+</div>
+<p className="rounded-2xl border border-brand-line bg-brand-off/60 px-4 py-3 text-sm text-brand-mute">Pengaturan dasar untuk kontak dan metode order. Auto-reply, inbox chat, FAQ percakapan, dan handoff akan dikelola di Lapakin Asisten.</p>
           <p style={{ margin: 0, color: "#64748b", lineHeight: 1.45 }}>Biar penjual lebih mudah follow up pesanan kamu.</p>
         </div>
 
@@ -2209,7 +2648,7 @@ function LeadCaptureModal({ open, onSkip, onContinue }) {
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
-          <button type="button" onClick={onSkip} data-testid="lead-capture-skip" style={{ border: "1px solid #d8cfc3", borderRadius: 999, padding: "10px 14px", background: "#fff", color: "#475569", fontWeight: 800, cursor: "pointer" }}>Lewati</button>
+          <button data-lapakin-order-skip="true" type="button" onClick={onSkip} data-testid="lead-capture-skip" style={{ border: "1px solid #d8cfc3", borderRadius: 999, padding: "10px 14px", background: "#fff", color: "#475569", fontWeight: 800, cursor: "pointer" }}>Lewati</button>
           <button type="button" onClick={() => onContinue(form)} disabled={!form.customer_name.trim()} data-testid="lead-capture-continue-whatsapp" style={{ border: 0, borderRadius: 999, padding: "10px 16px", background: form.customer_name.trim() ? "#16a34a" : "#94a3b8", color: "#fff", fontWeight: 900, cursor: form.customer_name.trim() ? "pointer" : "not-allowed" }}>Lanjut WhatsApp</button>
         </div>
       </div>
@@ -2339,7 +2778,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     ? [...template.sectionOrder]
     : ["hero", "categories", "all_products", "contact"];
 
-  const sections = [...baseSections];
+  let sections = [...baseSections];
 
   if (
     hasAboutContent(shop) &&
@@ -2466,6 +2905,44 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       }
     }
   }
+
+  // Keep small UMKM storefronts focused: avoid repeating the same short catalog.
+  if (Array.isArray(products) && products.length <= 6) {
+    const categoriesIndex = sections.indexOf("categories");
+    if (categoriesIndex >= 0) {
+      sections.splice(categoriesIndex, 1);
+    }
+
+    const modeForPrune = getModeFromTemplate(template);
+    const hasFoodMenuHighlight = sections.some((key) =>
+      ["featured_products", "today_menu", "menu_list", "menu_grid", "signature_menu"].includes(key)
+    );
+
+    if (modeForPrune === "food_menu" && hasFoodMenuHighlight) {
+      const allProductsIndex = sections.indexOf("all_products");
+      if (allProductsIndex >= 0) {
+        sections.splice(allProductsIndex, 1);
+      }
+    }
+  }
+
+  if (shouldShowOperationalInfo(shop) && !sections.includes("operational_info")) {
+    const contactIndex = sections.indexOf("contact");
+    const locationIndex = sections.indexOf("location_map");
+    const businessHoursIndex = sections.indexOf("business_hours");
+
+    if (locationIndex >= 0) {
+      sections.splice(locationIndex, 0, "operational_info");
+    } else if (businessHoursIndex >= 0) {
+      sections.splice(businessHoursIndex, 0, "operational_info");
+    } else if (contactIndex >= 0) {
+      sections.splice(contactIndex, 0, "operational_info");
+    } else {
+      sections.push("operational_info");
+    }
+  }
+
+  sections = ensureSmallFoodMenuCategories(sections, products, template);
 
   if (shouldShowLocationMap(shop) && !sections.includes("location_map")) {
     const businessHoursIndex = sections.indexOf("business_hours");
@@ -2616,6 +3093,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
 
       <LeadCaptureModal
         open={leadCapture.open}
+        onClose={() => setLeadCapture((current) => ({ ...current, open: false }))}
         onSkip={() => closeLeadAndOpenWhatsapp(leadCapture.href)}
         onContinue={continueLeadToWhatsapp}
       />

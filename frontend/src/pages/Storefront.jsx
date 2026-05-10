@@ -4,7 +4,7 @@ import api, { rupiah } from "@/lib/api";
 import {
   Sparkles, MessageCircle, Package, X, ChevronLeft, ChevronRight,
   Instagram, Music2, ShoppingBag, MapPin, Clock, Tag, Plus, Minus,
-  ShoppingCart, Trash2, Check,
+  ShoppingCart, Trash2, Check, Truck, CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -233,6 +233,47 @@ function getLegacyPaymentInstructionText(shop) {
   return parts.filter(Boolean).join("\\n");
 }
 
+
+function getLegacyStorefrontLocationInfo(shop) {
+  const storeAddress = String(
+    shop?.store_address ||
+    shop?.address ||
+    shop?.location_address ||
+    shop?.storefront_location_address ||
+    ""
+  ).trim();
+
+  const googleMapsUrl = String(
+    shop?.google_maps_url ||
+    shop?.google_maps_link ||
+    shop?.storefront_google_maps_url ||
+    ""
+  ).trim();
+
+  const serviceArea = String(shop?.service_area || "").trim();
+  const hasOfflineStore = Boolean(shop?.has_offline_store || shop?.show_location || storeAddress || googleMapsUrl);
+
+  return {
+    storeAddress,
+    googleMapsUrl,
+    serviceArea,
+    hasOfflineStore,
+  };
+}
+
+function getLegacyFulfillmentOptions(shop) {
+  const options = [];
+  if (shop?.pickup_available) options.push("Pickup tersedia");
+  if (shop?.delivery_available) options.push("Delivery tersedia");
+  return options;
+}
+
+function getLegacyWhatsappNumber(shop) {
+  return String(shop?.whatsapp || shop?.whatsapp_number || "")
+    .replace(/[^0-9]/g, "")
+    .replace(/^0/, "62");
+}
+
 function buildLegacyCheckoutWhatsappMessage(shop, cartItems, cartTotal, options = {}) {
   if (!cartItems?.length) return "";
 
@@ -452,9 +493,20 @@ export default function Storefront({ tenantSlug = null }) {
 
   const { shop } = data;
   const brand = shop?.brand_color || "#C04A3B";
-  const waNumber = (shop?.whatsapp || "").replace(/[^0-9]/g, "").replace(/^0/, "62");
+  const orderWhatsappEnabled = shop?.order_whatsapp_enabled !== false;
+  const waNumber = getLegacyWhatsappNumber(shop);
   const waLink = (text) =>
-    waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}` : null;
+    orderWhatsappEnabled && waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}` : null;
+
+  const {
+    storeAddress,
+    googleMapsUrl,
+    serviceArea,
+    hasOfflineStore,
+  } = getLegacyStorefrontLocationInfo(shop);
+  const fulfillmentOptions = getLegacyFulfillmentOptions(shop);
+  const paymentInstructionText = getLegacyPaymentInstructionText(shop);
+  const hasPublicPaymentInfo = Boolean(paymentInstructionText || shop?.storefront_qris_image || shop?.storefront_payment_method_label);
 
   // ---- SALES MODE (Iteration 7) ----
   const sellsBy = shop?.sells_by || "stock";
@@ -608,7 +660,7 @@ export default function Storefront({ tenantSlug = null }) {
                   ) : (
                     <Chip icon={<Sparkles className="w-3 h-3" />} label="Verified UMKM" color={brand} />
                   )}
-                  {shop?.address && <Chip icon={<MapPin className="w-3 h-3" />} label={shop.address.split(",")[0]} />}
+                  {storeAddress && <Chip icon={<MapPin className="w-3 h-3" />} label={storeAddress.split(",")[0]} />}
                   {shop?.hours && <Chip icon={<Clock className="w-3 h-3" />} label={shop.hours} />}
                 </div>
               </div>
@@ -707,6 +759,124 @@ export default function Storefront({ tenantSlug = null }) {
               </div>
             )}
           </div>
+        )}
+
+        {/* ORDER / PAYMENT / LOCATION INFO */}
+        {(fulfillmentOptions.length > 0 || serviceArea || storeAddress || googleMapsUrl || hasPublicPaymentInfo || orderWhatsappEnabled) && (
+          <section
+            className="mb-8 rounded-3xl border border-brand-line bg-white p-5 shadow-card"
+            data-testid="storefront-operational-info"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-mute">Info Order</p>
+                <h2 className="font-heading text-xl font-extrabold text-brand-ink">Cara order & layanan toko</h2>
+                <p className="mt-1 text-sm text-brand-mute">
+                  Cek cara order, pembayaran, area layanan, dan lokasi toko sebelum checkout.
+                </p>
+              </div>
+
+              {orderWhatsappEnabled && waLink(`Halo ${shop?.name || "Toko"}, saya mau tanya info order.`) ? (
+                <a
+                  href={waLink(`Halo ${shop?.name || "Toko"}, saya mau tanya info order.`)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-10 items-center justify-center rounded-2xl bg-green-600 px-4 text-sm font-extrabold text-white hover:bg-green-700"
+                  data-testid="storefront-info-whatsapp-btn"
+                >
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  Chat Toko
+                </a>
+              ) : null}
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-brand shadow-sm">
+                    <MessageCircle className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-extrabold text-brand-ink">Order</p>
+                    <p className="mt-1 text-sm text-brand-mute">
+                      {orderWhatsappEnabled
+                        ? "Pesanan diarahkan ke WhatsApp toko."
+                        : "Order via WhatsApp sedang tidak aktif."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-brand shadow-sm">
+                    <Truck className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-extrabold text-brand-ink">Pickup / Delivery</p>
+                    <p className="mt-1 text-sm text-brand-mute">
+                      {fulfillmentOptions.length ? fulfillmentOptions.join(" · ") : "Hubungi toko untuk opsi pengambilan atau pengiriman."}
+                    </p>
+                    {serviceArea ? (
+                      <p className="mt-2 text-xs font-semibold text-brand-ink">
+                        Area layanan: {serviceArea}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {hasPublicPaymentInfo ? (
+                <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-brand shadow-sm">
+                      <CreditCard className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-extrabold text-brand-ink">Pembayaran</p>
+                      {paymentInstructionText ? (
+                        <p className="mt-1 whitespace-pre-line text-sm text-brand-mute">{paymentInstructionText}</p>
+                      ) : (
+                        <p className="mt-1 text-sm text-brand-mute">Instruksi pembayaran tersedia saat checkout.</p>
+                      )}
+                      {shop?.storefront_qris_image ? (
+                        <p className="mt-2 text-xs font-semibold text-brand-ink">QRIS tersedia.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {(hasOfflineStore || googleMapsUrl || storeAddress) ? (
+                <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-brand shadow-sm">
+                      <MapPin className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-extrabold text-brand-ink">Lokasi</p>
+                      {storeAddress ? (
+                        <p className="mt-1 text-sm text-brand-mute">{storeAddress}</p>
+                      ) : (
+                        <p className="mt-1 text-sm text-brand-mute">Toko ini melayani order online.</p>
+                      )}
+                      {googleMapsUrl ? (
+                        <a
+                          href={googleMapsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex text-sm font-extrabold text-brand hover:underline"
+                          data-testid="storefront-google-maps-link"
+                        >
+                          Buka Google Maps →
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </section>
         )}
 
         {/* SHOP STORY REEL */}

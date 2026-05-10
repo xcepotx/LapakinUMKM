@@ -13,7 +13,7 @@ import {
 import api from "../lib/api";
 
 const CHANNELS = [
-  { value: "whatsapp", label: "WhatsApp" },
+  { value: "whatsapp", label: "Order & Kontak" },
   { value: "instagram", label: "Instagram" },
   { value: "offline", label: "Offline" },
   { value: "other", label: "Lainnya" },
@@ -770,7 +770,7 @@ const pageActions = (
             className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#C04A3B]"
           >
             <option value="">Semua channel</option>
-            <option value="whatsapp">WhatsApp</option>
+            <option value="whatsapp">Order & Kontak</option>
             <option value="instagram">Instagram</option>
             <option value="offline">Offline</option>
             <option value="other">Lainnya</option>

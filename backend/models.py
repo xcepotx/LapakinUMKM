@@ -55,6 +55,8 @@ class ShopIn(BaseModel):
     storefront_show_payment_instruction: Optional[bool] = False
     storefront_payment_method_label: Optional[str] = ""
     storefront_payment_instruction: Optional[str] = ""
+    payment_instruction: Optional[str] = ""
+    payment_notes: Optional[str] = ""          # legacy alias
     storefront_qris_image: Optional[str] = ""
     storefront_seo_title: Optional[str] = ""
     storefront_seo_description: Optional[str] = ""
@@ -81,6 +83,10 @@ class ShopIn(BaseModel):
     availability_status: Optional[str] = "active"
     business_type: str  # kuliner / kopi / fashion / kerajinan / kecantikan / lainnya
     whatsapp: Optional[str] = ""
+    whatsapp_number: Optional[str] = ""        # legacy alias for whatsapp
+    order_whatsapp_enabled: Optional[bool] = True
+    pickup_available: Optional[bool] = False
+    delivery_available: Optional[bool] = False
     brand_color: Optional[str] = "#C04A3B"
     logo_url: Optional[str] = ""
     # Storefront Pro
@@ -88,6 +94,13 @@ class ShopIn(BaseModel):
     about: Optional[str] = ""                 # AI-generated story
     hours: Optional[str] = ""                 # e.g., "Senin-Sabtu 08:00-21:00"
     address: Optional[str] = ""
+    store_address: Optional[str] = ""          # canonical dashboard field
+    location_address: Optional[str] = ""       # legacy alias
+    has_offline_store: Optional[bool] = False
+    show_location: Optional[bool] = False      # legacy alias
+    google_maps_url: Optional[str] = ""
+    google_maps_link: Optional[str] = ""       # legacy alias
+    service_area: Optional[str] = ""
     instagram: Optional[str] = ""             # handle without @
     tiktok: Optional[str] = ""                # handle without @
     shopee: Optional[str] = ""                # URL
