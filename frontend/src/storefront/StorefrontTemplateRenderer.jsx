@@ -3183,15 +3183,63 @@ export default function StorefrontTemplateRenderer({ data, template }) {
   }, [shop]);
 
   const closeLeadAndOpenWhatsapp = (href) => { setLeadCapture({ open: false, href: "", context: {} }); openWhatsappHref(href); };
+
+  // LAPAKIN_CART_SKIP_SAVE_LEAD_V1
+  const buildStorefrontLeadPayload = (form = {}, extraMetadata = {}) => ({
+    ...getAnalyticsBasePayload(shop),
+    customer_name: form.customer_name || "",
+    customer_phone: form.customer_phone || "",
+    fulfillment_method: form.fulfillment_method || "discuss",
+    notes: form.notes || "",
+    items: cartItems.map((item) => ({
+      product_id: item.product?.product_id || item.product?.id,
+      name: item.product?.name,
+      price: item.product?.price,
+      qty: item.qty,
+    })),
+    total: getCartTotal(cartItems),
+    metadata: {
+      ...(leadCapture.context || {}),
+      ...extraMetadata,
+    },
+  });
+
+  const saveStorefrontLead = async (form = {}, extraMetadata = {}) => {
+    try {
+      await postStorefrontJson("/storefront/leads", buildStorefrontLeadPayload(form, extraMetadata));
+    } catch {
+      // Public lead capture is best-effort. WhatsApp checkout must continue.
+    }
+  };
+
+  const skipLeadToWhatsapp = async () => {
+    const href = leadCapture.href;
+
+    if (leadCapture.context?.type === "cart_checkout" && cartItems.length > 0) {
+      await saveStorefrontLead(
+        {
+          customer_name: "",
+          customer_phone: "",
+          fulfillment_method: "discuss",
+          notes: "",
+        },
+        {
+          lead_capture_action: "skip",
+          skipped_lead_capture: true,
+        }
+      );
+    }
+
+    closeLeadAndOpenWhatsapp(href);
+  };
+
   const continueLeadToWhatsapp = async (form) => {
     const href =
       leadCapture.context?.type === "cart_checkout"
         ? buildCartWhatsappLink(shop, cartItems, form)
         : enrichWhatsappHrefWithLead(leadCapture.href, form);
 
-    try {
-      await postStorefrontJson("/storefront/leads", { ...getAnalyticsBasePayload(shop), customer_name: form.customer_name, customer_phone: form.customer_phone, fulfillment_method: form.fulfillment_method, notes: form.notes, items: cartItems.map((item) => ({ product_id: item.product?.id, name: item.product?.name, price: item.product?.price, qty: item.qty })), total: getCartTotal(cartItems), metadata: leadCapture.context || {} });
-    } catch { }
+    await saveStorefrontLead(form, { lead_capture_action: "continue" });
     closeLeadAndOpenWhatsapp(href);
   };
 
@@ -3269,7 +3317,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
         showCartSummary={leadCapture.context?.type === "cart_checkout"}
         cartItems={leadCapture.context?.type === "cart_checkout" ? cartItems : []}
         onClose={() => setLeadCapture((current) => ({ ...current, open: false }))}
-        onSkip={() => closeLeadAndOpenWhatsapp(leadCapture.href)}
+        onSkip={skipLeadToWhatsapp}
         onContinue={continueLeadToWhatsapp}
       />
 
