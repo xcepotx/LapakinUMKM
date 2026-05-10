@@ -545,6 +545,109 @@ function getModeFromTemplate(template) {
   return "catalog";
 }
 
+// LAPAKIN_BUSINESS_TEMPLATE_VARIANTS_V1
+const BUSINESS_TEMPLATE_VARIANTS = {
+  food_warm_menu: {
+    key: "food_warm_menu",
+    label: "Food Warm Menu",
+    tone: "Hangat, rumahan, menu-first",
+    mode: "food_menu",
+    rootClass: "ltr-business-food-warm",
+    heroEyebrow: "Menu rumahan siap pesan",
+    orderLabel: "Pesan Menu Sekarang",
+  },
+  laundry_clean_service: {
+    key: "laundry_clean_service",
+    label: "Laundry Clean Service",
+    tone: "Bersih, praktis, layanan pickup",
+    mode: "services",
+    rootClass: "ltr-business-laundry-clean",
+    heroEyebrow: "Laundry bersih & praktis",
+    orderLabel: "Jadwalkan Pickup",
+  },
+  fashion_visual_catalog: {
+    key: "fashion_visual_catalog",
+    label: "Fashion Visual Catalog",
+    tone: "Visual, modern, katalog-first",
+    mode: "catalog",
+    rootClass: "ltr-business-fashion-visual",
+    heroEyebrow: "Koleksi pilihan",
+    orderLabel: "Lihat Koleksi",
+  },
+  service_trust_cta: {
+    key: "service_trust_cta",
+    label: "Service Trust CTA",
+    tone: "Profesional, terpercaya, konsultasi",
+    mode: "services",
+    rootClass: "ltr-business-service-trust",
+    heroEyebrow: "Layanan terpercaya",
+    orderLabel: "Konsultasi Sekarang",
+  },
+  craft_story_catalog: {
+    key: "craft_story_catalog",
+    label: "Craft Story Catalog",
+    tone: "Hangat, handmade, story-driven",
+    mode: "catalog",
+    rootClass: "ltr-business-craft-story",
+    heroEyebrow: "Produk lokal penuh cerita",
+    orderLabel: "Tanya Custom Order",
+  },
+};
+
+function normalizeBusinessTemplateText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function inferBusinessTemplateVariant(shop, template) {
+  const explicit = normalizeBusinessTemplateText(
+    shop?.storefront_layout_variant ||
+    shop?.storefront_template_variant ||
+    shop?.template_variant
+  );
+
+  if (explicit && BUSINESS_TEMPLATE_VARIANTS[explicit]) {
+    return BUSINESS_TEMPLATE_VARIANTS[explicit];
+  }
+
+  const raw = [
+    shop?.business_type,
+    shop?.category,
+    shop?.category_name,
+    shop?.business_category,
+    shop?.description,
+    shop?.tagline,
+    shop?.name,
+  ].map(normalizeBusinessTemplateText).join(" ");
+
+  const mode = normalizeBusinessTemplateText(shop?.storefront_mode) || getModeFromTemplate(template);
+
+  if (/laundry|laundri|cuci|setrika|dry clean|dryclean/.test(raw)) {
+    return BUSINESS_TEMPLATE_VARIANTS.laundry_clean_service;
+  }
+
+  if (/fashion|baju|pakaian|busana|hijab|sepatu|tas|aksesoris|clothing/.test(raw)) {
+    return BUSINESS_TEMPLATE_VARIANTS.fashion_visual_catalog;
+  }
+
+  if (/jasa|service|servis|repair|konsultan|konsultasi|booking|salon|barber|ac|maintenance/.test(raw) || mode === "services") {
+    return BUSINESS_TEMPLATE_VARIANTS.service_trust_cta;
+  }
+
+  if (/kerajinan|craft|handmade|souvenir|hampers|kriya|rajut|batik|anyaman/.test(raw)) {
+    return BUSINESS_TEMPLATE_VARIANTS.craft_story_catalog;
+  }
+
+  if (/kuliner|makanan|minuman|warung|kopi|cafe|resto|bakso|nasi|snack|kue|catering|food/.test(raw) || mode === "food_menu") {
+    return BUSINESS_TEMPLATE_VARIANTS.food_warm_menu;
+  }
+
+  return BUSINESS_TEMPLATE_VARIANTS.fashion_visual_catalog;
+}
+
+function getBusinessTemplateVariant(shop, template) {
+  return inferBusinessTemplateVariant(shop, template) || BUSINESS_TEMPLATE_VARIANTS.fashion_visual_catalog;
+}
+
 
 function ensureSmallFoodMenuCategories(sections, products, template) {
   if (!Array.isArray(sections)) return sections;
@@ -1034,6 +1137,7 @@ function SocialLinks
 }
 
 function HeroSection({ shop, products, template }) {
+  const variant = getBusinessTemplateVariant(shop, template);
   const mode = getModeFromTemplate(template);
   const copy = getHeroCopy(mode, template);
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
@@ -1047,7 +1151,7 @@ function HeroSection({ shop, products, template }) {
     getValue(shop, ["storefront_hero_subtitle"], "") ||
     getValue(shop, ["description", "bio", "about"], "") ||
     copy.subtitle;
-  const ctaLabel = getValue(shop, ["storefront_cta_label"], "") || copy.cta;
+  const ctaLabel = getValue(shop, ["storefront_cta_label"], "") || variant.orderLabel || copy.cta;
   const logo = getValue(shop, ["logo_url", "logo", "avatar_url", "image_url"], "");
   const featured = products[0];
   const fulfillmentOptions = getTemplateFulfillmentOptions(shop);
@@ -1056,7 +1160,9 @@ function HeroSection({ shop, products, template }) {
   return (
     <section className={cx("ltr-hero", `ltr-hero-${template.hero}`)}>
       <div className="ltr-hero-content">
-        <div className="ltr-eyebrow">{copy.eyebrow}</div>
+        <div className="ltr-eyebrow" data-testid="storefront-business-variant-eyebrow">
+          {variant.heroEyebrow || copy.eyebrow}
+        </div>
         <h1>
           {customHeroTitle ? (
             customHeroTitle
@@ -2551,12 +2657,14 @@ function LocationMapSection({ shop }) {
 }
 
 function ContactSection({ shop, template }) {
+  const variant = getBusinessTemplateVariant(shop, template);
   const mode = getModeFromTemplate(template);
   const socialLinks = getStorefrontSocialLinks(shop);
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
   const address = getValue(shop, ["store_address", "storefront_location_address", "address", "location_address", "location"], "");
   const ctaLabel =
     getValue(shop, ["storefront_cta_label"], "") ||
+    variant.orderLabel ||
     (mode === "services" ? "Konsultasi Sekarang" : "Chat WhatsApp");
 
   return (
@@ -3366,6 +3474,9 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     return categoryOk && productMatchesTemplateSearch(product, productSearch);
   });
 
+    // LAPAKIN_BUSINESS_VARIANT_ROOT_CLASS_V1
+  const businessVariant = getBusinessTemplateVariant(shop, template);
+
   return (
     <main
       className={cx(
@@ -3374,8 +3485,8 @@ export default function StorefrontTemplateRenderer({ data, template }) {
         `ltr-mode-${mode}`,
         `ltr-density-${template.density}`,
         `ltr-card-layout-${template.productCard}`
-      )}
-      data-testid="storefront-template-renderer"
+      , businessVariant.rootClass)}
+      data-testid="storefront-template-renderer" data-business-variant={businessVariant.key}
       data-template-key={template.templateKey}
     >
       <div className="ltr-background-orb ltr-background-orb-one" />

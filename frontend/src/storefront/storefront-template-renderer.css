@@ -2867,3 +2867,110 @@ button.ltr-cart-backdrop::after,
   }
 }
 /* LAPAKIN_CART_POPUP_FINAL_FIX_END */
+
+/* LAPAKIN_BUSINESS_TEMPLATE_VARIANTS_V1 */
+.ltr-business-food-warm {
+  --lapakin-template-accent: #f97316;
+  --lapakin-template-ink: #431407;
+  --lapakin-template-soft: #fff7ed;
+}
+
+.ltr-business-food-warm .ltr-hero,
+.ltr-business-food-warm .ltr-section,
+.ltr-business-food-warm .ltr-contact {
+  border-radius: 28px;
+}
+
+.ltr-business-food-warm .ltr-hero {
+  background:
+    radial-gradient(circle at 82% 20%, rgba(251, 146, 60, 0.22), transparent 34%),
+    linear-gradient(135deg, rgba(255, 247, 237, 0.96), rgba(255, 255, 255, 0.92));
+}
+
+.ltr-business-laundry-clean {
+  --lapakin-template-accent: #0ea5e9;
+  --lapakin-template-ink: #0f172a;
+  --lapakin-template-soft: #eff6ff;
+}
+
+.ltr-business-laundry-clean .ltr-hero {
+  background:
+    radial-gradient(circle at 80% 18%, rgba(14, 165, 233, 0.18), transparent 34%),
+    linear-gradient(135deg, rgba(239, 246, 255, 0.96), rgba(255, 255, 255, 0.94));
+}
+
+.ltr-business-laundry-clean .ltr-hero-stats div,
+.ltr-business-laundry-clean .ltr-section,
+.ltr-business-laundry-clean .ltr-contact {
+  border-color: rgba(14, 165, 233, 0.18);
+}
+
+.ltr-business-fashion-visual {
+  --lapakin-template-accent: #111827;
+  --lapakin-template-ink: #111827;
+  --lapakin-template-soft: #f8fafc;
+}
+
+.ltr-business-fashion-visual .ltr-hero {
+  background:
+    linear-gradient(135deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.92));
+}
+
+.ltr-business-fashion-visual .ltr-hero h1 {
+  letter-spacing: -0.08em;
+}
+
+.ltr-business-fashion-visual .ltr-main-menu-grid,
+.ltr-business-fashion-visual .ltr-featured-row {
+  gap: 18px;
+}
+
+.ltr-business-fashion-visual .ltr-product-card,
+.ltr-business-fashion-visual .ltr-menu-card,
+.ltr-business-fashion-visual [data-testid="storefront-main-menu-tile"],
+.ltr-business-fashion-visual [data-testid="storefront-featured-menu-tile"] {
+  border-radius: 22px;
+}
+
+.ltr-business-service-trust {
+  --lapakin-template-accent: #2563eb;
+  --lapakin-template-ink: #0f172a;
+  --lapakin-template-soft: #eff6ff;
+}
+
+.ltr-business-service-trust .ltr-hero {
+  background:
+    radial-gradient(circle at 16% 18%, rgba(37, 99, 235, 0.16), transparent 32%),
+    linear-gradient(135deg, rgba(239, 246, 255, 0.95), rgba(255, 255, 255, 0.94));
+}
+
+.ltr-business-service-trust .ltr-primary-cta,
+.ltr-business-service-trust .ltr-contact > a {
+  box-shadow: 0 18px 50px rgba(37, 99, 235, 0.18);
+}
+
+.ltr-business-craft-story {
+  --lapakin-template-accent: #b45309;
+  --lapakin-template-ink: #431407;
+  --lapakin-template-soft: #fffbeb;
+}
+
+.ltr-business-craft-story .ltr-hero {
+  background:
+    radial-gradient(circle at 15% 22%, rgba(180, 83, 9, 0.15), transparent 34%),
+    radial-gradient(circle at 84% 15%, rgba(245, 158, 11, 0.12), transparent 32%),
+    linear-gradient(135deg, rgba(255, 251, 235, 0.98), rgba(255, 255, 255, 0.92));
+}
+
+.ltr-business-craft-story .ltr-section,
+.ltr-business-craft-story .ltr-contact {
+  border-radius: 30px;
+}
+
+.ltr-business-craft-story .ltr-eyebrow,
+.ltr-business-food-warm .ltr-eyebrow,
+.ltr-business-laundry-clean .ltr-eyebrow,
+.ltr-business-fashion-visual .ltr-eyebrow,
+.ltr-business-service-trust .ltr-eyebrow {
+  color: var(--lapakin-template-accent);
+}
