@@ -101,6 +101,8 @@ export default function Dashboard() {
   const [readiness, setReadiness] = useState(null);
   const [readinessLoading, setReadinessLoading] = useState(true);
   const [generatingWebsiteAi, setGeneratingWebsiteAi] = useState(false);
+  // LAPAKIN_AI_PREVIEW_REGENERATE_V2
+  const [websiteAiPreview, setWebsiteAiPreview] = useState(null);
   const [readinessPanelOpen, setReadinessPanelOpen] = useState(false);
 
   const salesSummaryKey = `lapakin_sales_summary_collapsed_${user?.user_id || "user"}`;
@@ -222,6 +224,7 @@ export default function Dashboard() {
     setGeneratingWebsiteAi(true);
     try {
       const { data } = await api.post("/shops/website-ai/generate");
+      setWebsiteAiPreview(data || null);
       if (data?.readiness) {
         setReadiness(data.readiness);
         try {
@@ -392,7 +395,15 @@ export default function Dashboard() {
         navigate(href || "/dashboard/settings");
       }}
     />
-    {user?.trial_expired && !user?.trial && (
+    
+      <WebsiteAiPreviewPanel
+        open={!!websiteAiPreview}
+        result={websiteAiPreview}
+        generating={generatingWebsiteAi}
+        onClose={() => setWebsiteAiPreview(null)}
+        onRegenerate={handleGenerateWebsite}
+      />
+{user?.trial_expired && !user?.trial && (
       <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-5 text-orange-950 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -976,6 +987,111 @@ export default function Dashboard() {
   );
 }
 
+
+
+// LAPAKIN_AI_PREVIEW_REGENERATE_V2
+function WebsiteAiPreviewPanel({ open, result, generating, onClose, onRegenerate }) {
+  if (!open || !result) return null;
+
+  const generated = result.generated || {};
+  const variantLabel = {
+    food_warm_menu: "Makanan Hangat",
+    laundry_clean_service: "Laundry Clean",
+    fashion_visual_catalog: "Fashion Visual",
+    service_trust_cta: "Jasa Profesional",
+    craft_story_catalog: "Kerajinan Story",
+  }[generated.storefront_layout_variant] || generated.storefront_layout_variant || "Auto detect";
+
+  const storefrontUrl = result.storefront_url || (result.shop_slug ? `/toko/${result.shop_slug}` : "");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-6"
+      data-testid="website-ai-preview-panel"
+    >
+      <div className="w-full max-w-2xl rounded-[2rem] border border-brand-line bg-white p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-mute">Website AI</p>
+            <h2 className="mt-1 font-heading text-2xl font-extrabold text-brand-ink">
+              Draft website AI berhasil diterapkan
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-brand-mute">
+              Lapakin memilih desain dari variant stabil, lalu memperbarui copy website tanpa membuat kode UI bebas.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-brand-line px-3 py-1 text-sm font-black text-brand-ink hover:bg-brand-off"
+            aria-label="Tutup preview AI"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-brand-line bg-brand-off p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-brand-mute">Variant</p>
+            <p className="mt-1 font-heading text-lg font-extrabold text-brand-ink">{variantLabel}</p>
+          </div>
+
+          <div className="rounded-2xl border border-brand-line bg-brand-off p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-brand-mute">Mode / Style</p>
+            <p className="mt-1 font-heading text-lg font-extrabold text-brand-ink">
+              {generated.storefront_mode || "-"} · {generated.storefront_style || "-"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-brand-line bg-white p-4">
+          <p className="text-xs font-black uppercase tracking-wide text-brand-mute">Hero website</p>
+          <h3 className="mt-2 font-heading text-xl font-extrabold text-brand-ink">
+            {generated.storefront_hero_title || "Hero title belum berubah"}
+          </h3>
+          <p className="mt-2 text-sm leading-relaxed text-brand-mute">
+            {generated.storefront_hero_subtitle || "Subtitle belum berubah"}
+          </p>
+          <div className="mt-3 inline-flex rounded-full bg-brand px-4 py-2 text-sm font-black text-white">
+            {generated.storefront_cta_label || "CTA"}
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap justify-end gap-3">
+          {storefrontUrl ? (
+            <a
+              href={storefrontUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex rounded-xl border border-brand-line px-4 py-2 text-sm font-black text-brand-ink hover:bg-brand-off"
+            >
+              Lihat Website
+            </a>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={onRegenerate}
+            disabled={generating}
+            className="inline-flex rounded-xl border border-brand-line px-4 py-2 text-sm font-black text-brand-ink hover:bg-brand-off disabled:cursor-not-allowed disabled:opacity-60"
+            data-testid="website-ai-regenerate-btn"
+          >
+            {generating ? "Membuat ulang..." : "Generate Ulang"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex rounded-xl bg-brand px-4 py-2 text-sm font-black text-white hover:opacity-90"
+          >
+            Selesai
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ReadinessOverviewCard({ readiness, loading, onOpenAction, onGenerateWebsite, generatingWebsiteAi = false, onOpenChecklist }) {
   const score = Number(readiness?.score || 0);
