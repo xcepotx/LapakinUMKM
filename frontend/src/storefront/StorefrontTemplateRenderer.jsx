@@ -342,9 +342,17 @@ function enrichWhatsappHrefWithLead(href, form) {
   } catch { return href; }
 }
 function openWhatsappHref(href) {
+  // LAPAKIN_OPEN_WHATSAPP_ONCE_V1
   if (!href || href === "#") return;
-  const opened = window.open(href, "_blank", "noopener,noreferrer");
-  if (!opened) window.location.href = href;
+
+  try {
+    // Do not use an immediate window.location fallback here.
+    // Some browsers return null for window.open with noopener/noreferrer even when a new tab was opened,
+    // which caused WhatsApp to open twice.
+    window.open(href, "_blank");
+  } catch {
+    window.location.assign(href);
+  }
 }
 // /LAPAKIN_GROWTH_SPRINT_V2_TEMPLATE_HELPERS
 
@@ -644,9 +652,21 @@ const TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE = `Halo {shop_name}, saya mau 
 {items}
 
 Total: {total}
-Nama: {customer_name}
-Catatan: {notes}
+{customer_name_line}
+{customer_phone_line}
+{fulfillment_method_line}
+{notes_line}
+
 {payment_instruction}`;
+
+function compactTemplateWhatsappMessage(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim();
+}
 
 function renderTemplateWhatsappMessage(template, variables) {
   let text = String(template || TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE || "");
@@ -656,24 +676,32 @@ function renderTemplateWhatsappMessage(template, variables) {
     text = text.replace(pattern, value == null ? "" : String(value));
   });
 
-  return text
-    .split("\\n")
-    .map((line) => line.replace(/[ \\t]+$/g, ""))
-    .join("\\n")
-    .replace(/\\n{4,}/g, "\\n\\n\\n")
-    .trim();
+  return compactTemplateWhatsappMessage(text);
+}
+
+function getTemplateCartProductName(product) {
+  return String(product?.name || product?.product_name || product?.title || "Produk").trim();
+}
+
+function getTemplateCartProductPrice(product) {
+  const raw = product?.price ?? product?.selling_price ?? product?.final_price ?? 0;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
 }
 
 function getTemplateCheckoutItemsText(cartItems) {
   return (cartItems || [])
     .map((item, index) => {
       const product = item.product || {};
-      const qty = Number(item.qty || 0);
-      const price = Number(product.price || 0);
+      const qty = Math.max(1, Number(item.qty || 0));
+      const price = getTemplateCartProductPrice(product);
       const subtotal = price * qty;
-      return `${index + 1}. ${product.name} x${qty} - ${formatPrice(subtotal)}`;
+      const name = getTemplateCartProductName(product);
+
+      return `${index + 1}. ${name} x${qty} - ${formatPrice(subtotal)}`;
     })
-    .join("\\n");
+    .filter(Boolean)
+    .join("\n");
 }
 
 function getTemplatePaymentInstructionText(shop) {
@@ -683,36 +711,104 @@ function getTemplatePaymentInstructionText(shop) {
     `Metode pembayaran: ${getPaymentMethodLabel(shop)}`,
     getPaymentInstruction(shop),
     getPaymentConfirmationText(shop),
-  ].filter(Boolean).join("\\n");
+  ].filter(Boolean).join("\n");
+}
+
+function getTemplateFulfillmentMethodLabel(value) {
+  const raw = String(value || "").trim();
+
+  if (raw === "pickup") return "Ambil di tempat";
+  if (raw === "delivery") return "Kirim/delivery";
+  if (raw === "discuss") return "Diskusikan via WhatsApp";
+
+  return raw;
+}
+
+function buildDefaultCartWhatsappMessage(shopName, items, total, lead, paymentInstruction) {
+  return compactTemplateWhatsappMessage([
+    `Halo ${shopName}, saya mau pesan:`,
+    "",
+    items || "-",
+    "",
+    `Total: ${total}`,
+    lead.customer_name ? `Nama: ${lead.customer_name}` : "",
+    lead.customer_phone ? `No HP: ${lead.customer_phone}` : "",
+    lead.fulfillment_method ? `Metode: ${getTemplateFulfillmentMethodLabel(lead.fulfillment_method)}` : "",
+    lead.notes ? `Catatan: ${lead.notes}` : "",
+    "",
+    paymentInstruction,
+  ].filter((line) => line !== null && line !== undefined).join("\n"));
+}
+
+function checkoutMessageContainsCartItems(message, cartItems) {
+  const firstItem = (cartItems || []).find((item) => item?.product);
+  if (!firstItem) return true;
+
+  const firstName = getTemplateCartProductName(firstItem.product);
+  if (!firstName) return true;
+
+  return String(message || "").includes(firstName);
+}
+
+function checkoutMessageContainsTotal(message, total) {
+  const raw = String(message || "");
+  return raw.includes("Total") && raw.includes(String(total || "").replace(/\s+/g, " ").trim().split(" ")[0]);
 }
 
 function buildCartWhatsappMessage(shop, cartItems, lead = {}) {
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "toko");
   const items = getTemplateCheckoutItemsText(cartItems);
   const total = formatPrice(getCartTotal(cartItems));
-  const template = String(shop?.storefront_whatsapp_checkout_template || "").trim() ||
-    TEMPLATE_DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE;
+  const paymentInstruction = getTemplatePaymentInstructionText(shop);
 
-  const message = renderTemplateWhatsappMessage(template, {
+  const variables = {
     shop_name: shopName,
+
     customer_name: lead.customer_name || "",
+    customer_phone: lead.customer_phone || "",
+    fulfillment_method: getTemplateFulfillmentMethodLabel(lead.fulfillment_method || ""),
+    notes: lead.notes || "",
+
+    customer_name_line: lead.customer_name ? `Nama: ${lead.customer_name}` : "",
+    customer_phone_line: lead.customer_phone ? `No HP: ${lead.customer_phone}` : "",
+    fulfillment_method_line: lead.fulfillment_method ? `Metode: ${getTemplateFulfillmentMethodLabel(lead.fulfillment_method)}` : "",
+    notes_line: lead.notes ? `Catatan: ${lead.notes}` : "",
+
     items,
     total,
-    notes: lead.notes || "",
-    payment_instruction: getTemplatePaymentInstructionText(shop),
+    payment_instruction: paymentInstruction,
     campaign_slug: getCampaignSlugFromUrl(),
-  });
+  };
 
-  if (message) return message;
+  const customTemplate = String(shop?.storefront_whatsapp_checkout_template || "").trim();
+  const defaultMessage = buildDefaultCartWhatsappMessage(shopName, items, total, lead, paymentInstruction);
 
-  return [
-    `Halo ${shopName}, saya ingin pesan:`,
-    "",
-    items,
-    "",
-    `Total: ${total}`,
-    getTemplatePaymentInstructionText(shop),
-  ].filter(Boolean).join("\\n");
+  if (!customTemplate) {
+    return defaultMessage;
+  }
+
+  const rendered = renderTemplateWhatsappMessage(customTemplate, variables);
+
+  if (!rendered) {
+    return defaultMessage;
+  }
+
+  const hasItems = checkoutMessageContainsCartItems(rendered, cartItems);
+  const hasTotal = String(rendered || "").includes("Total");
+
+  if (!hasItems || !hasTotal) {
+    return compactTemplateWhatsappMessage([
+      rendered,
+      "",
+      "Ringkasan pesanan:",
+      items || "-",
+      "",
+      `Total: ${total}`,
+      paymentInstruction,
+    ].filter(Boolean).join("\n"));
+  }
+
+  return rendered;
 }
 
 function buildCartWhatsappLink(shop, cartItems, lead = {}) {
@@ -732,7 +828,6 @@ function buildCartWhatsappLink(shop, cartItems, lead = {}) {
   const message = buildCartWhatsappMessage(shop, cartItems, lead);
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
-
 
 function ProductImage({ product, className }) {
   const image = getProductImage(product);
@@ -2565,7 +2660,7 @@ function MobileStickyOrderBar({ shop, template, cartCount, onOpenCart }) {
 
 
 
-function LeadCaptureModal({ open, onClose, onSkip, onContinue }) {
+function LeadCaptureModal({ open, onClose, onSkip, onContinue, cartItems = [], showCartSummary = false }) {
   const [form, setForm] = useState({ customer_name: "", customer_phone: "", fulfillment_method: "discuss", notes: "" });
   useEffect(() => { if (open) setForm({ customer_name: "", customer_phone: "", fulfillment_method: "discuss", notes: "" }); }, [open]);
   if (!open) return null;
@@ -2579,6 +2674,12 @@ function LeadCaptureModal({ open, onClose, onSkip, onContinue }) {
     color: "#1f2933",
     background: "#fff",
   };
+
+  // LAPAKIN_LEAD_MODAL_CART_SUMMARY_V1
+  const modalCartItems = showCartSummary
+    ? (cartItems || []).filter((item) => item?.product && Number(item.qty || 0) > 0)
+    : [];
+  const modalCartTotal = getCartTotal(modalCartItems);
 
   return (
     <div
@@ -2604,6 +2705,8 @@ function LeadCaptureModal({ open, onClose, onSkip, onContinue }) {
           background: "#fff",
           padding: 22,
           boxShadow: "0 24px 80px rgba(15, 23, 42, 0.28)",
+          maxHeight: "calc(100dvh - 32px)",
+          overflowY: "auto",
         }}
       >
         <div style={{ marginBottom: 16 }}>
@@ -2620,9 +2723,79 @@ function LeadCaptureModal({ open, onClose, onSkip, onContinue }) {
     ×
   </button>
 </div>
-<p className="rounded-2xl border border-brand-line bg-brand-off/60 px-4 py-3 text-sm text-brand-mute">Pengaturan dasar untuk kontak dan metode order. Auto-reply, inbox chat, FAQ percakapan, dan handoff akan dikelola di Lapakin Asisten.</p>
-          <p style={{ margin: 0, color: "#64748b", lineHeight: 1.45 }}>Biar penjual lebih mudah follow up pesanan kamu.</p>
+{/* LAPAKIN_HIDE_CART_INTRO_IN_LEAD_MODAL_V2 */}
+          {!showCartSummary && (
+            <>
+              {/* LAPAKIN_HIDE_CART_INTRO_IN_LEAD_MODAL_V3 */}
+
+              {!showCartSummary && (
+
+                <>
+
+                  <p className="rounded-2xl border border-brand-line bg-brand-off/60 px-4 py-3 text-sm text-brand-mute">Pengaturan dasar untuk kontak dan metode order. Auto-reply, inbox chat, FAQ percakapan, dan handoff akan dikelola di Lapakin Asisten.</p>
+
+                  <p style={{ margin: 0, color: "#64748b", lineHeight: 1.45 }}>Biar penjual lebih mudah follow up pesanan kamu.</p>
+
+                </>
+
+              )}
+            </>
+          )}
         </div>
+
+        {modalCartItems.length > 0 && (
+          <div
+            data-testid="lead-capture-cart-summary"
+            style={{
+              border: "1px solid #f3d9bf",
+              borderRadius: 18,
+              background: "#fff7ed",
+              padding: 14,
+              margin: "0 0 14px",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 900, color: "#c2410c", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                Ringkasan pesanan
+              </span>
+              <strong style={{ color: "#431407", fontSize: 14 }}>{formatPrice(modalCartTotal)}</strong>
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {modalCartItems.map((item, index) => {
+                const product = item.product || {};
+                const qty = Math.max(1, Number(item.qty || 0));
+                const subtotal = Number(getProductPrice(product) || 0) * qty;
+
+                return (
+                  <div
+                    key={`${getProductId(product, index)}-${index}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      color: "#431407",
+                      fontSize: 13,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    <span style={{ fontWeight: 800 }}>
+                      {getProductName(product)} <small style={{ color: "#9a3412", fontWeight: 900 }}>x{qty}</small>
+                    </span>
+                    <strong style={{ whiteSpace: "nowrap" }}>{formatPrice(subtotal)}</strong>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p style={{ margin: 0, color: "#9a3412", fontSize: 12, lineHeight: 1.35 }}>
+              Pesanan ini akan ikut masuk ke pesan WhatsApp setelah kamu klik Lewati atau Lanjut WhatsApp.
+            </p>
+          </div>
+        )}
 
         <div style={{ display: "grid", gap: 12 }}>
           <label style={{ display: "grid", gap: 6, fontWeight: 800, color: "#1f2933" }}>
@@ -3093,6 +3266,8 @@ export default function StorefrontTemplateRenderer({ data, template }) {
 
       <LeadCaptureModal
         open={leadCapture.open}
+        showCartSummary={leadCapture.context?.type === "cart_checkout"}
+        cartItems={leadCapture.context?.type === "cart_checkout" ? cartItems : []}
         onClose={() => setLeadCapture((current) => ({ ...current, open: false }))}
         onSkip={() => closeLeadAndOpenWhatsapp(leadCapture.href)}
         onContinue={continueLeadToWhatsapp}

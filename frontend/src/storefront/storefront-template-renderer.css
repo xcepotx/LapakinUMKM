@@ -2787,3 +2787,83 @@ img.lpk-tile-img {
 
 /* LAPAKIN_ORDER_MODAL_CLOSE_7Y_END */
 
+/* LAPAKIN_CART_POPUP_FINAL_FIX_START
+   Cart-only fix.
+   Root cause: .ltr-cart-backdrop is a button and inherits CTA/button gradient.
+   Do not touch hero, product tiles, lpk-tile, menu sections, or lead modal. */
+.ltr-cart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: transparent !important;
+  background-image: none !important;
+}
+
+button.ltr-cart-backdrop,
+.ltr-cart-overlay > .ltr-cart-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(67, 20, 7, 0.18) none !important;
+  background-color: rgba(67, 20, 7, 0.18) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  opacity: 1;
+  backdrop-filter: blur(2px) saturate(0.92);
+  -webkit-backdrop-filter: blur(2px) saturate(0.92);
+  cursor: default;
+}
+
+button.ltr-cart-backdrop::before,
+button.ltr-cart-backdrop::after,
+.ltr-cart-overlay > .ltr-cart-backdrop::before,
+.ltr-cart-overlay > .ltr-cart-backdrop::after {
+  content: none !important;
+  display: none !important;
+  background: transparent none !important;
+  background-image: none !important;
+}
+
+.ltr-cart-drawer {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  bottom: 0.9rem;
+  width: min(420px, calc(100vw - 1.8rem));
+  max-width: 420px;
+  background: var(--lapakin-template-surface, #fff) !important;
+  background-image: none !important;
+  color: var(--lapakin-template-ink, #431407);
+  border: 1px solid color-mix(in srgb, var(--lapakin-template-accent, #fb923c) 22%, transparent);
+  border-radius: 1.6rem;
+  box-shadow: 0 24px 80px rgba(67, 20, 7, 0.22);
+}
+
+@media (max-width: 760px) {
+  button.ltr-cart-backdrop,
+  .ltr-cart-overlay > .ltr-cart-backdrop {
+    background: rgba(67, 20, 7, 0.2) none !important;
+    background-color: rgba(67, 20, 7, 0.2) !important;
+    background-image: none !important;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .ltr-cart-drawer {
+    top: auto;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+    max-width: none;
+    height: min(82dvh, 680px);
+    border-radius: 1.4rem;
+  }
+}
+/* LAPAKIN_CART_POPUP_FINAL_FIX_END */
