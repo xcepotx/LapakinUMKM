@@ -69,6 +69,15 @@ def normalize_storefront_testimonials(value):
 ALLOWED_STOREFRONT_MODES = {"catalog", "food_menu", "services"}
 ALLOWED_STOREFRONT_STYLES = {"classic", "modern", "compact", "premium", "playful"}
 ALLOWED_STOREFRONT_RENDERERS = {"legacy", "template"}
+# LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
+ALLOWED_STOREFRONT_LAYOUT_VARIANTS = {
+    "",
+    "food_warm_menu",
+    "laundry_clean_service",
+    "fashion_visual_catalog",
+    "service_trust_cta",
+    "craft_story_catalog",
+}
 
 def _with_storefront_defaults(shop):
     if not shop:
@@ -97,6 +106,8 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_google_maps_url", "")
     shop.setdefault("storefront_location_embed_url", "")
     shop.setdefault("storefront_renderer", "legacy")
+    # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
+    shop.setdefault("storefront_layout_variant", "")
 
     # LAPAKIN_SHOP_SETTINGS_CONTRACT_V1
     # Defaults + legacy alias sync for Pengaturan Toko.
@@ -345,6 +356,8 @@ async def _generate_storefront_copy_with_ai(data: StorefrontCopyAIIn):
         "tiktok": data.tiktok,
         "storefront_mode": data.storefront_mode,
         "storefront_style": data.storefront_style,
+        # LAPAKIN_BACKEND_VARIANT_PAYLOADS_V1
+        "storefront_layout_variant": data.storefront_layout_variant or "",
         "current": data.current or {},
         "rules": {
             "storefront_hero_title": "maksimal 90 karakter",
@@ -494,6 +507,8 @@ async def _generate_storefront_copy_with_ai(data: StorefrontCopyAIIn):
             "tiktok": data.tiktok,
             "storefront_mode": data.storefront_mode,
             "storefront_style": data.storefront_style,
+            # LAPAKIN_BACKEND_VARIANT_PAYLOADS_V1
+            "storefront_layout_variant": data.storefront_layout_variant or "",
             "current": data.current or {},
             "rules": {
                 "storefront_hero_title": "maksimal 90 karakter",
@@ -1683,6 +1698,8 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     raw_storefront_mode = payload.get("storefront_mode")
     raw_storefront_style = payload.get("storefront_style")
     raw_storefront_renderer = payload.get("storefront_renderer")
+    # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
+    raw_storefront_layout_variant = payload.get("storefront_layout_variant")
 
     if raw_storefront_mode in (None, ""):
         payload.pop("storefront_mode", None)
@@ -1704,6 +1721,14 @@ async def create_or_update_shop(data: ShopIn, request: Request):
         raise HTTPException(status_code=400, detail="Renderer tampilan website tidak valid")
     else:
         payload["storefront_renderer"] = raw_storefront_renderer
+
+    # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
+    if raw_storefront_layout_variant in (None, ""):
+        payload.pop("storefront_layout_variant", None)
+    elif raw_storefront_layout_variant not in ALLOWED_STOREFRONT_LAYOUT_VARIANTS:
+        raise HTTPException(status_code=400, detail="Variant desain website tidak valid")
+    else:
+        payload["storefront_layout_variant"] = raw_storefront_layout_variant
 
     payload = _sanitize_storefront_payment_payload(
         payload,

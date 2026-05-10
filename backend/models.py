@@ -42,6 +42,8 @@ class ShopIn(BaseModel):
     storefront_mode: Optional[str] = None
     storefront_style: Optional[str] = None
     storefront_renderer: Optional[str] = None
+    # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
+    storefront_layout_variant: Optional[str] = ""
     storefront_hero_title: Optional[str] = ""
     storefront_hero_subtitle: Optional[str] = ""
     storefront_cta_label: Optional[str] = ""

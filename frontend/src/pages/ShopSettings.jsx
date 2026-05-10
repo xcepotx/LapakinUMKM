@@ -166,6 +166,72 @@ const COVER_STYLES = [
   { id: "vibrant", label: "Cerah / Vibrant" },
 ];
 
+// LAPAKIN_STOREFRONT_VARIANT_SELECTOR_V1
+const STOREFRONT_LAYOUT_VARIANTS = [
+  {
+    value: "food_warm_menu",
+    title: "Makanan Hangat",
+    badge: "Kuliner",
+    mode: "food_menu",
+    style: "playful",
+    desc: "Untuk warung, kopi, snack, catering, dan menu harian.",
+  },
+  {
+    value: "laundry_clean_service",
+    title: "Laundry Clean",
+    badge: "Laundry",
+    mode: "services",
+    style: "modern",
+    desc: "Untuk laundry kiloan, setrika, pickup, dan delivery.",
+  },
+  {
+    value: "fashion_visual_catalog",
+    title: "Fashion Visual",
+    badge: "Fashion",
+    mode: "catalog",
+    style: "modern",
+    desc: "Untuk baju, hijab, sepatu, tas, dan katalog visual.",
+  },
+  {
+    value: "service_trust_cta",
+    title: "Jasa Profesional",
+    badge: "Jasa",
+    mode: "services",
+    style: "premium",
+    desc: "Untuk servis, booking, konsultasi, dan layanan profesional.",
+  },
+  {
+    value: "craft_story_catalog",
+    title: "Kerajinan Story",
+    badge: "Handmade",
+    mode: "catalog",
+    style: "classic",
+    desc: "Untuk handmade, hampers, souvenir, craft, dan produk lokal.",
+  },
+];
+
+// LAPAKIN_VARIANT_SELECTOR_PERSIST_V1
+function applyStorefrontLayoutVariantToShop(shop, item, allowedStyles = []) {
+  if (!item) {
+    return {
+      ...shop,
+      storefront_layout_variant: "",
+    };
+  }
+
+  const nextStyle = Array.isArray(allowedStyles) && allowedStyles.includes(item.style)
+    ? item.style
+    : "modern";
+
+  return {
+    ...shop,
+    storefront_layout_variant: item.value,
+    storefront_renderer: "template",
+    storefront_mode: item.mode,
+    storefront_style: nextStyle,
+  };
+}
+
 export default function ShopSettings({ settingsView = "shop" } = {}) {
   
   const orderContactLocation = useLocation();
@@ -883,6 +949,10 @@ return () => {
 
         storefront_style: shop.storefront_style || "classic",
 
+        // LAPAKIN_FORCE_VARIANT_SAVE_PAYLOAD_V1
+
+        storefront_layout_variant: shop.storefront_layout_variant || "",
+
         current: {
 
           storefront_hero_title: shop.storefront_hero_title || "",
@@ -1015,6 +1085,14 @@ return () => {
     setSaving(true);
     try {
       const payload = { ...shop };
+
+      // LAPAKIN_ACTUAL_SAVE_VARIANT_PAYLOAD_V1
+      // Pastikan pilihan desain per jenis usaha ikut terkirim ke /shops/me.
+      payload.storefront_layout_variant = shop.storefront_layout_variant || "";
+      payload.storefront_renderer = shop.storefront_renderer || "legacy";
+      payload.storefront_mode = shop.storefront_mode || "catalog";
+      payload.storefront_style = shop.storefront_style || "classic";
+
       delete payload.shop_id; delete payload.slug; delete payload.owner_user_id;
       delete payload.created_at; delete payload.updated_at; delete payload.status; delete payload.featured;
       payload.payment_instruction = shop.payment_instruction || shop.storefront_payment_instruction || shop.payment_notes || "";
@@ -1103,6 +1181,75 @@ return () => {
                   Style menentukan nuansa visual website toko.
                 </span>
               </label>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-brand-line bg-white p-4" data-testid="storefront-layout-variant-selector">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-brand-ink">Desain per jenis usaha</p>
+                  <p className="mt-1 text-sm leading-relaxed text-brand-mute">
+                    Pilih desain yang paling cocok. Setiap variant memakai renderer stabil yang sama, tapi nuansa, CTA, dan gaya visualnya dibedakan per bisnis.
+                  </p>
+                </div>
+
+                {(shop.storefront_layout_variant || "") ? (
+                  <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">
+                    {STOREFRONT_LAYOUT_VARIANTS.find((item) => item.value === shop.storefront_layout_variant)?.title || "Custom"}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-extrabold text-slate-700">
+                    Auto detect
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                {STOREFRONT_LAYOUT_VARIANTS.map((item) => {
+                  const active = (shop.storefront_layout_variant || "") === item.value;
+                  const nextStyle = storefrontTemplateFeatures.allowedStyles?.includes(item.style)
+                    ? item.style
+                    : "modern";
+
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      disabled={storefrontTemplateLocked}
+                      onClick={() => {
+                        setShop((prev) => applyStorefrontLayoutVariantToShop(prev, item, storefrontTemplateFeatures.allowedStyles || []));
+                      }}
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        active
+                          ? "border-brand bg-brand text-white shadow-sm"
+                          : "border-brand-line bg-brand-off hover:bg-white"
+                      } ${storefrontTemplateLocked ? "cursor-not-allowed opacity-60" : ""}`}
+                      data-testid={`storefront-layout-variant-${item.value}`}
+                    >
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${
+                        active ? "bg-white/20 text-white" : "bg-white text-brand"
+                      }`}>
+                        {item.badge}
+                      </span>
+                      <div className="mt-3 text-sm font-extrabold">{item.title}</div>
+                      <div className={`mt-1 text-xs leading-relaxed ${
+                        active ? "text-white/85" : "text-brand-mute"
+                      }`}>
+                        {item.desc}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                disabled={storefrontTemplateLocked}
+                onClick={() => setShop((prev) => applyStorefrontLayoutVariantToShop(prev, null, storefrontTemplateFeatures.allowedStyles || []))}
+                className="mt-3 text-xs font-extrabold text-brand hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                data-testid="storefront-layout-variant-auto"
+              >
+                Gunakan auto detect berdasarkan jenis usaha
+              </button>
             </div>
 
 
