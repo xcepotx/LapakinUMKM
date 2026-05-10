@@ -44,6 +44,8 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
   const isStaff = user?.shop_role === "staff";
   const [shopSwitcher, setShopSwitcher] = useState(null);
   const [switchingShop, setSwitchingShop] = useState(false);
+  // LAPAKIN_ORDER_INBOX_NAV_BADGE_V1
+  const [orderInboxNewCount, setOrderInboxNewCount] = useState(0);
 
   const mainItems = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Beranda", tid: "nav-home" },
@@ -57,7 +59,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
       tid: "nav-group-sales",
       children: [
         { to: "/dashboard/sales", icon: BookOpen, label: "Buku Jualan", tid: "nav-sales" },
-        { to: "/dashboard/leads", icon: MessageSquare, label: "Leads", tid: "nav-leads" },
+        { to: "/dashboard/leads", icon: MessageSquare, label: "Order Inbox", tid: "nav-leads", badge: orderInboxNewCount },
       ],
     },
     {
@@ -88,6 +90,39 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
     api.get("/shops/mine")
       .then((r) => setShopSwitcher(r.data))
       .catch(() => {});
+  }, [user?.shop_id]);
+
+  useEffect(() => {
+    if (!user?.shop_id) {
+      setOrderInboxNewCount(0);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadOrderInboxBadge = async () => {
+      try {
+        const response = await api.get("/shops/storefront-leads?limit=100");
+        if (cancelled) return;
+
+        const leads = response?.data?.leads || [];
+        const nextCount = leads.filter((lead) => (lead.status || "new") === "new").length;
+
+        setOrderInboxNewCount(nextCount);
+      } catch {
+        if (!cancelled) setOrderInboxNewCount(0);
+      }
+    };
+
+    loadOrderInboxBadge();
+
+    const handleFocus = () => loadOrderInboxBadge();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [user?.shop_id]);
 
   const handleSwitchShop = async (shopId) => {
@@ -130,6 +165,11 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
           }`}
         />
         <span className="whitespace-nowrap">{it.label}</span>
+        {Number(it.badge || 0) > 0 ? (
+          <span className="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
+            {it.badge > 99 ? "99+" : it.badge}
+          </span>
+        ) : null}
       </Link>
     );
   };
@@ -168,6 +208,11 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
               >
                 <ChildIcon className={`h-4 w-4 ${childActive ? "text-brand" : "text-brand-mute"}`} />
                 <span className="whitespace-nowrap">{child.label}</span>
+                {Number(child.badge || 0) > 0 ? (
+                  <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-black leading-none text-white">
+                    {child.badge > 99 ? "99+" : child.badge}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
