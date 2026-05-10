@@ -91,6 +91,30 @@ function AIWaBotBanner() {
     </div>
   );
 }
+// LAPAKIN_AI_BUTTON_READINESS_GATE_V1
+function getReadinessScoreValue(readiness) {
+  const raw =
+    readiness?.score ??
+    readiness?.percentage ??
+    readiness?.percent ??
+    readiness?.readiness_score ??
+    readiness?.website_score ??
+    0;
+
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function canGenerateWebsiteFromReadiness(readiness) {
+  if (!readiness) return false;
+
+  return Boolean(
+    readiness.can_generate_website === true ||
+    readiness.canGenerateWebsite === true ||
+    getReadinessScoreValue(readiness) >= 70
+  );
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -215,7 +239,7 @@ export default function Dashboard() {
   };
 
   const handleGenerateWebsiteAi = async () => {
-    if (!readiness?.can_generate_website) {
+    if (!canGenerateWebsiteFromReadiness(readiness)) {
       const href = readiness?.next_best_action?.href || "/dashboard/settings";
       navigate(href);
       return;
@@ -225,6 +249,8 @@ export default function Dashboard() {
     try {
       const { data } = await api.post("/shops/website-ai/generate");
       setWebsiteAiPreview(data || null);
+      // LAPAKIN_AI_PREVIEW_NO_SETTINGS_REDIRECT_V1
+      // Tetap di dashboard agar owner bisa review hasil AI, lihat website, atau generate ulang.
       if (data?.readiness) {
         setReadiness(data.readiness);
         try {
@@ -234,7 +260,7 @@ export default function Dashboard() {
         }
       }
       toast.success(data?.message || "Draft website berhasil dibuat dengan AI");
-      navigate("/dashboard/settings?section=website#website");
+      // AI preview stays on dashboard; user can open settings manually if needed.
     } catch (e) {
       const detail = e?.response?.data?.detail;
       const message =
@@ -401,7 +427,7 @@ export default function Dashboard() {
         result={websiteAiPreview}
         generating={generatingWebsiteAi}
         onClose={() => setWebsiteAiPreview(null)}
-        onRegenerate={handleGenerateWebsite}
+        onRegenerate={handleGenerateWebsiteAi}
       />
 {user?.trial_expired && !user?.trial && (
       <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-5 text-orange-950 shadow-sm">
@@ -1094,6 +1120,8 @@ function WebsiteAiPreviewPanel({ open, result, generating, onClose, onRegenerate
 }
 
 function ReadinessOverviewCard({ readiness, loading, onOpenAction, onGenerateWebsite, generatingWebsiteAi = false, onOpenChecklist }) {
+  const readinessScore = getReadinessScoreValue(readiness);
+  const canGenerateWebsite = canGenerateWebsiteFromReadiness(readiness);
   const score = Number(readiness?.score || 0);
   const assistantScore = Number(readiness?.assistant_score || 0);
   const nextAction = readiness?.next_best_action;
@@ -1229,10 +1257,10 @@ function ReadinessOverviewCard({ readiness, loading, onOpenAction, onGenerateWeb
 
               <button
                 type="button"
-                onClick={readiness.can_generate_website ? onGenerateWebsite : () => onOpenAction(nextAction?.href || "/dashboard/settings")}
+                onClick={canGenerateWebsite ? onGenerateWebsite : () => onOpenAction(nextAction?.href || "/dashboard/settings")}
                 disabled={generatingWebsiteAi}
                 className={`h-11 rounded-2xl px-4 text-sm font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-70 ${
-                  readiness.can_generate_website
+                  canGenerateWebsite
                     ? "bg-brand hover:bg-brand-hover"
                     : "bg-brand-mute/70 hover:bg-brand-mute"
                 }`}
@@ -1240,7 +1268,7 @@ function ReadinessOverviewCard({ readiness, loading, onOpenAction, onGenerateWeb
               >
                 {generatingWebsiteAi
                   ? "Membuat draft..."
-                  : readiness.can_generate_website
+                  : canGenerateWebsite
                     ? "Buat Website dengan AI"
                     : "Lengkapi sebelum buat website"}
               </button>
