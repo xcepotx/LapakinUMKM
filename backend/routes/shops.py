@@ -1554,6 +1554,56 @@ def _website_ai_pick_featured_product_ids(products, max_items=6):
     return cleaned
 
 
+
+# LAPAKIN_AI_GENERATE_LAYOUT_VARIANT_V1
+def _website_ai_infer_layout_variant(shop: dict) -> str:
+    raw = " ".join([
+        str(shop.get("storefront_layout_variant") or ""),
+        str(shop.get("business_type") or ""),
+        str(shop.get("category") or ""),
+        str(shop.get("category_name") or ""),
+        str(shop.get("business_category") or ""),
+        str(shop.get("description") or ""),
+        str(shop.get("tagline") or ""),
+        str(shop.get("name") or ""),
+    ]).lower()
+
+    explicit = str(shop.get("storefront_layout_variant") or "").strip()
+    if explicit in ALLOWED_STOREFRONT_LAYOUT_VARIANTS and explicit:
+        return explicit
+
+    if any(term in raw for term in ["laundry", "laundri", "cuci", "setrika", "dry clean", "dryclean"]):
+        return "laundry_clean_service"
+
+    if any(term in raw for term in ["fashion", "baju", "pakaian", "busana", "hijab", "sepatu", "tas", "aksesoris", "clothing"]):
+        return "fashion_visual_catalog"
+
+    if any(term in raw for term in ["kerajinan", "craft", "handmade", "souvenir", "hampers", "kriya", "rajut", "batik", "anyaman"]):
+        return "craft_story_catalog"
+
+    mode = _website_ai_infer_mode(shop)
+
+    if any(term in raw for term in ["jasa", "service", "servis", "repair", "konsultan", "konsultasi", "booking", "salon", "barber", "ac", "maintenance"]) or mode == "services":
+        return "service_trust_cta"
+
+    if any(term in raw for term in ["kuliner", "makanan", "minuman", "warung", "kopi", "cafe", "resto", "bakso", "nasi", "snack", "kue", "catering", "food"]) or mode == "food_menu":
+        return "food_warm_menu"
+
+    return "fashion_visual_catalog"
+
+
+def _website_ai_layout_variant_mode_style(variant: str) -> tuple[str, str]:
+    mapping = {
+        "food_warm_menu": ("food_menu", "playful"),
+        "laundry_clean_service": ("services", "modern"),
+        "fashion_visual_catalog": ("catalog", "modern"),
+        "service_trust_cta": ("services", "premium"),
+        "craft_story_catalog": ("catalog", "classic"),
+    }
+    return mapping.get(variant, ("catalog", "modern"))
+
+
+
 @router.post("/shops/website-ai/generate")
 async def generate_shop_website_ai(request: Request):
     user = await require_user(request)
@@ -1598,8 +1648,11 @@ async def generate_shop_website_ai(request: Request):
     }
     featured_limit = featured_limit_by_tier.get(tier, 3)
 
-    storefront_mode = _website_ai_infer_mode(shop)
-    storefront_style = _website_ai_infer_style(shop, user)
+    storefront_layout_variant = _website_ai_infer_layout_variant(shop)
+    variant_mode, variant_style = _website_ai_layout_variant_mode_style(storefront_layout_variant)
+
+    storefront_mode = variant_mode or _website_ai_infer_mode(shop)
+    storefront_style = variant_style or _website_ai_infer_style(shop, user)
 
     current_copy = {
         "storefront_hero_title": shop.get("storefront_hero_title") or "",
@@ -1624,6 +1677,7 @@ async def generate_shop_website_ai(request: Request):
         "storefront_renderer": "template",
         "storefront_mode": storefront_mode,
         "storefront_style": storefront_style,
+        "storefront_layout_variant": storefront_layout_variant,
         **copy,
         "storefront_featured_product_ids": _website_ai_pick_featured_product_ids(products, featured_limit),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -1658,6 +1712,8 @@ async def generate_shop_website_ai(request: Request):
         "message": "Draft website berhasil dibuat dengan AI.",
         "generated": update_payload,
         "readiness": readiness_after,
+        "shop_slug": updated_shop.get("slug") or shop.get("slug"),
+        "storefront_url": f"/toko/{updated_shop.get('slug') or shop.get('slug')}" if (updated_shop.get("slug") or shop.get("slug")) else "",
     }
 
 
