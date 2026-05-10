@@ -376,6 +376,10 @@ function normalizeSocialUrl(value, platform) {
     return `https://www.tiktok.com/@${raw}`;
   }
 
+  if (platform === "shopee") {
+    return raw.includes(".") ? `https://${raw.replace(/^https?:\/\//, "")}` : `https://shopee.co.id/${raw}`;
+  }
+
   return raw;
 }
 
@@ -421,6 +425,23 @@ function getSocialLinks(shop) {
     ""
   );
 
+  const shopee = getValue(
+    {
+      ...shop,
+      shopee_from_socials: socials.shopee,
+      shopee_url_from_socials: socials.shopee_url,
+    },
+    [
+      "shopee_url",
+      "shopee",
+      "social_shopee",
+      "shopee_handle",
+      "shopee_from_socials",
+      "shopee_url_from_socials",
+    ],
+    ""
+  );
+
   return [
     {
       key: "instagram",
@@ -431,6 +452,11 @@ function getSocialLinks(shop) {
       key: "tiktok",
       label: "TikTok",
       url: normalizeSocialUrl(tiktok, "tiktok"),
+    },
+    {
+      key: "shopee",
+      label: "Shopee",
+      url: normalizeSocialUrl(shopee, "shopee"),
     },
   ].filter((item) => item.url);
 }
@@ -1012,33 +1038,102 @@ function HeroSection({ shop, products, template }) {
   const copy = getHeroCopy(mode, template);
   const shopName = getValue(shop, ["name", "shop_name", "store_name"], "Toko");
   const rawCustomHeroTitle = getValue(shop, ["storefront_hero_title"], "");
-  const customHeroTitle = cleanStorefrontHeroTitle(rawCustomHeroTitle, shopName, mode);
+  // LAPAKIN_RESPECT_CUSTOM_HERO_TITLE_V1
+  const cleanedCustomHeroTitle = cleanStorefrontHeroTitle(rawCustomHeroTitle, shopName, mode);
+  const customHeroTitle = String(rawCustomHeroTitle || "").trim() || cleanedCustomHeroTitle;
+  // LAPAKIN_STOREFRONT_INFO_VISIBILITY_V1
+  const heroTagline = getValue(shop, ["tagline", "tagline_extra"], "");
   const description =
     getValue(shop, ["storefront_hero_subtitle"], "") ||
-    getValue(shop, ["description", "tagline", "bio", "about"], "") ||
+    getValue(shop, ["description", "bio", "about"], "") ||
     copy.subtitle;
   const ctaLabel = getValue(shop, ["storefront_cta_label"], "") || copy.cta;
   const logo = getValue(shop, ["logo_url", "logo", "avatar_url", "image_url"], "");
   const featured = products[0];
+  const fulfillmentOptions = getTemplateFulfillmentOptions(shop);
+  const serviceArea = getTemplateServiceArea(shop);
 
   return (
     <section className={cx("ltr-hero", `ltr-hero-${template.hero}`)}>
       <div className="ltr-hero-content">
         <div className="ltr-eyebrow">{copy.eyebrow}</div>
         <h1>
-          {mode === "food_menu" && shopName ? (
+          {customHeroTitle ? (
+            customHeroTitle
+          ) : mode === "food_menu" && shopName ? (
             <>
               <span>Masakan</span> Rumahan {shopName}
             </>
-          ) : customHeroTitle ? (
-            customHeroTitle
           ) : (
             <>
               {copy.titlePrefix} <span>{shopName}</span>
             </>
           )}
         </h1>
+
+        {heroTagline && heroTagline !== description ? (
+          <div
+            data-testid="storefront-hero-tagline"
+            style={{
+              display: "inline-flex",
+              width: "fit-content",
+              maxWidth: "100%",
+              borderRadius: 999,
+              padding: "0.45rem 0.75rem",
+              background: "rgba(255,255,255,0.72)",
+              color: "var(--lapakin-template-ink, #431407)",
+              fontSize: "0.86rem",
+              fontWeight: 800,
+              boxShadow: "0 10px 30px rgba(67, 20, 7, 0.08)",
+            }}
+          >
+            {heroTagline}
+          </div>
+        ) : null}
+
         <p>{description}</p>
+
+        {(fulfillmentOptions.length > 0 || serviceArea) ? (
+          <div
+            data-testid="storefront-hero-service-chips"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+              marginTop: "0.75rem",
+            }}
+          >
+            {fulfillmentOptions.map((option) => (
+              <span
+                key={option}
+                style={{
+                  borderRadius: 999,
+                  padding: "0.42rem 0.7rem",
+                  background: "rgba(255,255,255,0.68)",
+                  color: "var(--lapakin-template-ink, #431407)",
+                  fontSize: "0.78rem",
+                  fontWeight: 900,
+                }}
+              >
+                {option}
+              </span>
+            ))}
+            {serviceArea ? (
+              <span
+                style={{
+                  borderRadius: 999,
+                  padding: "0.42rem 0.7rem",
+                  background: "rgba(255,255,255,0.68)",
+                  color: "var(--lapakin-template-ink, #431407)",
+                  fontSize: "0.78rem",
+                  fontWeight: 900,
+                }}
+              >
+                Area: {serviceArea}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="ltr-hero-actions">
           <a className="ltr-primary-cta" href={buildWhatsappLink(shop)} target="_blank" rel="noreferrer">
@@ -1752,6 +1847,8 @@ function getStorefrontSocialLinks(shop) {
   const tiktok = String(shop?.tiktok || "")
     .trim()
     .replace(/^@+/, "");
+  const shopee = String(shop?.shopee_url || shop?.shopee || "")
+    .trim();
 
   if (instagram) {
     links.push({
@@ -1768,6 +1865,15 @@ function getStorefrontSocialLinks(shop) {
       label: "TikTok",
       short: "TT",
       href: `https://www.tiktok.com/@${tiktok}`,
+    });
+  }
+
+  if (shopee) {
+    links.push({
+      key: "shopee",
+      label: "Shopee",
+      short: "SP",
+      href: shopee.startsWith("http") ? shopee : `https://shopee.co.id/${shopee}`,
     });
   }
 
