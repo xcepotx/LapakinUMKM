@@ -297,7 +297,7 @@ export default function AIStudio() {
             <div>
               <Label htmlFor="pname">Nama Produk</Label>
               <Input id="pname" value={name} onChange={(e) => setName(e.target.value)}
-                placeholder="Misal: Kopi Susu Gula Aren"
+                placeholder="Misal: Alamat toko Gula Aren"
                 className="mt-1 rounded-xl border-brand-line h-12" data-testid="product-name-input" />
             </div>
             <div className="grid grid-cols-2 gap-3">

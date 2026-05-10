@@ -99,6 +99,16 @@ async def on_startup():
     await db.payments.create_index([("provider", 1), ("status", 1), ("created_at", -1)])
     await db.payments.create_index([("user_id", 1), ("provider", 1), ("created_at", -1)])
 
+    await db.bot_settings.create_index("shop_id", unique=True)
+    await db.bot_faqs.create_index("shop_id")
+    await db.bot_faqs.create_index("faq_id", unique=True)
+    await db.bot_shop_profile.create_index("shop_id", unique=True)
+    await db.bot_conversations.create_index("shop_id")
+    await db.bot_conversations.create_index([("shop_id", 1), ("customer_phone", 1)])
+    await db.bot_conversations.create_index("conv_id", unique=True, sparse=True)
+    await db.bot_events.create_index([("shop_id", 1), ("created_at", -1)])
+    await db.bot_events.create_index("event_type")
+
     # Seed admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@lapakin.id").lower()
     admin_password = os.environ.get("ADMIN_PASSWORD", "lapakin123")

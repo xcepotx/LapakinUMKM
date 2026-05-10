@@ -48,7 +48,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
   const mainItems = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Beranda", tid: "nav-home" },
     { to: "/dashboard/products", icon: Package, label: "Produk", tid: "nav-products" },
-    { to: "/dashboard/whatsapp", icon: MessageSquare, label: "WhatsApp", tid: "nav-whatsapp" },
+    { to: "/dashboard/settings", icon: Settings, label: "Pengaturan Toko", tid: "nav-shop-settings" },
   ];
 
   const navGroups = [
@@ -281,16 +281,6 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
                         <span className="w-4 h-4 text-brand-mute">🌐</span>
                         Tampilan Website
                       </Link>
-
-                      <Link
-                        to="/dashboard/settings"
-                        className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"
-                        data-testid="account-menu-settings"
-                      >
-                        <Settings className="w-4 h-4 text-brand-mute" />
-                        Pengaturan Toko
-                      </Link>
-
                       <Link
                         to="/dashboard/billing"
                         className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-brand-off"

@@ -294,7 +294,7 @@ export default function Pricing() {
         </div>
 
         <div className="text-center mt-10 text-sm text-brand-mute">
-          Punya pertanyaan? Hubungi tim Lapakin di <a href="https://wa.me/628123456789" className="text-brand font-semibold hover:underline">WhatsApp</a>.
+          Punya pertanyaan? Hubungi tim Lapakin di <a href="https://wa.me/628123456789" className="text-brand font-semibold hover:underline">Order & Kontak</a>.
         </div>
       </main>
     </div>

@@ -201,7 +201,7 @@ export default function Landing() {
           </div>
           <div className="bg-white rounded-3xl p-6 sm:p-10 border border-brand-line shadow-card">
             <div className="text-xs text-brand-mute uppercase tracking-[0.2em] font-bold">Contoh hasil AI</div>
-            <h3 className="mt-3 font-heading font-bold text-xl">Kopi Susu Gula Aren</h3>
+            <h3 className="mt-3 font-heading font-bold text-xl">Alamat toko Gula Aren</h3>
             <p className="mt-3 text-brand-ink leading-relaxed">
               Perpaduan kopi robusta lokal dan gula aren cair khas Bandung. Manisnya pas, aromanya legit,
               cocok buat teman ngopi sore di balkon. Tiap tegukan, ada cerita kampung halaman.

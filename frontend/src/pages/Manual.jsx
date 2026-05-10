@@ -50,7 +50,7 @@ const sections = [
   {
     title: "6. WhatsApp",
     items: [
-      "Owner bisa menghubungkan nomor WhatsApp ke akun Lapakin.",
+      "Owner bisa menghubungkan nomor WhatsApp toko ke akun Lapakin.",
       "Webhook Twilio menerima pesan dan media dari WhatsApp.",
       "Upload produk via WhatsApp mendukung gambar JPG, PNG, WEBP dengan validasi ukuran dan content type.",
     ],

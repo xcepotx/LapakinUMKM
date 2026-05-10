@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import api, { formatApiError } from "@/lib/api";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Save, Wand2, Upload, X, ImagePlus, Trash2, QrCode, RefreshCw, Users, UserPlus, ShieldCheck } from "lucide-react";
+import { Save, Wand2, Upload, X, ImagePlus, Trash2, QrCode, RefreshCw, Users, UserPlus, ShieldCheck, MessageCircle, Truck, Store, WalletCards, MapPin, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -42,6 +42,57 @@ const WHATSAPP_TEMPLATE_VARIABLES = [
 import { resolveStorefrontTemplate } from "../storefront/templates";
 import StorefrontSeoEditor from "@/components/StorefrontSeoEditor";
 
+
+
+const SHOP_SETTINGS_SECTION_TEXT = {
+  contact: ["whatsapp", "nomor whatsapp", "kontak", "order & kontak"],
+  order: ["metode order", "pickup", "delivery", "cod", "online-only"],
+  payment: ["pembayaran", "qris", "rekening", "transfer", "payment"],
+  location: ["lokasi", "alamat", "google maps", "maps"],
+};
+
+function findShopSettingsSectionElement(section) {
+  const terms = SHOP_SETTINGS_SECTION_TEXT[section] || [];
+  if (!terms.length || typeof document === "undefined") return null;
+
+  const candidates = Array.from(
+    document.querySelectorAll("label, h1, h2, h3, h4, legend, button, [data-section], [data-testid]")
+  );
+
+  for (const el of candidates) {
+    const explicit =
+      String(el.getAttribute("data-section") || "").toLowerCase() === section ||
+      String(el.getAttribute("data-testid") || "").toLowerCase().includes(section);
+
+    const text = String(el.textContent || "").toLowerCase();
+    const matched = explicit || terms.some((term) => text.includes(term));
+
+    if (matched) {
+      return el.closest("section, form, fieldset, .rounded-3xl, .rounded-2xl, .card, [class*='border']") || el;
+    }
+  }
+
+  return null;
+}
+
+function scrollToShopSettingsSection(section) {
+  const target = findShopSettingsSectionElement(section);
+  if (!target) return false;
+
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("ring-2", "ring-brand", "ring-offset-2");
+
+  window.setTimeout(() => {
+    target.classList.remove("ring-2", "ring-brand", "ring-offset-2");
+  }, 2200);
+
+  const input = target.querySelector("input, textarea, select, button");
+  if (input && typeof input.focus === "function") {
+    window.setTimeout(() => input.focus({ preventScroll: true }), 500);
+  }
+
+  return true;
+}
 
 const LAPAKIN_WA_TEMPLATE_PREVIEW_SAMPLE = {
   shop_name: "Warung Bu Sari",
@@ -116,9 +167,21 @@ const COVER_STYLES = [
 ];
 
 export default function ShopSettings({ settingsView = "shop" } = {}) {
-  const navigate = useNavigate();
+  
+  const orderContactLocation = useLocation();
+
+const navigate = useNavigate();
   const [shop, setShop] = useState(null);
   const isWebsiteSettings = settingsView === "website";
+
+  const updateShopField = (field, value) => {
+    setShop((prev) => ({ ...(prev || {}), [field]: value }));
+  };
+
+  const updateShopCheckbox = (field, event) => {
+    updateShopField(field, Boolean(event?.target?.checked));
+  };
+
   const [storefrontPickerProducts, setStorefrontPickerProducts] = useState([]);
   // storefront-featured-products-loader
   useEffect(() => {
@@ -163,7 +226,9 @@ return () => {
         }
       });
 
-    return () => {
+  
+
+  return () => {
       alive = false;
     };
   }, []);
@@ -952,6 +1017,8 @@ return () => {
       const payload = { ...shop };
       delete payload.shop_id; delete payload.slug; delete payload.owner_user_id;
       delete payload.created_at; delete payload.updated_at; delete payload.status; delete payload.featured;
+      payload.payment_instruction = shop.payment_instruction || shop.storefront_payment_instruction || shop.payment_notes || "";
+      payload.storefront_payment_instruction = payload.payment_instruction;
       const { data } = await api.post("/shops/me", payload);
       setShop(data);
       toast.success("Tersimpan");
@@ -967,6 +1034,35 @@ return () => {
         title="Tampilan Website"
         subtitle="Atur tampilan website publik, template, produk unggulan, promo, dan link campaign."
       >
+
+          <div
+            className="rounded-3xl border border-brand-line bg-white p-5 shadow-card"
+            data-testid="website-settings-shop-data-notice"
+          >
+            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-brand-mute">
+              Data toko
+            </p>
+            <h2 className="mt-1 font-heading text-xl font-extrabold text-brand-ink">
+              Kontak, pembayaran, dan lokasi dikelola di Pengaturan Toko
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-brand-mute">
+              Nomor WhatsApp, instruksi pembayaran, status toko offline, Google Maps,
+              pickup, delivery, dan area layanan tetap dipakai oleh storefront, tetapi
+              pengisiannya sekarang dipusatkan di halaman Pengaturan Toko.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4"
+              onClick={() => navigate("/dashboard/settings")}
+            >
+              Buka Pengaturan Toko
+            </Button>
+          </div>
+
+
+
+
         <div className="space-y-6">
 <Section title="Tampilan Website" desc="Pilih mode dan gaya visual website publik toko.">
             <div className="grid md:grid-cols-2 gap-4">
@@ -1719,116 +1815,10 @@ return () => {
               </div>
             </div>
 
-            <div
-              className="mt-4 rounded-2xl border border-brand-line bg-white p-4"
 
-              data-testid="storefront-payment-instruction-editor"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-black text-brand-ink">Instruksi Pembayaran Manual / QRIS</p>
-                  <p className="mt-1 text-xs leading-relaxed text-brand-mute">
-                    Tampilkan QRIS atau instruksi transfer di drawer checkout. Ini hanya instruksi manual, bukan payment gateway otomatis.
-                  </p>
-                </div>
-                <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">Tanpa Gateway</span>
-              </div>
-
-              {storefrontTemplateLocked && (
-                <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-                  Instruksi pembayaran tampil di Template Baru. Aktifkan paket/template terlebih dahulu.
-                </div>
-              )}
-
-              <label className="mt-4 flex items-center gap-3 rounded-xl bg-brand-off p-3 text-sm font-bold text-brand-ink">
-                <input
-                  type="checkbox"
-                  checked={Boolean(shop.storefront_show_payment_instruction)}
-                  onChange={(e) => update("storefront_show_payment_instruction", e.target.checked)}
-                  disabled={storefrontTemplateLocked}
-                  className="h-4 w-4"
-                  data-testid="storefront-show-payment-instruction-toggle"
-                />
-                Tampilkan instruksi pembayaran di checkout
-              </label>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="text-sm font-bold text-brand-ink">Label Metode Pembayaran</span>
-                  <input
-                    value={shop.storefront_payment_method_label || ""}
-                    onChange={(e) => update("storefront_payment_method_label", e.target.value)}
-                    disabled={storefrontTemplateLocked}
-                    placeholder="Contoh: QRIS Warung Bu Sari"
-                    maxLength={80}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
-                    data-testid="storefront-payment-method-label-input"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-bold text-brand-ink">Upload Gambar QRIS</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={onStorefrontQrisFile}
-                    disabled={storefrontTemplateLocked}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
-                    data-testid="storefront-qris-image-input"
-                  />
-                </label>
-
-                <label className="block md:col-span-2">
-                  <span className="text-sm font-bold text-brand-ink">Instruksi Pembayaran</span>
-                  <textarea
-                    value={shop.storefront_payment_instruction || ""}
-                    onChange={(e) => update("storefront_payment_instruction", e.target.value)}
-                    disabled={storefrontTemplateLocked}
-                    placeholder="Contoh: Scan QRIS di bawah, lalu kirim bukti pembayaran melalui WhatsApp. Pesanan diproses setelah pembayaran dikonfirmasi."
-                    maxLength={500}
-                    rows={4}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
-                    data-testid="storefront-payment-instruction-input"
-                  />
-                </label>
-
-                <label className="block md:col-span-2">
-                  <span className="text-sm font-bold text-brand-ink">Teks Konfirmasi WhatsApp</span>
-                  <input
-                    value={shop.storefront_payment_confirmation_text || ""}
-                    onChange={(e) => update("storefront_payment_confirmation_text", e.target.value)}
-                    disabled={storefrontTemplateLocked}
-                    placeholder="Contoh: Saya akan kirim bukti pembayaran via WhatsApp."
-                    maxLength={160}
-                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
-                    data-testid="storefront-payment-confirmation-text-input"
-                  />
-                </label>
-
-                {shop.storefront_qris_image ? (
-                  <div className="md:col-span-2 rounded-2xl border border-brand-line bg-brand-off p-4" data-testid="storefront-qris-image-preview">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                      <img src={shop.storefront_qris_image} alt="Preview QRIS" className="h-40 w-40 rounded-xl border border-brand-line bg-white object-contain p-2" />
-                      <div className="flex-1 text-sm text-brand-mute">
-                        <p className="font-bold text-brand-ink">Preview QRIS</p>
-                        <p className="mt-1">Gambar ini akan tampil di drawer checkout website template.</p>
-                        <button
-                          type="button"
-                          onClick={() => update("storefront_qris_image", "")}
-                          className="mt-3 rounded-xl border border-brand-line bg-white px-4 py-2 text-sm font-extrabold text-brand-ink"
-                          data-testid="storefront-qris-clear-btn"
-                        >
-                          Hapus QRIS
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
 
             <div
-              className="mt-4 rounded-2xl border border-brand-line bg-white p-4"
+              className="mt-4 rounded-3xl border border-brand-line bg-white p-4 shadow-sm sm:p-5"
               data-testid="storefront-whatsapp-template-editor"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1939,6 +1929,11 @@ return () => {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-black text-brand-ink">Lokasi Toko / Google Maps</p>
+
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Lokasi sekarang dikelola dari Pengaturan Toko. Section web ini hanya untuk tampilan sementara dan akan dibersihkan setelah field baru stabil.
+              </div>
+
                   <p className="mt-1 text-xs leading-relaxed text-brand-mute">
                     Tampilkan alamat, peta, dan tombol arahkan ke lokasi di website template. Untuk MVP, cukup paste link Google Maps atau isi alamat toko.
                   </p>
@@ -2258,9 +2253,334 @@ return (
           <QrCode className="w-4 h-4 mr-2" /> QR Lapak Saya
         </Button>
       }>
-      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="mx-auto max-w-6xl space-y-6 pb-36" data-testid="settings-page-stack">
+
+
+          {/* IDENTITY */}
+          <Section
+            title="Identitas Toko"
+            eyebrow="Profil dasar"
+            badge="Tampil di website"
+            desc="Info dasar yang tampil di header website, SEO/meta, dan kartu share toko."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label>Nama Toko</Label>
+                <Input value={shop.name} onChange={(e) => update("name", e.target.value)}
+                  className="mt-2 h-12 rounded-xl border-brand-line bg-white" data-testid="settings-name" />
+              </div>
+              <div>
+                <Label>Tagline</Label>
+                <Input value={shop.tagline || ""} onChange={(e) => update("tagline", e.target.value)}
+                  className="mt-2 h-12 rounded-xl border-brand-line bg-white" data-testid="settings-tagline" />
+              </div>
+              <div>
+                <Label>Deskripsi Singkat</Label>
+                <Textarea rows={2} value={shop.description || ""} onChange={(e) => update("description", e.target.value)}
+                  className="mt-1 rounded-xl border-brand-line" data-testid="settings-description" />
+              </div>
+              <div>
+                <Label>Jenis Bisnis</Label>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {BUSINESS_TYPES.map((b) => (
+                    <button key={b.id} type="button" onClick={() => update("business_type", b.id)}
+                      className={`min-h-[52px] rounded-2xl border px-4 py-3 text-sm font-extrabold transition ${shop.business_type === b.id ? "border-brand bg-brand text-white shadow-sm" : "border-brand-line bg-white text-brand-ink hover:-translate-y-0.5 hover:border-brand hover:shadow-sm"}`}>
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Section>
+
+          <section
+            id="order-contact"
+            data-section="order-contact"
+            data-testid="shop-settings-order-payment-location"
+            className="space-y-5 rounded-[2rem] border border-brand-line bg-white p-5 shadow-card sm:p-6"
+          >
+            <div className="rounded-3xl border border-brand-line bg-gradient-to-br from-brand-off via-white to-brand-soft/30 p-4 sm:p-5">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-brand-mute">Pengaturan Toko</p>
+                  <h2 className="font-heading text-xl font-extrabold text-brand-ink">Order, Pembayaran & Lokasi</h2>
+                  <p className="mt-1 max-w-2xl text-sm leading-relaxed text-brand-mute">
+                    Lengkapi cara pelanggan order, bayar, ambil barang, dan menemukan toko. Data ini dipakai storefront, Website Readiness, dan Lapakin Asisten.
+                  </p>
+                </div>
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-extrabold text-brand-ink shadow-sm">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-brand" />
+                  Basic readiness
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-white/70 bg-white/80 p-3 shadow-sm">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-brand-mute">Kontak order</p>
+                  <p className="mt-1 text-sm font-extrabold text-brand-ink">
+                    {shop?.whatsapp || shop?.whatsapp_number ? "WhatsApp siap" : "Isi nomor WA"}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/70 bg-white/80 p-3 shadow-sm">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-brand-mute">Metode jualan</p>
+                  <p className="mt-1 text-sm font-extrabold text-brand-ink">
+                    {shop?.pickup_available || shop?.delivery_available ? "Pickup/delivery aktif" : "Atur pickup/delivery"}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/70 bg-white/80 p-3 shadow-sm">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-brand-mute">Lokasi</p>
+                  <p className="mt-1 text-sm font-extrabold text-brand-ink">
+                    {shop?.has_offline_store || shop?.show_location ? "Toko offline aktif" : "Online-only boleh"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div id="contact" data-section="contact" className="rounded-3xl border border-brand-line bg-white p-4 shadow-sm sm:p-5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-brand">
+                  <MessageCircle className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <label className="text-sm font-extrabold text-brand-ink">Nomor WhatsApp toko</label>
+                  <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                    Nomor utama yang dipakai pelanggan untuk order dari storefront dan tombol checkout.
+                  </p>
+                  <input
+                    className="mt-3 w-full rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm font-semibold text-brand-ink outline-none transition focus:border-brand focus:ring-4 focus:ring-brand-soft/70"
+                    value={shop?.whatsapp || shop?.whatsapp_number || ""}
+                    onChange={(event) => updateShopField("whatsapp", event.target.value)}
+                    placeholder="62812xxxxxxx"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div id="order" data-section="order" className="grid gap-4 md:grid-cols-3">
+              <ToggleCard
+                icon={MessageCircle}
+                title="Order via WhatsApp"
+                desc="Checkout diarahkan ke chat WA toko."
+                checked={Boolean(shop?.order_whatsapp_enabled ?? true)}
+                onChange={(event) => updateShopCheckbox("order_whatsapp_enabled", event)}
+              />
+              <ToggleCard
+                icon={Store}
+                title="Pickup tersedia"
+                desc="Pelanggan bisa ambil pesanan di toko."
+                checked={Boolean(shop?.pickup_available)}
+                onChange={(event) => updateShopCheckbox("pickup_available", event)}
+              />
+              <ToggleCard
+                icon={Truck}
+                title="Delivery tersedia"
+                desc="Toko melayani pengantaran pesanan."
+                checked={Boolean(shop?.delivery_available)}
+                onChange={(event) => updateShopCheckbox("delivery_available", event)}
+              />
+            </div>
+
+            <div id="payment" data-section="payment" className="rounded-3xl border border-brand-line bg-white p-4 shadow-sm sm:p-5">
+              <label className="text-sm font-extrabold text-brand-ink">Instruksi pembayaran</label>
+              <p className="mt-1 text-xs text-brand-mute">Contoh: QRIS tersedia, transfer BCA, COD, atau bayar di tempat.</p>
+              <textarea
+                className="mt-3 min-h-[100px] w-full rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm font-semibold text-brand-ink outline-none transition focus:border-brand focus:ring-4 focus:ring-brand-soft/70"
+                value={shop?.payment_instruction || shop?.storefront_payment_instruction || shop?.payment_notes || ""}
+                onChange={(event) => {
+                    updateShopField("payment_instruction", event.target.value);
+                    updateShopField("storefront_payment_instruction", event.target.value);
+                  }}
+                placeholder="Contoh: Bisa QRIS dan transfer. QRIS dikirim setelah pesanan dikonfirmasi."
+              />
+            </div>
+
+
+            <div
+              className="mt-4 rounded-2xl border border-brand-line bg-white p-4"
+
+              data-testid="storefront-payment-instruction-editor"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-off text-brand">
+                    <WalletCards className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-brand-ink">QRIS & Checkout Manual</p>
+                    <p className="mt-1 text-xs leading-relaxed text-brand-mute">
+                      Atur QRIS, label metode pembayaran, dan teks konfirmasi checkout. Instruksi pembayaran utama memakai field di atas.
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">Tanpa Gateway</span>
+              </div>
+
+              {storefrontTemplateLocked && (
+                <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+                  Instruksi pembayaran tampil di Template Baru. Aktifkan paket/template terlebih dahulu.
+                </div>
+              )}
+
+              <div className="mt-4">
+                <ToggleCard
+                  icon={WalletCards}
+                  title="Tampilkan instruksi pembayaran di checkout"
+                  desc="Aktifkan jika pelanggan perlu melihat instruksi bayar sebelum lanjut WhatsApp."
+                  checked={Boolean(shop.storefront_show_payment_instruction)}
+                  onChange={(e) => update("storefront_show_payment_instruction", e.target.checked)}
+                  disabled={storefrontTemplateLocked}
+                  data-testid="storefront-show-payment-instruction-toggle"
+                />
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-bold text-brand-ink">Label Metode Pembayaran</span>
+                  <input
+                    value={shop.storefront_payment_method_label || ""}
+                    onChange={(e) => update("storefront_payment_method_label", e.target.value)}
+                    disabled={storefrontTemplateLocked}
+                    placeholder="Contoh: QRIS Warung Bu Sari"
+                    maxLength={80}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-payment-method-label-input"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-brand-ink">Upload Gambar QRIS</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={onStorefrontQrisFile}
+                    disabled={storefrontTemplateLocked}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-qris-image-input"
+                  />
+                </label>
+
+
+                <label className="block md:col-span-2">
+                  <span className="text-sm font-bold text-brand-ink">Teks Konfirmasi WhatsApp</span>
+                  <input
+                    value={shop.storefront_payment_confirmation_text || ""}
+                    onChange={(e) => update("storefront_payment_confirmation_text", e.target.value)}
+                    disabled={storefrontTemplateLocked}
+                    placeholder="Contoh: Saya akan kirim bukti pembayaran via WhatsApp."
+                    maxLength={160}
+                    className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink disabled:bg-gray-100 disabled:text-gray-500"
+                    data-testid="storefront-payment-confirmation-text-input"
+                  />
+                </label>
+
+                {shop.storefront_qris_image ? (
+                  <div className="md:col-span-2 rounded-2xl border border-brand-line bg-brand-off p-4" data-testid="storefront-qris-image-preview">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <img src={shop.storefront_qris_image} alt="Preview QRIS" className="h-40 w-40 rounded-xl border border-brand-line bg-white object-contain p-2" />
+                      <div className="flex-1 text-sm text-brand-mute">
+                        <p className="font-bold text-brand-ink">Preview QRIS</p>
+                        <p className="mt-1">Gambar ini akan tampil di drawer checkout website template.</p>
+                        <button
+                          type="button"
+                          onClick={() => update("storefront_qris_image", "")}
+                          className="mt-3 rounded-xl border border-brand-line bg-white px-4 py-2 text-sm font-extrabold text-brand-ink"
+                          data-testid="storefront-qris-clear-btn"
+                        >
+                          Hapus QRIS
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div id="location" data-section="location" className="space-y-4 rounded-3xl border border-brand-line bg-white p-4 shadow-sm sm:p-5">
+              <ToggleCard
+                icon={MapPin}
+                title="Saya punya toko offline / lokasi pickup"
+                desc="Aktifkan jika pelanggan boleh datang ke toko, ambil pesanan, atau butuh link Google Maps."
+                checked={Boolean(shop?.has_offline_store || shop?.show_location)}
+                onChange={(event) => updateShopCheckbox("has_offline_store", event)}
+              />
+              <p className="rounded-2xl bg-brand-off px-4 py-3 text-xs leading-relaxed text-brand-mute">
+                Alamat dan Google Maps tetap optional. Jika toko online-only, bagian ini boleh dikosongkan dan tidak akan jadi syarat wajib.
+              </p>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="text-sm font-extrabold text-brand-ink">Link Google Maps</label>
+                  <input
+                    className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm outline-none focus:border-brand"
+                    value={shop?.google_maps_url || shop?.google_maps_link || ""}
+                    onChange={(event) => updateShopField("google_maps_url", event.target.value)}
+                    placeholder="https://maps.app.goo.gl/..."
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-extrabold text-brand-ink">Area layanan</label>
+                  <input
+                    className="mt-2 w-full rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm outline-none focus:border-brand"
+                    value={shop?.service_area || ""}
+                    onChange={(event) => updateShopField("service_area", event.target.value)}
+                    placeholder="Contoh: Yogyakarta kota, sekitar kampus, Jabodetabek"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-extrabold text-brand-ink">Alamat yang ditampilkan</label>
+                <textarea
+                  className="mt-2 min-h-[90px] w-full rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm outline-none focus:border-brand"
+                  value={shop?.store_address || shop?.address || shop?.location_address || ""}
+                  onChange={(event) => updateShopField("store_address", event.target.value)}
+                  placeholder="Alamat toko / lokasi pickup jika ada"
+                />
+              </div>
+            </div>
+          </section>
+
+          <Section title="Social Media" desc="Tambahkan akun sosial media dan link marketplace toko.">
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-semibold text-brand-ink">Instagram</Label>
+                <Input
+                  value={shop.instagram || ""}
+                  onChange={(e) => update("instagram", e.target.value)}
+                  placeholder="@warungbusari"
+                  className="mt-2 h-12 rounded-xl border-brand-line bg-white"
+                  data-testid="settings-instagram"
+                />
+              </div>
+
+              <div>
+                <Label className="text-sm font-semibold text-brand-ink">TikTok</Label>
+                <Input
+                  value={shop.tiktok || ""}
+                  onChange={(e) => update("tiktok", e.target.value)}
+                  placeholder="@namatoko"
+                  className="mt-2 h-12 rounded-xl border-brand-line bg-white"
+                  data-testid="settings-tiktok"
+                />
+              </div>
+
+              <div>
+                <Label>Shopee URL</Label>
+                <Input
+                  value={shop.shopee_url || ""}
+                  onChange={(e) => update("shopee_url", e.target.value)}
+                  placeholder="https://shopee.co.id/..."
+                  className="mt-2 h-12 rounded-xl border-brand-line bg-white"
+                  data-testid="settings-shopee"
+                />
+              </div>
+            </div>
+          </Section>
+
+
+      <div className="space-y-6">
         {/* Main */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-6">
           {/* MODE TOKO — Iteration 7 */}
           <Section title="Mode Jualan" desc="Pilih cara tokomu jualan. Sistem akan menyesuaikan tampilan stok & status buka.">
             <div className="grid sm:grid-cols-3 gap-3">
@@ -2497,37 +2817,6 @@ return (
             </div>
           </Section>
 
-          {/* IDENTITY */}
-          <Section title="Identitas Toko" desc="Info dasar yang tampil di header & meta.">
-            <div className="space-y-4">
-              <div>
-                <Label>Nama Toko</Label>
-                <Input value={shop.name} onChange={(e) => update("name", e.target.value)}
-                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-name" />
-              </div>
-              <div>
-                <Label>Tagline</Label>
-                <Input value={shop.tagline || ""} onChange={(e) => update("tagline", e.target.value)}
-                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-tagline" />
-              </div>
-              <div>
-                <Label>Deskripsi Singkat</Label>
-                <Textarea rows={2} value={shop.description || ""} onChange={(e) => update("description", e.target.value)}
-                  className="mt-1 rounded-xl border-brand-line" data-testid="settings-description" />
-              </div>
-              <div>
-                <Label>Jenis Bisnis</Label>
-                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {BUSINESS_TYPES.map((b) => (
-                    <button key={b.id} type="button" onClick={() => update("business_type", b.id)}
-                      className={`text-sm font-semibold rounded-xl px-4 py-3 border ${shop.business_type === b.id ? "bg-brand text-white border-brand" : "bg-white text-brand-ink border-brand-line hover:border-brand"}`}>
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Section>
 
           {/* ABOUT US */}
           <Section title="Tentang Kami" desc="Cerita singkat tentang toko. Klik AI biar dibuatkan otomatis.">
@@ -2770,90 +3059,7 @@ return (
             </div>
           </Section>
         </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          <Section title="Kontak & Sosial" desc="">
-            <div className="space-y-4">
-              <div>
-                <Label>WhatsApp</Label>
-                <Input value={shop.whatsapp || ""} onChange={(e) => update("whatsapp", e.target.value)}
-                  placeholder="08xxxxxxxxxx" className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-whatsapp" />
-              </div>
-              <div>
-                <Label>Instagram</Label>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-mute">@</span>
-                  <Input value={shop.instagram || ""} onChange={(e) => update("instagram", e.target.value.replace(/^@/, ""))}
-                    placeholder="namatoko" className="pl-7 rounded-xl border-brand-line h-12" data-testid="settings-instagram" />
-                </div>
-              </div>
-              <div>
-                <Label>TikTok</Label>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-mute">@</span>
-                  <Input value={shop.tiktok || ""} onChange={(e) => update("tiktok", e.target.value.replace(/^@/, ""))}
-                    placeholder="namatoko" className="pl-7 rounded-xl border-brand-line h-12" data-testid="settings-tiktok" />
-                </div>
-              </div>
-              <div>
-                <Label>Shopee URL</Label>
-                <Input value={shop.shopee || ""} onChange={(e) => update("shopee", e.target.value)}
-                  placeholder="https://shopee.co.id/..." className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-shopee" />
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Lokasi & Jam">
-            <div className="space-y-4">
-              <div>
-                <Label>Alamat / Area</Label>
-                <Input value={shop.address || ""} onChange={(e) => update("address", e.target.value)}
-                  placeholder="Jl. Asia Afrika No.123, Bandung"
-                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-address" />
-              </div>
-              <div>
-                <Label>Jam Buka</Label>
-                <Input value={shop.hours || ""} onChange={(e) => update("hours", e.target.value)}
-                  placeholder="Senin-Sabtu 08:00-21:00"
-                  className="mt-1 rounded-xl border-brand-line h-12" data-testid="settings-hours" />
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Banner Promo" desc="Tampil di atas grid produk kalau aktif.">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={!!shop.promo_active}
-                onChange={(e) => update("promo_active", e.target.checked)}
-                className="w-4 h-4 accent-brand" data-testid="promo-active-toggle" />
-              <span className="text-sm font-semibold">Aktifkan Promo</span>
-            </label>
-            <div className={`mt-3 space-y-3 ${shop.promo_active ? "" : "opacity-50 pointer-events-none"}`}>
-              <Input value={shop.promo_title || ""} onChange={(e) => update("promo_title", e.target.value)}
-                placeholder="Judul: Diskon Pembeli Pertama"
-                className="rounded-xl border-brand-line h-11" data-testid="promo-title" maxLength={60} />
-              <Textarea rows={2} value={shop.promo_description || ""} onChange={(e) => update("promo_description", e.target.value)}
-                placeholder="Detail singkat promo"
-                className="rounded-xl border-brand-line" data-testid="promo-description" maxLength={150} />
-              <Input value={shop.promo_code || ""} onChange={(e) => update("promo_code", e.target.value.toUpperCase())}
-                placeholder="Kode: HALOKOPI"
-                className="rounded-xl border-brand-line h-11 font-mono" data-testid="promo-code" maxLength={20} />
-            </div>
-          </Section>
-
-          <Section title="Tampilan">
-            <Label>Warna Brand</Label>
-            <div className="mt-1 flex items-center gap-3">
-              <input type="color" value={shop.brand_color || "#C04A3B"}
-                onChange={(e) => update("brand_color", e.target.value)}
-                className="w-14 h-12 rounded-xl border border-brand-line cursor-pointer" data-testid="settings-color" />
-              <Input value={shop.brand_color || "#C04A3B"} onChange={(e) => update("brand_color", e.target.value)}
-                className="rounded-xl border-brand-line h-12" />
-            </div>
-            <div className="mt-3 text-xs text-brand-mute font-mono break-all">URL: {window.location.origin}/toko/{shop.slug}</div>
-          </Section>
-        </div>
-      </div>
+</div>
 
           
 
@@ -2861,27 +3067,89 @@ return (
       {/* CUSTOM DOMAIN — BISNIS tier */}
       <CustomDomainSection shop={shop} />
 
-      {/* Save bar */}
-      <div className="sticky bottom-4 mt-8 bg-white border border-brand-line rounded-2xl shadow-cardHover p-4 flex justify-end">
-        <Button onClick={save} disabled={saving}
-          className="bg-brand hover:bg-brand-hover text-white rounded-xl px-7 h-12 font-semibold btn-press"
-          data-testid="settings-save-btn">
-          <Save className="w-4 h-4 mr-2" /> {saving ? "Menyimpan…" : "Simpan Semua Perubahan"}
-        </Button>
+              </div>
+
+{/* Save bar */}
+      <div className="sticky bottom-4 z-30 mt-8 overflow-hidden rounded-3xl border border-brand-line bg-white/95 p-3 shadow-2xl backdrop-blur">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="px-1">
+            <p className="text-sm font-extrabold text-brand-ink">Perubahan belum tampil sebelum disimpan</p>
+            <p className="text-xs leading-relaxed text-brand-mute">
+              Simpan setelah mengubah profil, order, pembayaran, atau lokasi toko.
+            </p>
+          </div>
+          <Button onClick={save} disabled={saving}
+            className="h-12 w-full rounded-2xl bg-brand px-7 font-extrabold text-white hover:bg-brand-hover sm:w-auto btn-press"
+            data-testid="settings-save-btn">
+            <Save className="w-4 h-4 mr-2" /> {saving ? "Menyimpan…" : "Simpan Semua Perubahan"}
+          </Button>
+        </div>
       </div>
     </DashboardLayout>
   );
 }
 
-function Section({ title, desc, children }) {
+function Section({ title, desc, eyebrow, badge, children }) {
   return (
-    <div className="bg-white border border-brand-line rounded-2xl p-5 shadow-card">
-      <div className="mb-4">
-        <h3 className="font-heading font-bold">{title}</h3>
-        {desc && <p className="text-xs text-brand-mute mt-0.5">{desc}</p>}
+    <div className="overflow-hidden rounded-[2rem] border border-brand-line bg-white shadow-card">
+      <div className="border-b border-brand-line bg-gradient-to-br from-brand-off via-white to-brand-soft/30 px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            {eyebrow && (
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-brand-mute">
+                {eyebrow}
+              </p>
+            )}
+            <h3 className="font-heading text-lg font-extrabold text-brand-ink">{title}</h3>
+            {desc && <p className="mt-1 max-w-2xl text-sm leading-relaxed text-brand-mute">{desc}</p>}
+          </div>
+          {badge && (
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white px-3 py-1 text-xs font-extrabold text-brand-ink shadow-sm">
+              <CheckCircle2 className="h-3.5 w-3.5 text-brand" />
+              {badge}
+            </span>
+          )}
+        </div>
       </div>
-      {children}
+      <div className="p-5 sm:p-6">
+        {children}
+      </div>
     </div>
+  );
+}
+
+function ToggleCard({ icon: Icon = CheckCircle2, title, desc, checked, onChange, disabled = false, "data-testid": dataTestId }) {
+  return (
+    <label
+      className={`group flex h-full cursor-pointer items-start gap-3 rounded-3xl border p-4 transition ${
+        checked
+          ? "border-brand bg-brand-soft/70 shadow-sm"
+          : "border-brand-line bg-white hover:-translate-y-0.5 hover:border-brand hover:shadow-sm"
+      } ${disabled ? "cursor-not-allowed opacity-60 hover:translate-y-0 hover:shadow-none" : ""}`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        data-testid={dataTestId}
+        className="sr-only"
+      />
+      <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${
+        checked ? "bg-brand text-white" : "bg-brand-off text-brand"
+      }`}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-black text-brand-ink">{title}</span>
+        {desc && <span className="mt-1 block text-xs leading-relaxed text-brand-mute">{desc}</span>}
+      </span>
+      <span className={`mt-1 h-5 w-5 shrink-0 rounded-full border transition ${
+        checked ? "border-brand bg-brand shadow-sm" : "border-brand-line bg-white"
+      }`}>
+        {checked && <CheckCircle2 className="h-5 w-5 text-white" />}
+      </span>
+    </label>
   );
 }
 

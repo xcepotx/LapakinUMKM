@@ -1,3 +1,4 @@
+import React from "react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {Wand2, Package, ExternalLink, ChevronDown, ChevronUp, Plus, Sparkles, Share2, Copy, Power, PowerOff, Coffee, X, Calendar, Wallet, ShoppingBag, AlertCircle, TrendingUp, } from "lucide-react";
 import { rupiah } from "@/lib/api";
 import { toast } from "sonner";
+import { useState as useWaBotState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import ShareHealthCard from "@/components/ShareHealthCard";
 import DailyTipCard from "@/components/DailyTipCard";
@@ -39,6 +41,56 @@ function formatRupiah(value) {
   }).format(number);
 }
 
+
+function AIWaBotBanner() {
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const connected = localStorage.getItem("ai_wa_bot_connected") === "1";
+
+  const handleConnect = async () => {
+    setLoading(true); setError("");
+    try {
+      const r = await api.get("/bot/access-url");
+      localStorage.setItem("ai_wa_bot_connected", "1");
+      window.open(r.data.redirect_url, "_blank");
+      setLoading(false);
+    } catch (err) {
+      setError(err?.response?.data?.detail || "Gagal. Coba lagi.");
+      setLoading(false);
+    }
+  };
+
+  if (connected) return (
+    <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-lg shadow-sm">🤖</span>
+          <div>
+            <div className="text-sm font-extrabold text-emerald-800">Lapakin Asisten Terhubung</div>
+            <div className="text-xs text-emerald-700">Bot WhatsApp siap membantu order dan tanya jawab pelanggan.</div>
+          </div>
+        </div>
+        <button onClick={handleConnect} disabled={loading}
+          className="rounded-xl bg-white px-3 py-2 text-xs font-extrabold text-emerald-700 shadow-sm hover:bg-emerald-50 disabled:opacity-60">
+          {loading ? "Memproses..." : "Buka Dashboard →"}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mb-6 rounded-2xl p-5 shadow-sm flex items-center justify-between gap-4 flex-wrap" style={{background:"linear-gradient(135deg,#16a34a,#15803d)",color:"#fff"}}>
+      <div className="flex items-center gap-4">
+        <div style={{width:48,height:48,background:"rgba(255,255,255,0.2)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>🤖</div>
+        <div><div className="font-extrabold text-base">Lapakin Asisten</div><div className="text-sm" style={{opacity:0.85}}>Aktifkan asisten WhatsApp otomatis untuk toko kamu</div></div>
+      </div>
+      <div className="flex flex-col items-end gap-2">
+        <button onClick={handleConnect} disabled={loading} className="shrink-0 font-bold px-5 py-2.5 rounded-xl text-sm transition hover:opacity-90" style={{background:"#fff",color:"#16a34a",cursor:loading?"not-allowed":"pointer",opacity:loading?0.7:1}}>{loading?"Memproses...":"🚀 Aktifkan Sekarang"}</button>
+        {error&&<div className="text-xs" style={{opacity:0.9}}>⚠ {error}</div>}
+      </div>
+    </div>
+  );
+}
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -46,8 +98,13 @@ export default function Dashboard() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [salesSummary, setSalesSummary] = useState(null);
+  const [readiness, setReadiness] = useState(null);
+  const [readinessLoading, setReadinessLoading] = useState(true);
+  const [generatingWebsiteAi, setGeneratingWebsiteAi] = useState(false);
+  const [readinessPanelOpen, setReadinessPanelOpen] = useState(false);
 
   const salesSummaryKey = `lapakin_sales_summary_collapsed_${user?.user_id || "user"}`;
+  const readinessCacheKey = `lapakin_dashboard_readiness_${user?.user_id || "user"}`;
 
   const [isSalesSummaryCollapsed, setIsSalesSummaryCollapsed] = useState(false);
 
@@ -109,14 +166,88 @@ export default function Dashboard() {
     }
   }
 
-  function closeTrialBanner() {
-    setHideTrialBanner(true);
-    try {
-      localStorage.setItem(trialBannerKey, "1");
-    } catch {
-      // ignore
+  const loadReadiness = async ({ useCache = true } = {}) => {
+    let hasCachedReadiness = false;
+
+    if (useCache) {
+      try {
+        const cached = sessionStorage.getItem(readinessCacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === "object") {
+            setReadiness(parsed);
+            hasCachedReadiness = true;
+            setReadinessLoading(false);
+          }
+        }
+      } catch {
+        // ignore corrupted cache
+      }
     }
-  }
+
+    if (!hasCachedReadiness) {
+      setReadinessLoading(true);
+    }
+
+    try {
+      const readinessResponse = await api.get("/shops/readiness");
+      const nextReadiness = readinessResponse.data || null;
+      setReadiness(nextReadiness);
+
+      try {
+        if (nextReadiness) {
+          sessionStorage.setItem(readinessCacheKey, JSON.stringify(nextReadiness));
+        } else {
+          sessionStorage.removeItem(readinessCacheKey);
+        }
+      } catch {
+        // ignore storage errors
+      }
+    } catch {
+      if (!hasCachedReadiness) {
+        setReadiness(null);
+      }
+    } finally {
+      setReadinessLoading(false);
+    }
+  };
+
+  const handleGenerateWebsiteAi = async () => {
+    if (!readiness?.can_generate_website) {
+      const href = readiness?.next_best_action?.href || "/dashboard/settings";
+      navigate(href);
+      return;
+    }
+
+    setGeneratingWebsiteAi(true);
+    try {
+      const { data } = await api.post("/shops/website-ai/generate");
+      if (data?.readiness) {
+        setReadiness(data.readiness);
+        try {
+          sessionStorage.setItem(readinessCacheKey, JSON.stringify(data.readiness));
+        } catch {
+          // ignore storage errors
+        }
+      }
+      toast.success(data?.message || "Draft website berhasil dibuat dengan AI");
+      navigate("/dashboard/settings?section=website#website");
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const message =
+        typeof detail === "string"
+          ? detail
+          : detail?.message || "Gagal membuat website dengan AI";
+      toast.error(message);
+
+      const nextHref = detail?.next_best_action?.href;
+      if (nextHref) {
+        navigate(nextHref);
+      }
+    } finally {
+      setGeneratingWebsiteAi(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -140,6 +271,10 @@ export default function Dashboard() {
         } catch {
           setSalesSummary(null);
         }
+
+        // Readiness is useful, but should not block the initial dashboard render.
+        // Load it in the background and show cached data/skeleton in the card.
+        loadReadiness({ useCache: true });
       } finally {
         setLoading(false);
       }
@@ -236,6 +371,27 @@ export default function Dashboard() {
         </div>
       }
     >
+    {/* Lapakin Asisten Banner */}
+    <AIWaBotBanner />
+
+    <ReadinessOverviewCard
+      readiness={readiness}
+      loading={readinessLoading}
+      onOpenAction={(href) => navigate(href || "/dashboard/settings")}
+      onGenerateWebsite={handleGenerateWebsiteAi}
+      generatingWebsiteAi={generatingWebsiteAi}
+      onOpenChecklist={() => setReadinessPanelOpen(true)}
+    />
+
+    <ReadinessDetailPanel
+      open={readinessPanelOpen}
+      readiness={readiness}
+      onClose={() => setReadinessPanelOpen(false)}
+      onOpenAction={(href) => {
+        setReadinessPanelOpen(false);
+        navigate(href || "/dashboard/settings");
+      }}
+    />
     {user?.trial_expired && !user?.trial && (
       <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-5 text-orange-950 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -261,7 +417,7 @@ export default function Dashboard() {
       </div>
     )}
 
-    <div className="mb-8 rounded-3xl border border-brand-line bg-white p-5 shadow-card">
+    <div className="mb-5 rounded-[1.75rem] border border-brand-line bg-white p-4 shadow-card sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-heading text-xl font-extrabold text-brand-ink">
@@ -379,7 +535,7 @@ export default function Dashboard() {
 
     {user?.trial && user?.trial_expires_at && !hideTrialBanner && (
       <div
-        className={`mb-6 rounded-2xl border p-5 shadow-sm ${
+        className={`mb-4 rounded-2xl border p-4 shadow-sm ${
           isTrialEndingSoon
             ? "border-orange-200 bg-orange-50 text-orange-950"
             : "border-yellow-200 bg-yellow-50 text-yellow-950"
@@ -443,19 +599,19 @@ export default function Dashboard() {
       {/* SHOP OPEN/CLOSED TOGGLE — only when sells_by='hours' */}
       {sellsByHours && (
         <div
-          className={`mb-6 rounded-2xl p-5 border-2 flex items-center justify-between gap-4 flex-wrap shadow-card ${
+          className={`mb-4 rounded-2xl border p-4 flex items-center justify-between gap-4 flex-wrap shadow-card ${
             isOpen
               ? "bg-green-50 border-green-300"
               : "bg-red-50 border-red-300"
           }`}
           data-testid="dashboard-open-banner">
           <div className="flex items-center gap-3 min-w-0">
-            <div className={`w-12 h-12 rounded-xl grid place-items-center ${isOpen ? "bg-green-600" : "bg-red-600"} text-white shrink-0 shadow-md`}>
+            <div className={`h-10 w-10 rounded-xl grid place-items-center ${isOpen ? "bg-green-600" : "bg-red-600"} text-white shrink-0 shadow-md`}>
               {isOpen ? <Power className="w-6 h-6" /> : <PowerOff className="w-6 h-6" />}
             </div>
             <div className="min-w-0">
               <div className="text-xs font-bold tracking-[0.2em] uppercase opacity-70">Status Toko</div>
-              <div className={`font-heading font-extrabold text-2xl ${isOpen ? "text-green-800" : "text-red-800"}`}>
+              <div className={`font-heading font-extrabold text-lg ${isOpen ? "text-green-800" : "text-red-800"}`}>
                 {isOpen ? "BUKA SEKARANG" : "TUTUP"}
               </div>
               <div className="text-xs text-brand-mute mt-0.5">
@@ -465,7 +621,7 @@ export default function Dashboard() {
           </div>
           <Button
             onClick={toggleOpen}
-            className={`${isOpen ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"} text-white rounded-xl px-6 h-12 font-bold btn-press`}
+            className={`${isOpen ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"} text-white rounded-xl px-4 h-10 font-bold btn-press`}
             data-testid="dashboard-toggle-open">
             {isOpen ? <><PowerOff className="w-4 h-4 mr-2" /> Tutup Toko</> : <><Power className="w-4 h-4 mr-2" /> Buka Toko</>}
           </Button>
@@ -527,7 +683,7 @@ export default function Dashboard() {
       )}
 
       {/* Stats */}
-      <div className="grid sm:grid-cols-3 gap-4 mb-8">
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <StatCard label="Total Produk" value={products.length} icon={<Package className="w-5 h-5" />} tid="stat-products" />
         {sellsByStock ? (
           <>
@@ -569,32 +725,39 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid gap-4 lg:grid-cols-3">
         {/* Quick actions */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h2 className="font-heading font-bold text-xl">Tokomu sudah online 🎉</h2>
-                <p className="text-brand-mute mt-1 text-sm">Bagikan link berikut ke pelangganmu.</p>
-                <div className="mt-3 inline-flex items-center gap-2 bg-brand-off rounded-xl px-3 py-2 border border-brand-line text-sm">
-                  <span className="text-brand-mute truncate max-w-[260px]">{storefrontUrl}</span>
-                  <button
-                    onClick={() => { navigator.clipboard.writeText(storefrontUrl); }}
-                    className="text-brand font-semibold text-xs hover:underline"
-                    data-testid="copy-storefront-link"
-                  >
-                    Salin
-                  </button>
+        <div className="lg:col-span-2 space-y-4">
+          <div className="overflow-hidden rounded-3xl border border-brand-line bg-white shadow-card">
+            <div className="bg-gradient-to-br from-brand-off via-white to-brand-soft/30 p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-mute">Website toko</p>
+                  <h2 className="font-heading text-xl font-extrabold text-brand-ink">Tokomu sudah online 🎉</h2>
+                  <p className="mt-1 text-sm text-brand-mute">Bagikan link ini ke pelanggan, bio Instagram, dan WhatsApp.</p>
                 </div>
+                <Button
+                  variant="outline"
+                  className="h-10 rounded-xl border-brand-line bg-white"
+                  onClick={() => window.open(`/toko/${shop?.slug}`, "_blank")}
+                  data-testid="open-storefront-btn"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" /> Buka Toko
+                </Button>
               </div>
-              <Button
-                variant="outline" className="rounded-xl border-brand-line"
-                onClick={() => window.open(`/toko/${shop?.slug}`, "_blank")}
-                data-testid="open-storefront-btn"
-              >
-                <ExternalLink className="w-4 h-4 mr-2" /> Buka Toko
-              </Button>
+
+              <div className="mt-4 flex flex-col gap-2 rounded-2xl border border-brand-line bg-white p-2 sm:flex-row sm:items-center">
+                <code className="min-w-0 flex-1 truncate rounded-xl bg-brand-off px-3 py-2 text-xs text-brand-mute">
+                  {storefrontUrl}
+                </code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(storefrontUrl); toast.success("Link toko disalin"); }}
+                  className="inline-flex items-center justify-center rounded-xl bg-brand px-4 py-2 text-xs font-extrabold text-white hover:bg-brand-hover"
+                  data-testid="copy-storefront-link"
+                >
+                  <Copy className="mr-1.5 h-3.5 w-3.5" /> Salin Link
+                </button>
+              </div>
             </div>
           </div>
 
@@ -729,39 +892,83 @@ export default function Dashboard() {
 
         {/* Right rail */}
         <div className="space-y-4">
-          <div className="bg-brand text-white rounded-2xl p-6 shadow-card relative overflow-hidden">
-            <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full bg-brand-accent/40 blur-2xl" />
-            <Wand2 className="w-6 h-6" />
-            <h3 className="font-heading font-bold text-xl mt-3">Tambah produk dengan AI</h3>
-            <p className="text-white/85 text-sm mt-2">Foto seadanya pun jadi profesional. Caption IG &amp; TikTok jalan terus.</p>
-            <Button
-              onClick={() => navigate("/dashboard/ai-studio")}
-              className="mt-5 bg-white text-brand hover:bg-brand-sand rounded-xl font-semibold btn-press w-full"
-              data-testid="rail-ai-studio-btn"
-            >
-              Buka AI Studio
-            </Button>
-          </div>
-          <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card">
-            <h3 className="font-heading font-bold">Tips hari ini</h3>
-            <p className="text-sm text-brand-mute mt-2">
-              Foto dari atas (top-down) dengan latar polos biasanya menghasilkan hasil AI paling tajam.
-            </p>
-          </div>
-          <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-2 h-2 rounded-full bg-green-500" />
-              <h3 className="font-heading font-bold">WhatsApp Bot</h3>
+          <div className="rounded-3xl border border-brand-line bg-white p-4 shadow-card">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-mute">Aksi Cepat</p>
+            <h3 className="mt-1 font-heading text-lg font-extrabold text-brand-ink">Mau kerjakan apa?</h3>
+
+            <div className="mt-4 grid gap-2">
+              <button
+                type="button"
+                onClick={() => navigate("/dashboard/ai-studio")}
+                className="group flex items-center gap-3 rounded-2xl bg-brand p-3 text-left text-white shadow-sm transition hover:bg-brand-hover"
+                data-testid="rail-ai-studio-btn"
+              >
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15">
+                  <Wand2 className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-extrabold">Tambah produk dengan AI</span>
+                  <span className="block text-xs text-white/80">Foto, caption, dan copy produk.</span>
+                </span>
+                <Plus className="h-4 w-4 opacity-80" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate("/dashboard/products")}
+                className="flex items-center gap-3 rounded-2xl border border-brand-line bg-brand-off p-3 text-left transition hover:bg-white"
+              >
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-white text-brand">
+                  <Package className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-extrabold text-brand-ink">Kelola produk</span>
+                  <span className="block text-xs text-brand-mute">{products.length} produk di katalog.</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate("/dashboard/settings?section=contact#contact")}
+                className="flex items-center gap-3 rounded-2xl border border-brand-line bg-white p-3 text-left transition hover:bg-brand-off"
+                data-testid="rail-order-contact-settings-btn"
+              >
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-off text-brand">
+                  <ShoppingBag className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-extrabold text-brand-ink">Order & Kontak</span>
+                  <span className="block text-xs text-brand-mute">WA, pembayaran, pickup, delivery.</span>
+                </span>
+              </button>
             </div>
-            <p className="text-sm text-brand-mute">
-              Kelola produk lewat WhatsApp! Kirim foto + harga, AI tayang otomatis.
+          </div>
+
+          <div className="rounded-3xl border border-brand-line bg-white p-4 shadow-card">
+            <h3 className="font-heading font-extrabold text-brand-ink">Checklist Toko</h3>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between rounded-2xl bg-brand-off px-3 py-2">
+                <span className="font-semibold text-brand-ink">Produk</span>
+                <span className="font-extrabold text-brand">{products.length}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl bg-brand-off px-3 py-2">
+                <span className="font-semibold text-brand-ink">Status toko</span>
+                <span className={`font-extrabold ${isOpen ? "text-green-700" : "text-red-700"}`}>
+                  {isOpen ? "Buka" : "Tutup"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl bg-brand-off px-3 py-2">
+                <span className="font-semibold text-brand-ink">Website</span>
+                <span className="font-extrabold text-green-700">Online</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-brand-line bg-white p-4 shadow-card">
+            <h3 className="font-heading font-extrabold text-brand-ink">Tips hari ini</h3>
+            <p className="mt-2 text-sm leading-relaxed text-brand-mute">
+              Foto dari atas dengan latar polos biasanya menghasilkan hasil AI yang lebih tajam dan konsisten.
             </p>
-            <Button onClick={() => navigate("/dashboard/whatsapp")}
-              variant="outline"
-              className="mt-3 w-full rounded-xl border-brand-line"
-              data-testid="rail-whatsapp-btn">
-              Hubungkan WhatsApp
-            </Button>
           </div>
         </div>
       </div>
@@ -769,13 +976,387 @@ export default function Dashboard() {
   );
 }
 
+
+function ReadinessOverviewCard({ readiness, loading, onOpenAction, onGenerateWebsite, generatingWebsiteAi = false, onOpenChecklist }) {
+  const score = Number(readiness?.score || 0);
+  const assistantScore = Number(readiness?.assistant_score || 0);
+  const nextAction = readiness?.next_best_action;
+
+  const levelLabel = {
+    excellent: "Siap dipromosikan",
+    ready_for_ai: "Siap dibuat dengan AI",
+    almost_ready: "Hampir siap",
+    not_ready: "Belum siap",
+  }[readiness?.level] || "Cek kesiapan toko";
+
+  const topGroups = Array.isArray(readiness?.groups)
+    ? readiness.groups.slice(0, 4)
+    : [];
+
+  if (loading) {
+    return (
+      <div className="mb-5 rounded-3xl border border-brand-line bg-white p-5 shadow-card">
+        <div className="animate-pulse space-y-3">
+          <div className="h-4 w-40 rounded bg-brand-off" />
+          <div className="h-8 w-64 rounded bg-brand-off" />
+          <div className="h-3 w-full rounded bg-brand-off" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!readiness) {
+    return (
+      <div className="mb-5 rounded-3xl border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-800">Kesiapan Toko</p>
+            <h2 className="font-heading text-xl font-extrabold">Belum bisa membaca readiness</h2>
+            <p className="mt-1 text-sm text-amber-800">
+              Coba refresh halaman. Jika masih muncul, cek endpoint readiness backend.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenAction("/dashboard/settings")}
+            className="rounded-xl bg-amber-900 px-4 py-2 text-sm font-extrabold text-white"
+          >
+            Buka Pengaturan
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-5 overflow-hidden rounded-[2rem] border border-brand-line bg-white shadow-card" data-testid="dashboard-readiness-card">
+      <div className="bg-gradient-to-br from-brand-off via-white to-brand-soft/30 p-5">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-mute">Kesiapan Toko</p>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <h2 className="font-heading text-2xl font-extrabold text-brand-ink">{score}%</h2>
+              <span className="rounded-full bg-white px-3 py-1 text-xs font-extrabold text-brand shadow-sm">
+                {levelLabel}
+              </span>
+              <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-extrabold text-brand-mute shadow-sm">
+                Asisten {assistantScore}%
+              </span>
+            </div>
+
+            <div className="mt-3 h-3 overflow-hidden rounded-full bg-white ring-1 ring-brand-line">
+              <div
+                className="h-full rounded-full bg-brand transition-all"
+                style={{ width: `${Math.max(3, Math.min(100, score))}%` }}
+              />
+            </div>
+
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-brand-mute">
+              {readiness.summary || "Lengkapi data toko agar website dan Lapakin Asisten bekerja maksimal."}
+            </p>
+
+            {nextAction && (
+              <div className="mt-4 rounded-2xl border border-brand-line bg-white p-3">
+                <p className="text-xs font-black uppercase tracking-wide text-brand-mute">Langkah berikutnya</p>
+                <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-extrabold text-brand-ink">{nextAction.title}</p>
+                    {nextAction.description && (
+                      <p className="mt-0.5 text-xs leading-relaxed text-brand-mute">{nextAction.description}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onOpenAction(nextAction.href)}
+                    className="shrink-0 rounded-xl border border-brand-line bg-brand-off px-4 py-2 text-xs font-extrabold text-brand-ink hover:bg-white"
+                    data-testid="readiness-next-action-btn"
+                  >
+                    {nextAction.label || "Lengkapi"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="w-full rounded-3xl border border-brand-line bg-white p-4 shadow-sm lg:w-[320px]">
+            <div className="grid grid-cols-2 gap-2">
+              {topGroups.map((group) => (
+                <div key={group.key} className="rounded-2xl bg-brand-off p-3">
+                  <p className="truncate text-[11px] font-black uppercase tracking-wide text-brand-mute">
+                    {group.title}
+                  </p>
+                  <p className="mt-1 text-lg font-extrabold text-brand-ink">{group.score}%</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-2">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => nextAction ? onOpenAction(nextAction.href) : onOpenAction("/dashboard/settings")}
+                  className="h-11 rounded-2xl border border-brand-line bg-white px-4 text-sm font-extrabold text-brand-ink hover:bg-brand-off"
+                  data-testid="readiness-complete-btn"
+                >
+                  Lengkapi
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onOpenChecklist}
+                  className="h-11 rounded-2xl border border-brand-line bg-brand-off px-4 text-sm font-extrabold text-brand-ink hover:bg-white"
+                  data-testid="readiness-checklist-btn"
+                >
+                  Checklist
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={readiness.can_generate_website ? onGenerateWebsite : () => onOpenAction(nextAction?.href || "/dashboard/settings")}
+                disabled={generatingWebsiteAi}
+                className={`h-11 rounded-2xl px-4 text-sm font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-70 ${
+                  readiness.can_generate_website
+                    ? "bg-brand hover:bg-brand-hover"
+                    : "bg-brand-mute/70 hover:bg-brand-mute"
+                }`}
+                data-testid="readiness-generate-website-btn"
+              >
+                {generatingWebsiteAi
+                  ? "Membuat draft..."
+                  : readiness.can_generate_website
+                    ? "Buat Website dengan AI"
+                    : "Lengkapi sebelum buat website"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+function ReadinessDetailPanel({ open, readiness, onClose, onOpenAction }) {
+  if (!open) return null;
+
+  const groups = Array.isArray(readiness?.groups) ? readiness.groups : [];
+  const score = Number(readiness?.score || 0);
+  const assistantScore = Number(readiness?.assistant_score || 0);
+  const todoItems = groups
+    .flatMap((group) =>
+      (Array.isArray(group.items) ? group.items : [])
+        .filter((item) => item?.status !== "done")
+        .map((item) => ({ ...item, groupTitle: group.title }))
+    )
+    .slice(0, 8);
+
+  const doneItemsCount = groups.reduce((sum, group) => {
+    const items = Array.isArray(group.items) ? group.items : [];
+    return sum + items.filter((item) => item?.status === "done").length;
+  }, 0);
+
+  const totalItemsCount = groups.reduce((sum, group) => {
+    const items = Array.isArray(group.items) ? group.items : [];
+    return sum + items.length;
+  }, 0);
+
+  const levelLabel = {
+    excellent: "Siap dipromosikan",
+    ready_for_ai: "Siap dibuat dengan AI",
+    almost_ready: "Hampir siap",
+    not_ready: "Belum siap",
+  }[readiness?.level] || "Cek kesiapan toko";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-brand-ink/35 px-3 py-4 backdrop-blur-sm sm:items-center"
+      data-testid="readiness-detail-panel"
+      role="dialog"
+      aria-modal="true"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        aria-label="Tutup checklist readiness"
+      />
+
+      <div className="relative max-h-[88vh] w-full max-w-4xl overflow-hidden rounded-[2rem] border border-brand-line bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-brand-line bg-gradient-to-br from-brand-off via-white to-brand-soft/30 p-5 sm:p-6">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-mute">Checklist Kesiapan</p>
+            <h2 className="mt-1 font-heading text-2xl font-extrabold text-brand-ink">Kesiapan Toko Kamu</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-brand-mute">
+              Lengkapi data penting agar website, checkout, dan Lapakin Asisten punya informasi yang cukup untuk membantu pelanggan.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-brand-line bg-white text-xl font-black text-brand-mute hover:bg-brand-off"
+            aria-label="Tutup"
+            data-testid="readiness-detail-close-btn"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="max-h-[calc(88vh-112px)] overflow-y-auto p-5 sm:p-6">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-3xl border border-brand-line bg-brand-off p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-brand-mute">Website</p>
+              <p className="mt-1 font-heading text-3xl font-extrabold text-brand-ink">{score}%</p>
+              <p className="mt-1 text-sm font-bold text-brand">{levelLabel}</p>
+            </div>
+
+            <div className="rounded-3xl border border-brand-line bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-brand-mute">Lapakin Asisten</p>
+              <p className="mt-1 font-heading text-3xl font-extrabold text-brand-ink">{assistantScore}%</p>
+              <p className="mt-1 text-sm text-brand-mute">Data untuk jawaban bot.</p>
+            </div>
+
+            <div className="rounded-3xl border border-brand-line bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-brand-mute">Checklist</p>
+              <p className="mt-1 font-heading text-3xl font-extrabold text-brand-ink">
+                {doneItemsCount}/{totalItemsCount}
+              </p>
+              <p className="mt-1 text-sm text-brand-mute">Item sudah lengkap.</p>
+            </div>
+          </div>
+
+          {todoItems.length > 0 ? (
+            <div className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-amber-800">Prioritas berikutnya</p>
+                  <h3 className="mt-1 font-heading text-lg font-extrabold text-amber-950">Lengkapi item yang masih kosong</h3>
+                </div>
+                {readiness?.next_best_action ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenAction(readiness.next_best_action.href)}
+                    className="rounded-2xl bg-amber-900 px-4 py-2 text-sm font-extrabold text-white hover:bg-amber-950"
+                    data-testid="readiness-detail-next-action-btn"
+                  >
+                    {readiness.next_best_action.label || "Lengkapi Sekarang"}
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                {todoItems.map((item) => (
+                  <div
+                    key={`${item.groupTitle}-${item.key}`}
+                    className="flex flex-col gap-2 rounded-2xl border border-amber-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-extrabold text-brand-ink">{item.label}</p>
+                      <p className="mt-0.5 text-xs text-brand-mute">
+                        {item.groupTitle}{item.description ? ` · ${item.description}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onOpenAction(item.href)}
+                      className="shrink-0 rounded-xl border border-brand-line bg-brand-off px-3 py-2 text-xs font-extrabold text-brand-ink hover:bg-white"
+                    >
+                      {item.action_label || "Lengkapi"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-5 rounded-3xl border border-green-200 bg-green-50 p-4">
+              <p className="font-heading text-lg font-extrabold text-green-900">Semua checklist utama sudah lengkap 🎉</p>
+              <p className="mt-1 text-sm text-green-800">
+                Toko sudah punya data yang cukup untuk website dan Lapakin Asisten.
+              </p>
+            </div>
+          )}
+
+          <div className="mt-5 grid gap-3">
+            {groups.map((group) => {
+              const items = Array.isArray(group.items) ? group.items : [];
+              const groupScore = Number(group.score || 0);
+
+              return (
+                <section key={group.key} className="rounded-3xl border border-brand-line bg-white p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="font-heading text-lg font-extrabold text-brand-ink">{group.title}</h3>
+                      {group.description ? (
+                        <p className="mt-1 text-sm text-brand-mute">{group.description}</p>
+                      ) : null}
+                    </div>
+                    <span className="w-fit rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">
+                      {groupScore}%
+                    </span>
+                  </div>
+
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-brand-off">
+                    <div
+                      className="h-full rounded-full bg-brand"
+                      style={{ width: `${Math.max(3, Math.min(100, groupScore))}%` }}
+                    />
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {items.map((item) => {
+                      const done = item.status === "done";
+                      return (
+                        <div
+                          key={item.key}
+                          className={`rounded-2xl border p-3 ${
+                            done
+                              ? "border-green-200 bg-green-50"
+                              : "border-brand-line bg-brand-off/50"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-extrabold text-brand-ink">
+                                {done ? "✓ " : ""}{item.label}
+                              </p>
+                              {item.description ? (
+                                <p className="mt-0.5 text-xs leading-relaxed text-brand-mute">{item.description}</p>
+                              ) : null}
+                            </div>
+                            {!done ? (
+                              <button
+                                type="button"
+                                onClick={() => onOpenAction(item.href)}
+                                className="shrink-0 rounded-lg bg-white px-2 py-1 text-[11px] font-extrabold text-brand shadow-sm hover:bg-brand-off"
+                              >
+                                {item.action_label || "Lengkapi"}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function StatCard({ label, value, icon, tid }) {
   return (
-    <div className="bg-white border border-brand-line rounded-2xl p-5 shadow-card flex items-center gap-4 card-hover" data-testid={tid}>
-      <div className="w-12 h-12 rounded-xl bg-brand-off grid place-items-center text-brand">{icon}</div>
-      <div>
-        <div className="text-xs uppercase tracking-[0.15em] text-brand-mute font-bold">{label}</div>
-        <div className="font-heading font-extrabold text-2xl mt-0.5">{value}</div>
+    <div className="flex items-center gap-3 rounded-2xl border border-brand-line bg-white p-4 shadow-card card-hover" data-testid={tid}>
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-off text-brand">{icon}</div>
+      <div className="min-w-0">
+        <div className="text-[11px] font-black uppercase tracking-[0.14em] text-brand-mute">{label}</div>
+        <div className="mt-0.5 truncate font-heading text-lg font-extrabold text-brand-ink">{value}</div>
       </div>
     </div>
   );

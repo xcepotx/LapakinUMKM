@@ -130,6 +130,7 @@ function AppRouter() {
       <Route path="/admin/server" element={<AdminRoute><AdminServerMonitor /></AdminRoute>} />
       <Route path="/admin/manual-payments" element={<AdminRoute><AdminManualPayments /></AdminRoute>} />
       <Route path="/admin/manual-activation" element={<AdminRoute><AdminManualActivation /></AdminRoute>} />
+      <Route path="/bot-ui/*" element={null} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

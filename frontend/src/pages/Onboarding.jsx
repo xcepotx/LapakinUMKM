@@ -78,7 +78,7 @@ export default function Onboarding() {
         <p className="text-brand-mute mt-2">
           {step === 1
             ? "Lapakin akan menyiapkan halaman tokomu dengan info ini."
-            : "Pilih warna brand & nomor WhatsApp untuk pelanggan."}
+            : "Pilih warna brand & nomor WhatsApp toko untuk pelanggan."}
         </p>
 
         <div className="mt-8 bg-white border border-brand-line rounded-2xl p-6 sm:p-8 shadow-card">
