@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { rupiah } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+import DashboardLayout from "@/components/DashboardLayout";
 
 const DAYS = [
   { idx: 0, short: "Sen", label: "Senin" },
@@ -24,12 +25,31 @@ const DAYS = [
  * Bulk grid: rows = products, columns = Sen..Min. Click cell → toggle.
  * "Setiap hari" = empty available_days array.
  */
+
+// LAPAKIN_DAILY_MENU_DASHBOARD_FRAME_FILTER_V2
+function getDailyMenuProductCategory(product) {
+  return String(
+    product?.category_name ||
+    product?.category ||
+    product?.product_category ||
+    product?.type ||
+    "Tanpa kategori"
+  ).trim() || "Tanpa kategori";
+}
+
+function normalizeDailyMenuText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 export default function DailyMenu() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // LAPAKIN_DAILY_MENU_DASHBOARD_FRAME_FILTER_V2
+  const [productSearch, setProductSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [edits, setEdits] = useState({}); // product_id → days[]
 
   const tier = user?.tier || "free";
@@ -91,6 +111,40 @@ export default function DailyMenu() {
     }).length;
   }, [edits, products, todayIdx]);
 
+  // LAPAKIN_DAILY_MENU_DASHBOARD_FRAME_FILTER_V2
+  const productCategories = useMemo(() => {
+    const map = new Map();
+
+    products.forEach((product) => {
+      const label = getDailyMenuProductCategory(product);
+      const key = normalizeDailyMenuText(label);
+      if (key) map.set(key, label);
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b, "id"));
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const q = normalizeDailyMenuText(productSearch);
+    const selectedCategory = normalizeDailyMenuText(categoryFilter);
+
+    return products.filter((product) => {
+      const category = getDailyMenuProductCategory(product);
+      const categoryOk = selectedCategory === "all" || normalizeDailyMenuText(category) === selectedCategory;
+
+      const searchOk = !q || [
+        product?.name,
+        product?.description,
+        product?.price,
+        category,
+      ]
+        .filter(Boolean)
+        .some((value) => normalizeDailyMenuText(value).includes(q));
+
+      return categoryOk && searchOk;
+    });
+  }, [products, productSearch, categoryFilter]);
+
   const save = async () => {
     setSaving(true);
     try {
@@ -116,15 +170,17 @@ export default function DailyMenu() {
   // ---- Free tier upsell ----
   if (!isProPlus) {
     return (
-      <div className="min-h-screen bg-brand-paper">
-        <Header />
-        <div className="max-w-3xl mx-auto px-4 py-12">
+      <DashboardLayout
+        title="Menu Harian"
+        subtitle="Atur menu yang tampil untuk pelanggan berdasarkan hari."
+      >
+        <div className="max-w-3xl mx-auto py-6">
           <div className="bg-white border border-brand-line rounded-3xl p-8 text-center shadow-card" data-testid="daily-menu-upsell">
             <div className="w-16 h-16 rounded-2xl bg-brand/10 grid place-items-center mx-auto mb-4">
               <Lock className="w-7 h-7 text-brand" />
             </div>
             <div className="text-[10px] uppercase tracking-widest font-bold text-brand mb-2">PRO &amp; BISNIS</div>
-            <h1 className="font-heading font-extrabold text-3xl">Menu Per-Hari</h1>
+            <h1 className="font-heading font-extrabold text-3xl">Menu Harian</h1>
             <p className="text-brand-mute mt-3 max-w-xl mx-auto">
               Atur produk mana yang tampil di hari apa. Cocok untuk warung yang punya menu rotasi
               (Senin nasi rames, Selasa gado-gado, dst). Pelanggan cuma lihat menu yang tersedia hari itu.
@@ -137,30 +193,77 @@ export default function DailyMenu() {
             </Link>
           </div>
         </div>
-      </div>
+      </DashboardLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-brand-paper">
-      <Header />
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
-          <div>
-            <div className="text-[10px] uppercase tracking-widest font-bold text-brand mb-1">PERENCANA MENU</div>
-            <h1 className="font-heading font-extrabold text-3xl">Menu Per-Hari</h1>
-            <p className="text-brand-mute text-sm mt-1 max-w-xl">
-              Pilih hari aktif untuk tiap produk. Kosong = tampil <b>setiap hari</b>. Pelanggan cuma lihat
-              produk yang aktif di hari itu.
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            <div className="bg-white border border-brand-line rounded-xl px-4 py-2.5 text-xs" data-testid="daily-menu-today-summary">
-              <div className="text-[10px] uppercase tracking-widest font-bold text-brand-mute">Hari ini ({DAYS[todayIdx].label})</div>
-              <div className="font-heading font-extrabold text-base mt-0.5">{todayCount} produk akan tampil</div>
-            </div>
+    <DashboardLayout
+      title="Menu Harian"
+      subtitle="Pilih hari aktif untuk tiap produk. Kosong berarti tampil setiap hari."
+    >
+      <div className="space-y-5">
+        {/* LAPAKIN_DAILY_MENU_REMOVE_DUPLICATE_HEADER_V1: title/subtitle now come from DashboardLayout. */}
+        <div className="flex items-center justify-end" data-testid="daily-menu-summary-row">
+          <div className="bg-white border border-brand-line rounded-xl px-4 py-2.5 text-xs" data-testid="daily-menu-today-summary">
+            <div className="text-[10px] uppercase tracking-widest font-bold text-brand-mute">Hari ini ({DAYS[todayIdx].label})</div>
+            <div className="font-heading font-extrabold text-base mt-0.5">{todayCount} produk akan tampil</div>
           </div>
         </div>
+
+
+        {!loading && products.length > 0 ? (
+          <div
+            className="rounded-2xl border border-brand-line bg-white p-4 shadow-card"
+            data-testid="daily-menu-filter-toolbar"
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="text-xs font-extrabold uppercase tracking-widest text-brand-mute">Filter Produk</div>
+                <div className="mt-1 text-sm text-brand-mute">
+                  Menampilkan <b className="text-brand-ink">{filteredProducts.length}</b> dari <b className="text-brand-ink">{products.length}</b> produk.
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_220px_auto] lg:min-w-[620px]">
+                <input
+                  type="search"
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="Cari nama produk, harga, atau kategori..."
+                  className="h-11 w-full rounded-xl border border-brand-line bg-white px-3 text-sm font-semibold text-brand-ink outline-none focus:border-brand"
+                  data-testid="daily-menu-search"
+                />
+
+                <select
+                  value={categoryFilter}
+                  onChange={(event) => setCategoryFilter(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-brand-line bg-white px-3 text-sm font-semibold text-brand-ink outline-none focus:border-brand"
+                  data-testid="daily-menu-category-filter"
+                >
+                  <option value="all">Semua kategori</option>
+                  {productCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductSearch("");
+                    setCategoryFilter("all");
+                  }}
+                  className="h-11 rounded-xl border border-brand-line px-4 text-sm font-extrabold text-brand-ink hover:bg-brand-off"
+                  data-testid="daily-menu-filter-reset"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {loading ? (
           <div className="text-center py-12 text-brand-mute">
@@ -192,9 +295,9 @@ export default function DailyMenu() {
 
             {/* Grid: produk × hari */}
             <div className="bg-white border border-brand-line rounded-2xl shadow-card overflow-hidden" data-testid="daily-menu-grid">
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[calc(100vh-360px)] min-h-[260px]">
                 <table className="w-full">
-                  <thead className="bg-brand-off border-b border-brand-line">
+                  <thead className="bg-brand-off border-b border-brand-line sticky top-0 z-20">
                     <tr>
                       <th className="text-left text-xs font-bold uppercase tracking-widest text-brand-mute py-3 px-3 sticky left-0 bg-brand-off z-10 min-w-[200px]">
                         Produk
@@ -214,7 +317,7 @@ export default function DailyMenu() {
                     </tr>
                   </thead>
                   <tbody>
-                    {products.map((p) => {
+                    {filteredProducts.map((p) => {
                       const days = edits[p.product_id] || [];
                       const isAllDay = days.length === 0 || days.length === 7;
                       const img = (p.images || [])[0];
@@ -285,10 +388,19 @@ export default function DailyMenu() {
                 Pelanggan akan melihat <b className="text-brand-ink">{todayCount} produk</b> hari ini ({DAYS[todayIdx].label}).
               </p>
             </div>
+
+            {filteredProducts.length === 0 ? (
+              <div
+                className="rounded-2xl border border-dashed border-brand-line bg-white p-6 text-center text-sm text-brand-mute"
+                data-testid="daily-menu-filter-empty"
+              >
+                Produk tidak ditemukan. Coba ubah kata kunci atau kategori.
+              </div>
+            ) : null}
           </>
         )}
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
 
@@ -300,7 +412,7 @@ function Header() {
           <ArrowLeft className="w-4 h-4" /> Dashboard
         </Link>
         <div className="text-xs uppercase tracking-widest font-bold text-brand-mute flex items-center gap-1">
-          <Calendar className="w-3 h-3" /> Menu Per-Hari
+          <Calendar className="w-3 h-3" /> Menu Harian
         </div>
       </div>
     </div>

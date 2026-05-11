@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
+  Calendar,
   Sparkles,
   LayoutDashboard,
   Package,
@@ -59,6 +60,8 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
       tid: "nav-group-sales",
       children: [
         { to: "/dashboard/sales", icon: BookOpen, label: "Buku Jualan", tid: "nav-sales" },
+        // LAPAKIN_DAILY_MENU_IN_SALES_NAV_V1
+        { to: "/dashboard/daily-menu", icon: Calendar, label: "Menu Harian", tid: "nav-daily-menu" },
         { to: "/dashboard/leads", icon: MessageSquare, label: "Order Inbox", tid: "nav-leads", badge: orderInboxNewCount },
       ],
     },

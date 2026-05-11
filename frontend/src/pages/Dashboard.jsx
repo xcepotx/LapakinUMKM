@@ -932,11 +932,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="font-heading font-bold text-xl">Produk Terbaru</h2>
               <div className="flex items-center gap-3">
-                <Link to="/dashboard/daily-menu"
-                  className="text-sm font-semibold text-brand-mute hover:text-brand-ink inline-flex items-center gap-1"
-                  data-testid="dashboard-daily-menu-link">
-                  <Calendar className="w-3.5 h-3.5" /> Menu Per-Hari
-                </Link>
+
                 <Link to="/dashboard/products" className="text-sm font-semibold text-brand hover:underline">Lihat semua</Link>
               </div>
             </div>
