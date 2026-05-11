@@ -2974,3 +2974,130 @@ button.ltr-cart-backdrop::after,
 .ltr-business-service-trust .ltr-eyebrow {
   color: var(--lapakin-template-accent);
 }
+
+/* LAPAKIN_FOOD_HERO_ABOVE_FOLD_V1
+ * UI/UX fix:
+ * - Reduce desktop blank area above food hero.
+ * - Keep hero card visible sooner above the fold.
+ * - Move decorative orbs into supporting role, not main visual.
+ * - Remove duplicate "Menu" prefix for food hero titles that already start with Menu.
+ */
+.ltr-page.ltr-business-food-warm .ltr-hero h1::before {
+  content: none !important;
+}
+
+@media (min-width: 761px) {
+  .ltr-page.ltr-business-food-warm {
+    padding-top: clamp(0.6rem, 1.4vw, 1.1rem) !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-container {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+    gap: clamp(0.9rem, 2vw, 1.35rem) !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-container > .ltr-hero:first-child,
+  .ltr-page.ltr-business-food-warm .ltr-hero {
+    margin-top: 0 !important;
+    transform: none !important;
+    min-height: clamp(340px, 46vh, 520px) !important;
+    padding: clamp(1.25rem, 3.2vw, 2.6rem) !important;
+    gap: clamp(1.1rem, 3vw, 2.4rem) !important;
+    align-items: center !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero-visual {
+    min-height: clamp(250px, 32vh, 330px) !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero-logo,
+  .ltr-page.ltr-business-food-warm .ltr-hero-product {
+    width: min(100%, 320px) !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero-card {
+    margin-top: -2.2rem !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-background-orb-one {
+    top: -5rem !important;
+    right: -8rem !important;
+    opacity: 0.34 !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-background-orb-two {
+    top: 8rem !important;
+    bottom: auto !important;
+    left: -8rem !important;
+    opacity: 0.28 !important;
+  }
+}
+
+/* LAPAKIN_FOOD_HERO_ABOVE_FOLD_V2
+ * Stronger above-the-fold correction for food storefront.
+ * The first screen should show the hero content immediately, not decorative empty space.
+ */
+@media (min-width: 761px) {
+  .ltr-page.ltr-business-food-warm {
+    padding-top: 0 !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-container {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    gap: clamp(0.8rem, 1.8vw, 1.25rem) !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-container > .ltr-hero:first-child {
+    margin-top: clamp(-190px, -16vh, -120px) !important;
+    min-height: clamp(300px, 42vh, 460px) !important;
+    padding: clamp(1rem, 2.8vw, 2.15rem) !important;
+    gap: clamp(1rem, 2.5vw, 2rem) !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero h1 {
+    margin-top: 0.65rem !important;
+    font-size: clamp(2.4rem, 5.7vw, 4.7rem) !important;
+    line-height: 0.96 !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero p {
+    margin-top: 0.85rem !important;
+    line-height: 1.55 !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero-actions {
+    margin-top: 1rem !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero-stats {
+    margin-top: 1rem !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero-visual {
+    min-height: clamp(220px, 28vh, 300px) !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero-logo,
+  .ltr-page.ltr-business-food-warm .ltr-hero-product {
+    width: min(100%, 300px) !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-hero-card {
+    margin-top: -1.75rem !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-background-orb-one {
+    top: -8rem !important;
+    right: -9rem !important;
+    opacity: 0.25 !important;
+  }
+
+  .ltr-page.ltr-business-food-warm .ltr-background-orb-two {
+    top: 4rem !important;
+    bottom: auto !important;
+    left: -9rem !important;
+    opacity: 0.2 !important;
+  }
+}

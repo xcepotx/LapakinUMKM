@@ -769,6 +769,309 @@ function getProductSnapshot(product, index = 0) {
   };
 }
 
+// LAPAKIN_STOREFRONT_PRODUCT_DETAIL_MODAL_V1
+function getProductDetailShareUrl(product, index = 0) {
+  const productId = getProductId(product, index);
+
+  if (typeof window === "undefined") {
+    return `?product=${encodeURIComponent(productId)}`;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set("product", productId);
+  url.hash = "";
+
+  return url.toString();
+}
+
+function syncProductDetailUrl(product, index = 0) {
+  if (typeof window === "undefined") return;
+
+  const url = new URL(window.location.href);
+  url.searchParams.set("product", getProductId(product, index));
+  url.hash = "";
+
+  window.history.replaceState({}, "", url.toString());
+}
+
+function clearProductDetailUrl() {
+  if (typeof window === "undefined") return;
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete("product");
+
+  window.history.replaceState({}, "", url.toString());
+}
+
+function ProductDetailModal({ open, product, index = 0, shop, onClose, onAddToCart }) {
+  if (!open || !product) return null;
+
+  const productId = getProductId(product, index);
+  const name = getProductName(product);
+  const description = getProductDescription(product);
+  const price = getProductPrice(product);
+  const category = getProductCategory(product);
+  const image = getProductImage(product);
+  const outOfStock = isTemplateProductOutOfStock(product);
+  const shareUrl = getProductDetailShareUrl(product, index);
+
+  const shareProduct = async () => {
+    const text = [
+      name,
+      price ? formatPrice(price) : "",
+      description,
+    ].filter(Boolean).join("\n");
+
+    try {
+      if (navigator?.share) {
+        await navigator.share({
+          title: name,
+          text,
+          url: shareUrl,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(shareUrl);
+      window.alert("Link produk berhasil disalin.");
+    } catch {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        window.alert("Link produk berhasil disalin.");
+      } catch {
+        window.prompt("Salin link produk:", shareUrl);
+      }
+    }
+  };
+
+  return (
+    <div
+      className="ltr-product-detail-overlay"
+      data-testid="storefront-product-detail-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="storefront-product-detail-title"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+        // LAPAKIN_PRODUCT_DETAIL_POPUP_BACKDROP_V1
+        // LAPAKIN_PRODUCT_DETAIL_NEUTRAL_POPUP_V1
+        // LAPAKIN_PRODUCT_DETAIL_SOLID_BACKDROP_V2
+        // LAPAKIN_PRODUCT_DETAIL_LIGHT_BACKDROP_V1
+        // LAPAKIN_PRODUCT_DETAIL_WHITE_GLASS_BACKDROP_V1
+        // LAPAKIN_PRODUCT_DETAIL_INLINE_VISIBLE_PAGE_V1
+        // LAPAKIN_PRODUCT_DETAIL_MATCH_ORDER_MODAL_V3
+        // Match the order modal backdrop style (navy dark transparent) so the
+        // product detail clearly reads as a floating modal over the storefront,
+        // not a separate page. No backdrop-filter to stay consistent with order modal.
+        background: "rgba(15, 23, 42, 0.56)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Tutup detail produk"
+        style={{
+          position: "absolute",
+          inset: 0,
+          border: 0,
+          background: "transparent",
+          cursor: "pointer",
+        }}
+      />
+
+      <div
+        style={{
+          position: "relative",
+          width: "min(94vw, 720px)",
+          maxWidth: 720,
+          maxHeight: "calc(100dvh - 48px)",
+          overflowY: "auto",
+          borderRadius: 28,
+          background: "#fff",
+          boxShadow: "0 26px 90px rgba(15, 23, 42, 0.32)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Tutup detail produk"
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            zIndex: 2,
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            border: "1px solid rgba(15,23,42,0.12)",
+            background: "rgba(255,255,255,0.92)",
+            fontSize: 24,
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          ×
+        </button>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.05fr)",
+            gap: 0,
+          }}
+          className="ltr-product-detail-grid"
+        >
+          <div
+            style={{
+              minHeight: 260,
+              background: "#ffffff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 22,
+            }}
+          >
+            {image ? (
+              <img
+                src={image}
+                alt={name}
+                style={{
+                  width: "100%",
+                  maxHeight: 460,
+                  objectFit: "contain",
+                  borderRadius: 22,
+                  background: "#fff",
+                  boxShadow: "0 18px 48px rgba(67,20,7,0.12)",
+                }}
+              />
+            ) : (
+              <div className="ltr-product-image-placeholder" style={{ width: "100%", aspectRatio: "1 / 1", borderRadius: 22 }}>
+                <span>{name.slice(0, 1).toUpperCase()}</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: "30px 26px", display: "grid", gap: 16, alignContent: "start" }}>
+            <div>
+              {category ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    borderRadius: 999,
+                    padding: "6px 10px",
+                    background: "#fff7ed",
+                    color: "#c2410c",
+                    fontSize: 12,
+                    fontWeight: 900,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.6,
+                  }}
+                >
+                  {category}
+                </span>
+              ) : null}
+
+              <h2 id="storefront-product-detail-title" style={{ margin: "12px 0 0", color: "#1f2933", fontSize: 30, lineHeight: 1.1, fontWeight: 950 }}>
+                {name}
+              </h2>
+
+              <strong style={{ display: "block", marginTop: 10, color: "#C04A3B", fontSize: 24, fontWeight: 950 }}>
+                {formatPrice(price)}
+              </strong>
+            </div>
+
+            {description ? (
+              <p
+                data-testid="storefront-product-detail-description"
+                style={{
+                  margin: 0,
+                  color: "#475569",
+                  lineHeight: 1.65,
+                  fontSize: 15,
+                  whiteSpace: "pre-line",
+                }}
+              >
+                {description}
+              </p>
+            ) : (
+              <p style={{ margin: 0, color: "#64748b", lineHeight: 1.6 }}>
+                Detail produk belum diisi oleh toko.
+              </p>
+            )}
+
+            <div style={{ display: "grid", gap: 10, marginTop: 4 }}>
+              <button
+                type="button"
+                disabled={outOfStock}
+                onClick={(event) => {
+                event.stopPropagation();
+                onAddToCart(product, index);
+              }}
+                data-testid="storefront-product-detail-add-cart"
+                style={{
+                  border: 0,
+                  borderRadius: 999,
+                  padding: "13px 18px",
+                  background: outOfStock ? "#94a3b8" : "#C04A3B",
+                  color: "#fff",
+                  fontWeight: 950,
+                  cursor: outOfStock ? "not-allowed" : "pointer",
+                }}
+              >
+                {outOfStock ? "Stok habis" : "Tambah ke Keranjang"}
+              </button>
+
+              <a
+                href={buildWhatsappLink(shop)}
+                target="_blank"
+                rel="noreferrer"
+                data-testid="storefront-product-detail-whatsapp"
+                style={{
+                  borderRadius: 999,
+                  padding: "12px 18px",
+                  background: "#16a34a",
+                  color: "#fff",
+                  fontWeight: 950,
+                  textDecoration: "none",
+                  textAlign: "center",
+                }}
+              >
+                Tanya via WhatsApp
+              </a>
+
+              <button
+                type="button"
+                onClick={shareProduct}
+                data-testid="storefront-product-detail-share"
+                style={{
+                  border: "1px solid rgba(15,23,42,0.14)",
+                  borderRadius: 999,
+                  padding: "12px 18px",
+                  background: "#fff",
+                  color: "#1f2933",
+                  fontWeight: 950,
+                  cursor: "pointer",
+                }}
+              >
+                Share Produk
+              </button>
+            </div>
+
+            {/* LAPAKIN_HIDE_PRODUCT_LINK_TEXT_V2: visible product link hidden; use Share Produk button instead. */}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function getCartTotal(cartItems) {
   return cartItems.reduce((sum, item) => {
     return sum + (Number(item.product?.price || 0) * Number(item.qty || 0));
@@ -957,6 +1260,311 @@ function buildCartWhatsappLink(shop, cartItems, lead = {}) {
   const message = buildCartWhatsappMessage(shop, cartItems, lead);
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
+
+
+// LAPAKIN_PRODUCT_POPUP_ONLY_V1
+function getTemplateProductPermalink(product, index = 0) {
+  const productId = getProductId(product, index);
+
+  if (typeof window === "undefined") {
+    return `?product=${encodeURIComponent(productId)}`;
+  }
+
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("product", productId);
+    return url.toString();
+  } catch {
+    return `?product=${encodeURIComponent(productId)}`;
+  }
+}
+
+function shouldIgnoreTemplateProductPopupClick(event) {
+  const target = event?.target;
+  if (!target?.closest) return false;
+
+  return Boolean(
+    target.closest("a, button, input, select, textarea, [data-no-product-popup='true']")
+  );
+}
+
+function ProductQuickViewModal({
+  open,
+  product,
+  shop,
+  index = 0,
+  onClose,
+  onAddToCart,
+}) {
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return undefined;
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") onClose?.();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open || !product) return null;
+
+  const name = getProductName(product);
+  const description = getProductDescription(product);
+  const category = getProductCategory(product);
+  const image = getProductImage(product);
+  const price = getProductPrice(product);
+  const outOfStock = isTemplateProductOutOfStock(product);
+  const whatsappHref = buildWhatsappLink(shop, product);
+  const productLink = getTemplateProductPermalink(product, index);
+  const displayProductLink =
+    typeof window !== "undefined"
+      ? productLink.replace(window.location.origin, "")
+      : productLink;
+
+  const handleShare = async () => {
+    try {
+      if (typeof navigator === "undefined") return;
+
+      if (navigator.share) {
+        await navigator.share({
+          title: name,
+          text: `${name} - ${formatPrice(price)}`,
+          url: productLink,
+        });
+        return;
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(productLink);
+      }
+    } catch {
+      // Best effort only.
+    }
+  };
+
+  return (
+    <div
+      className="ltr-product-modal-backdrop"
+      role="presentation"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 120,
+        background: "rgba(15, 23, 42, 0.45)",
+        display: "grid",
+        placeItems: "center",
+        padding: 18,
+      }}
+    >
+      <div
+        className="ltr-product-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Detail ${name}`}
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: "min(860px, 100%)",
+          maxHeight: "calc(100vh - 36px)",
+          overflow: "auto",
+          borderRadius: 28,
+          background: "#fff",
+          boxShadow: "0 30px 80px rgba(15, 23, 42, 0.28)",
+          padding: 22,
+          position: "relative",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Tutup detail produk"
+          data-no-product-popup="true"
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            width: 38,
+            height: 38,
+            borderRadius: 999,
+            border: 0,
+            background: "#f59e0b",
+            color: "#111827",
+            fontWeight: 900,
+            cursor: "pointer",
+            boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
+          }}
+        >
+          ×
+        </button>
+
+        <div
+          className="ltr-product-modal-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: 28,
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 18,
+              overflow: "hidden",
+              background: "#f8fafc",
+              minHeight: 280,
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            {image ? (
+              <img
+                src={image}
+                alt={name}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  maxHeight: 420,
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            ) : (
+              <strong style={{ fontSize: 72 }}>
+                {name.slice(0, 1).toUpperCase()}
+              </strong>
+            )}
+          </div>
+
+          <div>
+            <div
+              style={{
+                display: "inline-flex",
+                borderRadius: 999,
+                background: "#fff7ed",
+                color: "#ea580c",
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 900,
+                textTransform: "uppercase",
+                marginBottom: 12,
+              }}
+            >
+              {outOfStock ? "Habis" : category || "Pilihan"}
+            </div>
+
+            <h2
+              style={{
+                margin: 0,
+                color: "#1f2937",
+                fontSize: "clamp(26px, 4vw, 34px)",
+                lineHeight: 1.1,
+                fontWeight: 950,
+              }}
+            >
+              {name}
+            </h2>
+
+            <p
+              style={{
+                margin: "12px 0 16px",
+                color: "#c2410c",
+                fontSize: 26,
+                fontWeight: 900,
+              }}
+            >
+              {formatPrice(price)}
+            </p>
+
+            {description ? (
+              <p
+                style={{
+                  margin: "0 0 20px",
+                  color: "#475569",
+                  lineHeight: 1.65,
+                  borderLeft: "5px solid #fb923c",
+                  paddingLeft: 12,
+                  background: "#fff",
+                }}
+              >
+                {description}
+              </p>
+            ) : null}
+
+            <div style={{ display: "grid", gap: 10 }}>
+              <button
+                type="button"
+                disabled={outOfStock}
+                data-no-product-popup="true"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAddToCart?.(product, index);
+                }}
+                style={{
+                  border: 0,
+                  borderRadius: 999,
+                  padding: "14px 18px",
+                  fontWeight: 900,
+                  cursor: outOfStock ? "not-allowed" : "pointer",
+                  background: outOfStock
+                    ? "#cbd5e1"
+                    : "linear-gradient(90deg, #f97316, #facc15)",
+                  color: "#111827",
+                }}
+              >
+                {outOfStock ? "Stok Habis" : "Tambah ke Keranjang"}
+              </button>
+
+              <a
+                href={whatsappHref}
+                data-no-product-popup="true"
+                data-whatsapp-context="product_detail"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClose?.();
+                }}
+                style={{
+                  borderRadius: 999,
+                  padding: "14px 18px",
+                  fontWeight: 900,
+                  textAlign: "center",
+                  textDecoration: "none",
+                  background: "linear-gradient(90deg, #f97316, #facc15)",
+                  color: "#111827",
+                }}
+              >
+                Tanya via WhatsApp
+              </a>
+
+              <button
+                type="button"
+                data-no-product-popup="true"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleShare();
+                }}
+                style={{
+                  border: 0,
+                  borderRadius: 999,
+                  padding: "14px 18px",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  background: "linear-gradient(90deg, #f97316, #facc15)",
+                  color: "#111827",
+                }}
+              >
+                Share Produk
+              </button>
+            </div>
+
+            {/* LAPAKIN_HIDE_PRODUCT_LINK_TEXT_V2: quick-view visible product link hidden; use Share Produk button instead. */}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function ProductImage({ product, className }) {
   const image = getProductImage(product);
@@ -1452,7 +2060,7 @@ function FloatingCartButton({ count, onOpen }) {
   );
 }
 
-function ProductCard({ product, shop, template, index, onAddToCart }) {
+function ProductCard({ product, shop, template, index, onAddToCart, onOpenProduct }) {
   const mode = getModeFromTemplate(template);
   const variant = template.productCard;
   const name = getProductName(product);
@@ -1469,7 +2077,36 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
       className={cx("ltr-product-card", `ltr-card-${variant}`, {
         "ltr-product-card-featured": index === 0,
       })}
-    >
+      onClick={(event) => {
+        const target = event.target;
+        if (
+          target?.closest?.(
+            "a, button, input, select, textarea, [data-no-product-popup='true']"
+          )
+        ) {
+          return;
+        }
+
+        onOpenProduct?.(product, index);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+
+        const target = event.target;
+        if (
+          target?.closest?.(
+            "a, button, input, select, textarea, [data-no-product-popup='true']"
+          )
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        onOpenProduct?.(product, index);
+      }}
+      role="button"
+      tabIndex={0}
+      data-lapakin-patch="LAPAKIN_FIX_STOREFRONT_POPUP_AFTER_INSPECT_V1">
       <ProductImage product={product} />
 
       <div className="ltr-product-body">
@@ -1509,7 +2146,10 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
             <button
               type="button"
               className="ltr-add-cart-btn"
-              onClick={() => onAddToCart?.(product, index)}
+              onClick={(event) => {
+          event.stopPropagation();
+          onAddToCart?.(product, index);
+        }}
               data-testid="storefront-template-add-cart"
               aria-label={`Tambah ${name} ke keranjang`}
               title="Tambah ke keranjang"
@@ -1525,7 +2165,7 @@ function ProductCard({ product, shop, template, index, onAddToCart }) {
               <span>Keranjang</span>
             </button>
 
-            <a href={buildWhatsappLink(shop, product)} target="_blank" rel="noreferrer">
+            <a href={buildWhatsappLink(shop, product)} target="_blank" rel="noreferrer" data-no-product-popup="true" onClick={(event) => event.stopPropagation()}>
               {isService ? "Tanya" : isFood ? "Pesan" : "Order"}
             </a>
           </div>
@@ -1599,7 +2239,7 @@ function getCompactProductCategory(product) {
   return String(product?.category_name || product?.category || "").trim();
 }
 
-function CompactProductCard({ product, shop, template, index, onAddToCart, featured = false }) {
+function CompactProductCard({ product, shop, template, index, onAddToCart, onOpenProduct, featured = false }) {
   const name = getCompactProductName(product);
   const description = getCompactProductDescription(product);
   const price = formatCompactProductPrice(product);
@@ -1611,6 +2251,16 @@ function CompactProductCard({ product, shop, template, index, onAddToCart, featu
       className="lpk-tile"
       data-featured={featured ? "true" : "false"}
       data-testid={featured ? "storefront-featured-menu-tile" : "storefront-main-menu-tile"}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenProduct?.(product, index)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpenProduct?.(product, index);
+        }
+      }}
+      title={`Lihat detail ${name}`}
     >
       <div className="lpk-tile-media">
         <ProductImage product={product} className="lpk-tile-img" />
@@ -1635,13 +2285,16 @@ function CompactProductCard({ product, shop, template, index, onAddToCart, featu
         <button
           type="button"
           className="lpk-tile-cart"
-          onClick={() => onAddToCart?.(product)}
+          onClick={(event) => {
+          event.stopPropagation();
+          onAddToCart?.(product, index);
+        }}
           aria-label={`Tambah ${name} ke keranjang`}
         >
           +
         </button>
 
-        <a className="lpk-tile-order" href={waHref} target="_blank" rel="noreferrer">
+        <a className="lpk-tile-order" href={waHref} target="_blank" rel="noreferrer" data-no-product-popup="true" onClick={(event) => event.stopPropagation()}>
           Pesan
         </a>
       </div>
@@ -1657,6 +2310,8 @@ function ProductSection({
   limit,
   titleOverride,
   onAddToCart,
+  // LAPAKIN_FIX_ONOPENPRODUCT_SCOPE_V1
+  onOpenProduct,
   preferSelectedFeatured = false,
   allProducts,
   productSearch = "",
@@ -1772,6 +2427,7 @@ function ProductSection({
               template={template}
               index={index}
               onAddToCart={onAddToCart}
+              onOpenProduct={onOpenProduct}
               featured={lapakinIsFeaturedMenuSection}
             />
           ) : (
@@ -1782,6 +2438,7 @@ function ProductSection({
               template={template}
               index={index}
               onAddToCart={onAddToCart}
+              onOpenProduct={onOpenProduct}
             />
           )
         ))}
@@ -2735,7 +3392,7 @@ function FaqSection({ template }) {
 }
 
 function renderSection(section, context) {
-  const { shop, products, allProducts, template, onAddToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter } = context;
+  const { shop, products, allProducts, template, onAddToCart, onOpenProduct, productSearch, setProductSearch, categoryFilter, setCategoryFilter } = context;
   const mode = getModeFromTemplate(template);
   const title = getSectionTitle(section, mode);
   const featured = products.filter((product) => product?.featured || product?.is_featured);
@@ -2781,6 +3438,7 @@ function renderSection(section, context) {
           shop={shop}
           template={template}
           onAddToCart={onAddToCart}
+          onOpenProduct={onOpenProduct}
           limit={3}
           titleOverride={getValue(shop, ["storefront_featured_title"], "")}
           preferSelectedFeatured={true}
@@ -2800,6 +3458,7 @@ function renderSection(section, context) {
           shop={shop}
           template={template}
           onAddToCart={onAddToCart}
+          onOpenProduct={onOpenProduct}
           showControls
           productSearch={productSearch}
           setProductSearch={setProductSearch}
@@ -3049,6 +3708,9 @@ export default function StorefrontTemplateRenderer({ data, template }) {
   const mode = getModeFromTemplate(template);
   const cartKey = getCartStorageKey(shop);
   const [cartOpen, setCartOpen] = useState(false);
+  const [selectedProductDetail, setSelectedProductDetail] = useState(null);
+  // LAPAKIN_PRODUCT_DETAIL_PRESERVE_SCROLL_V1
+  const productDetailScrollYRef = useRef(0);
   const [productSearch, setProductSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [cart, setCart] = useState(() => {
@@ -3097,6 +3759,23 @@ export default function StorefrontTemplateRenderer({ data, template }) {
       .filter(Boolean);
   }, [cart, productMap]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const url = new URL(window.location.href);
+    const productId = url.searchParams.get("product");
+
+    if (!productId) return;
+
+    const foundIndex = products.findIndex((product, index) => getProductId(product, index) === productId);
+    if (foundIndex < 0) return;
+
+    const foundProduct = products[foundIndex];
+    if (!foundProduct || isTemplateProductHidden(foundProduct)) return;
+
+    setSelectedProductDetail({ product: foundProduct, index: foundIndex });
+  }, [products]);
+
 
   const cartCount = cartItems.reduce((sum, item) => sum + Number(item.qty || 0), 0);
 
@@ -3116,6 +3795,65 @@ export default function StorefrontTemplateRenderer({ data, template }) {
     }));
 
   };
+
+  const openProductDetail = (product, index = 0, options = {}) => {
+    if (!product || isTemplateProductHidden(product)) return;
+
+    if (typeof window !== "undefined") {
+      productDetailScrollYRef.current = window.scrollY || window.pageYOffset || 0;
+    }
+
+    setSelectedProductDetail({ product, index });
+
+    // LAPAKIN_PRODUCT_DETAIL_NO_URL_ON_CLICK_V1
+    // Klik normal tetap terasa seperti popup. Deep link hanya dipakai saat user share link produk.
+    if (options.syncUrl === true) {
+      syncProductDetailUrl(product, index);
+    }
+  };
+
+  const closeProductDetail = () => {
+    setSelectedProductDetail(null);
+    clearProductDetailUrl();
+
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        window.scrollTo({
+          top: productDetailScrollYRef.current || 0,
+          left: 0,
+          behavior: "auto",
+        });
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined" || !selectedProductDetail) {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const previousScrollBehavior = document.documentElement.style.scrollBehavior;
+    const scrollY = window.scrollY || window.pageYOffset || productDetailScrollYRef.current || 0;
+
+    productDetailScrollYRef.current = scrollY;
+    document.documentElement.style.scrollBehavior = "auto";
+    document.body.style.overflow = "hidden";
+
+    requestAnimationFrame(() => {
+      window.scrollTo(0, scrollY);
+    });
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.documentElement.style.scrollBehavior = previousScrollBehavior;
+
+      requestAnimationFrame(() => {
+        window.scrollTo(0, productDetailScrollYRef.current || scrollY);
+      });
+    };
+  }, [selectedProductDetail]);
+
 
   const increaseCartItem = (id) => {
     setCart((prev) => {
@@ -3510,12 +4248,21 @@ export default function StorefrontTemplateRenderer({ data, template }) {
           }
 
           return sectionsToRender.map((section) =>
-            renderSection(section, { shop, products: productsForSections, allProducts: visibleStorefrontProducts, template, onAddToCart: addToCart, productSearch, setProductSearch, categoryFilter, setCategoryFilter })
+            renderSection(section, { shop, products: productsForSections, allProducts: visibleStorefrontProducts, template, onAddToCart: addToCart, onOpenProduct: openProductDetail, productSearch, setProductSearch, categoryFilter, setCategoryFilter })
           );
         })()}
       </div>
 
       <FloatingCartButton count={cartCount} onOpen={() => setCartOpen(true)} />
+
+      <ProductDetailModal
+        open={!!selectedProductDetail}
+        product={selectedProductDetail?.product}
+        index={selectedProductDetail?.index || 0}
+        shop={shop}
+        onClose={closeProductDetail}
+        onAddToCart={addToCart}
+      />
 
       <TemplateCartDrawer
         shop={shop}
@@ -3528,8 +4275,7 @@ export default function StorefrontTemplateRenderer({ data, template }) {
         onClear={() => setCart({})}
       />
 
-
-      <LeadCaptureModal
+<LeadCaptureModal
         open={leadCapture.open}
         showCartSummary={leadCapture.context?.type === "cart_checkout"}
         cartItems={leadCapture.context?.type === "cart_checkout" ? cartItems : []}

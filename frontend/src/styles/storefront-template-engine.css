@@ -306,3 +306,71 @@ html[data-lapakin-storefront-density="tight"] section {
     grid-template-columns: 84px 1fr;
   }
 }
+
+/* LAPAKIN_MODAL_BUTTON_CTA_OVERRIDE_V1
+ * Global CTA template rules target all button elements with !important.
+ * Product detail modal has a full-screen backdrop button, so that rule can
+ * turn the whole modal backdrop orange. Keep modal backdrop transparent and
+ * keep modal panel neutral.
+ */
+html[data-lapakin-storefront-template] .ltr-product-detail-overlay > button,
+html[data-lapakin-storefront-style] .ltr-product-detail-overlay > button,
+html[data-lapakin-storefront-cta] .ltr-product-detail-overlay > button {
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+/* LAPAKIN_PRODUCT_DETAIL_MATCH_ORDER_MODAL_V3
+   Removed .ltr-product-detail-overlay backdrop override.
+   The inline style in StorefrontTemplateRenderer.jsx now controls the
+   backdrop directly (navy dark transparent, matching the order modal).
+   Template engine no longer overrides this overlay. */
+
+/* LAPAKIN_PRODUCT_DETAIL_MATCH_ORDER_MODAL_V3
+   Removed [role="document"] inner-panel override.
+   Inline style on the panel controls its background. */
+
+html[data-lapakin-storefront-template] .ltr-product-detail-overlay [aria-label="Tutup detail produk"],
+html[data-lapakin-storefront-style] .ltr-product-detail-overlay [aria-label="Tutup detail produk"],
+html[data-lapakin-storefront-cta] .ltr-product-detail-overlay [aria-label="Tutup detail produk"] {
+  background: #ffffff !important;
+  background-image: none !important;
+  color: #111827 !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18) !important;
+}
+
+/* LAPAKIN_PRODUCT_DETAIL_CLOSE_SELECTOR_FIX_V1
+ * Fix product detail modal backdrop.
+ * Before: [aria-label="Tutup detail produk"] matched both:
+ * - the fullscreen backdrop button
+ * - the small close X button
+ * Because the old rule used !important, the fullscreen backdrop became white.
+ */
+html[data-lapakin-storefront-template] .ltr-product-detail-overlay,
+html[data-lapakin-storefront-style] .ltr-product-detail-overlay,
+html[data-lapakin-storefront-cta] .ltr-product-detail-overlay {
+  background: rgba(15, 23, 42, 0.56) !important;
+}
+
+/* Fullscreen invisible backdrop button must stay transparent. */
+html[data-lapakin-storefront-template] .ltr-product-detail-overlay > button[aria-label="Tutup detail produk"],
+html[data-lapakin-storefront-style] .ltr-product-detail-overlay > button[aria-label="Tutup detail produk"],
+html[data-lapakin-storefront-cta] .ltr-product-detail-overlay > button[aria-label="Tutup detail produk"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+/* Only the real close X button inside the modal panel should be white. */
+html[data-lapakin-storefront-template] .ltr-product-detail-overlay > div > button[aria-label="Tutup detail produk"],
+html[data-lapakin-storefront-style] .ltr-product-detail-overlay > div > button[aria-label="Tutup detail produk"],
+html[data-lapakin-storefront-cta] .ltr-product-detail-overlay > div > button[aria-label="Tutup detail produk"] {
+  background: rgba(255, 255, 255, 0.92) !important;
+  background-image: none !important;
+  color: #111827 !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18) !important;
+}
