@@ -19,6 +19,53 @@ const DAY_LABELS = [
   { idx: 6, short: "Min", long: "Minggu" },
 ];
 
+// LAPAKIN_PRODUCT_IMAGE_ENHANCE_V15
+function inferProductEnhanceStyle(shop, product, name, selectedCategoryId) {
+  const raw = [
+    shop?.business_type,
+    shop?.storefront_layout_variant,
+    shop?.storefront_mode,
+    product?.category_name,
+    product?.category,
+    selectedCategoryId,
+    name,
+    product?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (/kuliner|makanan|minuman|warung|kopi|cafe|resto|bakso|nasi|snack|kue|catering|food|gudeg|sambel|es teh/.test(raw)) {
+    return "food_appetizing";
+  }
+
+  if (/kerajinan|craft|handmade|souvenir|hampers|kriya|rajut|batik|anyaman/.test(raw)) {
+    return "warm_lifestyle";
+  }
+
+  if (/fashion|baju|pakaian|busana|hijab|sepatu|tas|aksesoris|clothing/.test(raw)) {
+    return "product_studio";
+  }
+
+  if (/laundry|laundri|cuci|setrika|dry clean|dryclean/.test(raw)) {
+    return "minimal";
+  }
+
+  return "product_studio";
+}
+
+function getEnhanceStyleLabel(style) {
+  return {
+    food_appetizing: "Food Appetizing",
+    product_studio: "Product Studio",
+    warm_lifestyle: "Warm Lifestyle",
+    lifestyle: "Lifestyle",
+    minimal: "Minimal Clean",
+    clean: "Clean Product",
+  }[style] || "Product Studio";
+}
+
+
 export default function EditProductDialog({ product, shop, categories = [], open, onOpenChange, onSaved }) {
   // LAPAKIN_EDIT_PRODUCT_CATEGORY_D
   const categoryOptions = Array.isArray(categories)
@@ -45,24 +92,62 @@ export default function EditProductDialog({ product, shop, categories = [], open
   const [availableDays, setAvailableDays] = useState([]); // 0..6, empty = setiap hari
   const [saving, setSaving] = useState(false);
   const [enhancingIdx, setEnhancingIdx] = useState(null);
+  // LAPAKIN_PRODUCT_IMAGE_ENHANCE_V15
+  const [enhancePreview, setEnhancePreview] = useState(null);
 
   const sellsBy = shop?.sells_by || "stock";
 
   const enhanceImage = async (idx) => {
     const dataUrl = images[idx];
     if (!dataUrl) return;
+
+    const style = inferProductEnhanceStyle(shop, product, name, selectedCategoryId);
+
     setEnhancingIdx(idx);
+    setEnhancePreview(null);
+
     try {
       const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-      const { data } = await api.post("/ai/enhance-image", { image_base64: base64, style: "clean" });
+      const { data } = await api.post("/ai/enhance-image", {
+        image_base64: base64,
+        style,
+        product_name: name || product?.name || "",
+        business_type: shop?.business_type || shop?.storefront_layout_variant || "",
+        product_category: product?.category_name || product?.category || selectedCategoryId || "",
+      });
+
       const enhancedUrl = `data:${data.mime_type || "image/png"};base64,${data.image_base64}`;
-      setImages((arr) => arr.map((v, i) => (i === idx ? enhancedUrl : v)));
-      toast.success("Foto berhasil di-enhance ✨");
+
+      setEnhancePreview({
+        index: idx,
+        originalUrl: dataUrl,
+        enhancedUrl,
+        style,
+      });
+
+      toast.success("Preview Enhance AI siap direview ✨");
     } catch (e) {
       toast.error(formatApiError(e.response?.data?.detail) || "Gagal enhance foto");
     } finally {
       setEnhancingIdx(null);
     }
+  };
+
+  const applyEnhancePreview = () => {
+    if (!enhancePreview) return;
+
+    setImages((arr) =>
+      arr.map((value, index) =>
+        index === enhancePreview.index ? enhancePreview.enhancedUrl : value
+      )
+    );
+
+    setEnhancePreview(null);
+    toast.success("Hasil Enhance AI dipakai untuk foto produk.");
+  };
+
+  const closeEnhancePreview = () => {
+    setEnhancePreview(null);
   };
 
   useEffect(() => {
@@ -80,6 +165,7 @@ export default function EditProductDialog({ product, shop, categories = [], open
       ? product.images
       : (product.image_data ? [product.image_data] : []);
     setImages(imgs.map((i) => (i?.startsWith("data:") ? i : `data:image/png;base64,${i}`)));
+    setEnhancePreview(null);
   }, [product]);
 
   const toggleDay = (d) => {
@@ -314,6 +400,92 @@ export default function EditProductDialog({ product, shop, categories = [], open
             <Save className="w-4 h-4 mr-2" /> {saving ? "Menyimpan…" : "Simpan"}
           </Button>
         </DialogFooter>
+      
+        {enhancePreview ? (
+          <div
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 px-4 py-6"
+            data-testid="product-image-enhance-preview"
+          >
+            <div className="w-full max-w-4xl rounded-[2rem] border border-brand-line bg-white p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-mute">
+                    Enhance AI
+                  </p>
+                  <h3 className="mt-1 font-heading text-2xl font-extrabold text-brand-ink">
+                    Preview foto produk siap jual
+                  </h3>
+                  <p className="mt-1 text-sm text-brand-mute">
+                    Mode: {getEnhanceStyleLabel(enhancePreview.style)}. Original tetap aman sampai kamu klik “Gunakan Hasil Ini”.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeEnhancePreview}
+                  className="rounded-full border border-brand-line px-3 py-1 text-sm font-black text-brand-ink hover:bg-brand-off"
+                  aria-label="Tutup preview enhance"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="rounded-3xl border border-brand-line bg-brand-off p-3">
+                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-brand-mute">Sebelum</div>
+                  <div className="aspect-square overflow-hidden rounded-2xl bg-white">
+                    <img
+                      src={enhancePreview.originalUrl}
+                      alt="Foto produk sebelum enhance"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-brand-line bg-brand-off p-3">
+                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-brand-mute">Hasil AI</div>
+                  <div className="aspect-square overflow-hidden rounded-2xl bg-white">
+                    <img
+                      src={enhancePreview.enhancedUrl}
+                      alt="Foto produk hasil enhance AI"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => enhanceImage(enhancePreview.index)}
+                  disabled={enhancingIdx !== null}
+                  className="rounded-xl border border-brand-line px-4 py-2 text-sm font-black text-brand-ink hover:bg-brand-off disabled:cursor-not-allowed disabled:opacity-60"
+                  data-testid="product-image-enhance-retry"
+                >
+                  {enhancingIdx !== null ? "Membuat ulang..." : "Coba Lagi"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={closeEnhancePreview}
+                  className="rounded-xl border border-brand-line px-4 py-2 text-sm font-black text-brand-ink hover:bg-brand-off"
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="button"
+                  onClick={applyEnhancePreview}
+                  className="rounded-xl bg-brand px-4 py-2 text-sm font-black text-white hover:bg-brand-hover"
+                  data-testid="product-image-enhance-apply"
+                >
+                  Gunakan Hasil Ini
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
       </DialogContent>
     </Dialog>
   );

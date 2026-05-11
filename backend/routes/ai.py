@@ -38,18 +38,40 @@ async def ai_enhance_image(data: AIEnhanceIn, request: Request):
     if img_b64.startswith("data:"):
         img_b64 = img_b64.split(",", 1)[-1]
 
+    # LAPAKIN_PRODUCT_IMAGE_ENHANCE_V15
+    product_name = str(data.product_name or "").strip()
+    business_type = str(data.business_type or "").strip()
+    product_category = str(data.product_category or "").strip()
+    style = str(data.style or "clean").strip()
+
     style_hint = {
-        "clean": "clean studio backdrop in soft warm cream color (#FDFBF7), bright even soft lighting, slight shadow, professional product photography",
-        "lifestyle": "warm lifestyle context with natural wooden surface and soft window light, cozy Indonesian cafe vibe, shallow depth of field",
-        "minimal": "pure minimal background, off-white seamless paper, sharp focus, high-key e-commerce style",
-    }.get(data.style or "clean", "clean white background, professional lighting")
+        "clean": "clean premium studio setup, soft warm cream background (#FDFBF7), natural contact shadow, bright even lighting, centered product, e-commerce ready",
+        "product_studio": "premium marketplace product photo, soft off-white background, subtle surface shadow, clean crop, crisp details, polished but realistic",
+        "food_appetizing": "warm appetizing food photography, clean cream table surface, natural soft shadow, richer but realistic food colors, fresh and inviting Indonesian home-cooking feel",
+        "lifestyle": "simple lifestyle scene with warm neutral surface, soft window light, minimal props, product remains the main focus",
+        "warm_lifestyle": "warm handmade/local product scene, neutral textured surface, subtle artisan mood, soft shadow, uncluttered background",
+        "minimal": "minimal high-key e-commerce photo, off-white seamless paper, sharp focus, clean edges, subtle realistic shadow",
+    }.get(style, "clean premium studio setup, soft warm cream background, professional lighting")
+
+    context_bits = []
+    if product_name:
+        context_bits.append(f"Product name: {product_name}.")
+    if business_type:
+        context_bits.append(f"Business type: {business_type}.")
+    if product_category:
+        context_bits.append(f"Product category: {product_category}.")
+
+    context = " ".join(context_bits)
 
     prompt = (
-        f"Reimagine this product photo as a professional product shot for an Indonesian online shop. "
-        f"Keep the EXACT same product unchanged in shape, color, branding and details. "
-        f"Improve lighting and place it on {style_hint}. "
-        f"Make the product look attractive, sharp, and ready for e-commerce. "
-        f"Output a single high-quality image only."
+        f"Enhance this product photo for an Indonesian UMKM online storefront. "
+        f"{context} "
+        f"Keep the EXACT same product, food, packaging, label, shape, color, quantity, and branding. "
+        f"Do not invent new toppings, ingredients, logos, text, packaging, or extra items. "
+        f"Do not crop out important parts of the product. "
+        f"Improve framing, center the subject, fix exposure, improve contrast, clean visual clutter, and use {style_hint}. "
+        f"Make it look more attractive and ready for product cards, catalog, and storefront hero, while staying realistic. "
+        f"Output one final high-quality image only."
     )
     try:
         out = await chat_image_edit(prompt, img_b64)

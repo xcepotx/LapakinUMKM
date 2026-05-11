@@ -188,7 +188,11 @@ class AICoverIn(BaseModel):
 
 class AIEnhanceIn(BaseModel):
     image_base64: str  # raw base64, no data: prefix
-    style: Optional[str] = "clean"  # clean / lifestyle / minimal
+    style: Optional[str] = "clean"  # clean / lifestyle / minimal / food_appetizing / product_studio / warm_lifestyle
+    # LAPAKIN_PRODUCT_IMAGE_ENHANCE_V15
+    product_name: Optional[str] = ""
+    business_type: Optional[str] = ""
+    product_category: Optional[str] = ""
 
 
 # ---- Admin ----
