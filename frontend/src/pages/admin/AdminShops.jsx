@@ -3,19 +3,21 @@ import api, { formatApiError } from "@/lib/api";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Star, StarOff, Power, ExternalLink, Search } from "lucide-react";
+import { Star, StarOff, Power, ExternalLink, Search, Trash2} from "lucide-react";
 import { toast } from "sonner";
 
 export default function AdminShops() {
   const [shops, setShops] = useState([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
+  // LAPAKIN_ADMIN_SHOP_SOFT_DELETE_V1
+  const [deletingId, setDeletingId] = useState("");
 
   const load = async (search = "") => {
     setLoading(true);
     try {
       const { data } = await api.get(`/admin/shops`, { params: { q: search } });
-      setShops(data || []);
+      setShops((data || []).filter((shop) => !shop.deleted_at && shop.status !== "deleted"));
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
@@ -36,6 +38,47 @@ export default function AdminShops() {
       toast.success(next ? "Ditandai unggulan" : "Dihapus dari unggulan");
       setShops((arr) => arr.map((x) => x.shop_id === s.shop_id ? { ...x, featured: next } : x));
     } catch (e) { toast.error("Gagal"); }
+  };
+
+  // LAPAKIN_ADMIN_SHOP_SOFT_DELETE_V1
+  const softDeleteShop = async (s) => {
+    if (!s?.shop_id) return;
+
+    const slug = String(s.slug || "").trim();
+    const typed = window.prompt(
+      `Hapus toko "${s.name || slug}"?\n\n` +
+      "Ini adalah soft delete: produk, sales, leads, dan analytics tetap disimpan, " +
+      "tapi toko tidak tampil publik dan hilang dari list admin.\n\n" +
+      `Ketik slug toko untuk konfirmasi: ${slug}`
+    );
+
+    if (typed === null) return;
+
+    if (typed.trim() !== slug) {
+      toast.error("Konfirmasi gagal. Slug tidak cocok.");
+      return;
+    }
+
+    if (!window.confirm(`Konfirmasi terakhir: hapus/arsipkan toko "${s.name || slug}" sekarang?`)) return;
+
+    setDeletingId(s.shop_id);
+
+    try {
+      const { data } = await api.delete(`/admin/shops/${s.shop_id}`);
+      const counts = data?.dependency_counts || {};
+      const totalDependencies = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+
+      setShops((arr) => arr.filter((x) => x.shop_id !== s.shop_id));
+      toast.success(
+        totalDependencies
+          ? `Toko dihapus. ${totalDependencies} data terkait tetap diarsipkan.`
+          : "Toko dihapus."
+      );
+    } catch (e) {
+      toast.error(formatApiError(e.response?.data?.detail) || "Gagal menghapus toko");
+    } finally {
+      setDeletingId("");
+    }
   };
 
   return (
@@ -119,6 +162,17 @@ export default function AdminShops() {
                           className={s.status === "suspended" ? "text-green-700" : "text-red-600"}
                           data-testid={`status-${s.shop_id}`}>
                           <Power className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => softDeleteShop(s)}
+                          disabled={deletingId === s.shop_id}
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                          title="Hapus toko"
+                          data-testid={`delete-${s.shop_id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </td>

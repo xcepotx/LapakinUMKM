@@ -2656,3 +2656,109 @@ async def admin_ai_usage(request: Request, days: int = 30):
         top.append({"user_id": doc["_id"], "count": doc["count"],
                     "email": (u or {}).get("email"), "name": (u or {}).get("name")})
     return {"series": series, "totals": totals, "top_users": top, "days": days}
+
+
+# LAPAKIN_ADMIN_SHOP_SOFT_DELETE_V1
+@router.delete("/admin/shops/{shop_id}")
+async def admin_soft_delete_shop(shop_id: str, request: Request):
+    """Soft delete toko dari admin.
+
+    Tidak melakukan hard delete dependency seperti products, sales, leads,
+    analytics, stories, payment, atau audit. Toko dibuat tidak tampil publik,
+    tidak featured, dan owner aktif dipindah/unset bila perlu.
+    """
+    admin = await require_admin(request)
+    admin_user = admin
+    shop = await db.shops.find_one({"shop_id": shop_id}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    dependency_collections = {
+        "products": "products",
+        "product_categories": "product_categories",
+        "sales": "sales",
+        "orders": "orders",
+        "storefront_leads": "storefront_leads",
+        "storefront_events": "storefront_events",
+        "analytics_events": "analytics_events",
+        "stories": "stories",
+    }
+
+    dependency_counts = {}
+    for label, collection_name in dependency_collections.items():
+        try:
+            dependency_counts[label] = await getattr(db, collection_name).count_documents({"shop_id": shop_id})
+        except Exception:
+            dependency_counts[label] = 0
+
+    now = datetime.utcnow().isoformat()
+    actor = admin_user if isinstance(admin_user, dict) else {}
+    actor_id = actor.get("user_id") or actor.get("email") or actor.get("name") or "admin"
+
+    await db.shops.update_one(
+        {"shop_id": shop_id},
+        {
+            "$set": {
+                "status": "suspended",
+                "is_active": False,
+                "featured": False,
+                "deleted_at": now,
+                "deleted_by": actor_id,
+                "delete_reason": "admin_soft_delete",
+                "updated_at": now,
+            }
+        },
+    )
+
+    owner_user_id = shop.get("owner_user_id")
+    switched_active_shop_id = None
+
+    if owner_user_id:
+        owner = await db.users.find_one({"user_id": owner_user_id}, {"_id": 0})
+        if owner and owner.get("shop_id") == shop_id:
+            replacement = await db.shops.find_one(
+                {
+                    "owner_user_id": owner_user_id,
+                    "shop_id": {"$ne": shop_id},
+                    "deleted_at": {"$exists": False},
+                    "status": {"$ne": "suspended"},
+                },
+                {"_id": 0},
+            )
+
+            if replacement:
+                switched_active_shop_id = replacement.get("shop_id")
+                await db.users.update_one(
+                    {"user_id": owner_user_id},
+                    {"$set": {"shop_id": switched_active_shop_id, "updated_at": now}},
+                )
+            else:
+                await db.users.update_one(
+                    {"user_id": owner_user_id},
+                    {"$unset": {"shop_id": ""}, "$set": {"updated_at": now}},
+                )
+
+    try:
+        await db.admin_audit_logs.insert_one(
+            {
+                "action": "shop_delete",
+                "shop_id": shop_id,
+                "shop_slug": shop.get("slug"),
+                "shop_name": shop.get("name"),
+                "actor": actor_id,
+                "dependency_counts": dependency_counts,
+                "created_at": now,
+            }
+        )
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "soft_deleted": True,
+        "shop_id": shop_id,
+        "slug": shop.get("slug"),
+        "dependency_counts": dependency_counts,
+        "owner_active_shop_id": switched_active_shop_id,
+    }
+
