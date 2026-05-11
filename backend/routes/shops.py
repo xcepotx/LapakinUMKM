@@ -1604,10 +1604,38 @@ def _website_ai_layout_variant_mode_style(variant: str) -> tuple[str, str]:
 
 
 
-@router.post("/shops/website-ai/generate")
-async def generate_shop_website_ai(request: Request):
-    user = await require_user(request)
 
+# LAPAKIN_AI_DRAFT_BEFORE_APPLY_V1
+AI_WEBSITE_DRAFT_FIELDS = {
+    "storefront_renderer",
+    "storefront_mode",
+    "storefront_style",
+    "storefront_layout_variant",
+    "storefront_hero_title",
+    "storefront_hero_subtitle",
+    "storefront_cta_label",
+    "storefront_featured_title",
+    "storefront_about_title",
+    "storefront_promo_title",
+    "storefront_promo_text",
+    "storefront_seo_title",
+    "storefront_seo_description",
+    "storefront_featured_product_ids",
+}
+
+
+def _filter_website_ai_draft_payload(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        return {}
+
+    return {
+        key: value
+        for key, value in payload.items()
+        if key in AI_WEBSITE_DRAFT_FIELDS
+    }
+
+
+async def _build_shop_website_ai_draft(user: dict):
     if not user.get("shop_id"):
         raise HTTPException(status_code=400, detail="Belum punya toko")
 
@@ -1673,25 +1701,60 @@ async def generate_shop_website_ai(request: Request):
         current=current_copy,
     ))
 
-    update_payload = {
+    draft_payload = {
         "storefront_renderer": "template",
         "storefront_mode": storefront_mode,
         "storefront_style": storefront_style,
         "storefront_layout_variant": storefront_layout_variant,
         **copy,
         "storefront_featured_product_ids": _website_ai_pick_featured_product_ids(products, featured_limit),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
     if not shop.get("storefront_seo_title"):
-        update_payload["storefront_seo_title"] = f"{shop.get('name') or 'Toko UMKM'} · Lapakin"
+        draft_payload["storefront_seo_title"] = f"{shop.get('name') or 'Toko UMKM'} · Lapakin"
     if not shop.get("storefront_seo_description"):
-        update_payload["storefront_seo_description"] = (
+        draft_payload["storefront_seo_description"] = (
             shop.get("description")
             or shop.get("tagline")
             or "Toko online UMKM Indonesia di Lapakin."
         )[:160]
 
+    draft_payload = _filter_website_ai_draft_payload(draft_payload)
+    draft_payload = _apply_storefront_tier_guard(draft_payload, user)
+    draft_payload = _normalize_shop_settings_payload(draft_payload)
+
+    return {
+        "ok": True,
+        "source": source,
+        "message": "Draft website berhasil dibuat dengan AI.",
+        "generated": draft_payload,
+        "readiness": readiness,
+        "shop_slug": shop.get("slug"),
+        "storefront_url": f"/toko/{shop.get('slug')}" if shop.get("slug") else "",
+        "applied": False,
+    }
+
+
+async def _apply_shop_website_ai_draft(user: dict, raw_payload: dict):
+    if not user.get("shop_id"):
+        raise HTTPException(status_code=400, detail="Belum punya toko")
+
+    shop = await db.shops.find_one({"shop_id": user["shop_id"]}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    products = await db.products.find(
+        {"shop_id": user["shop_id"]},
+        {"_id": 0},
+    ).sort("sort_order", 1).to_list(length=500)
+
+    draft = raw_payload.get("generated") or raw_payload.get("draft") or raw_payload
+    update_payload = _filter_website_ai_draft_payload(draft)
+
+    if not update_payload:
+        raise HTTPException(status_code=400, detail="Draft website kosong atau tidak valid")
+
+    update_payload["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_payload = _apply_storefront_tier_guard(update_payload, user)
     update_payload = _normalize_shop_settings_payload(update_payload)
 
@@ -1708,13 +1771,43 @@ async def generate_shop_website_ai(request: Request):
 
     return {
         "ok": True,
-        "source": source,
-        "message": "Draft website berhasil dibuat dengan AI.",
+        "source": raw_payload.get("source") or "draft",
+        "message": "Draft website AI berhasil diterapkan.",
         "generated": update_payload,
         "readiness": readiness_after,
         "shop_slug": updated_shop.get("slug") or shop.get("slug"),
         "storefront_url": f"/toko/{updated_shop.get('slug') or shop.get('slug')}" if (updated_shop.get("slug") or shop.get("slug")) else "",
+        "applied": True,
     }
+
+
+@router.post("/shops/website-ai/draft")
+async def draft_shop_website_ai(request: Request):
+    user = await require_user(request)
+    return await _build_shop_website_ai_draft(user)
+
+
+@router.post("/shops/website-ai/apply")
+async def apply_shop_website_ai(request: Request):
+    user = await require_user(request)
+
+    try:
+        raw_payload = await request.json()
+    except Exception:
+        raw_payload = {}
+
+    return await _apply_shop_website_ai_draft(user, raw_payload)
+
+
+@router.post("/shops/website-ai/generate")
+async def generate_shop_website_ai(request: Request):
+    user = await require_user(request)
+    draft = await _build_shop_website_ai_draft(user)
+    applied = await _apply_shop_website_ai_draft(user, draft)
+    applied["source"] = draft.get("source")
+    return applied
+
+
 
 
 @router.get("/shops/me")

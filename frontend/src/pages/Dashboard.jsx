@@ -127,6 +127,8 @@ export default function Dashboard() {
   const [generatingWebsiteAi, setGeneratingWebsiteAi] = useState(false);
   // LAPAKIN_AI_PREVIEW_REGENERATE_V2
   const [websiteAiPreview, setWebsiteAiPreview] = useState(null);
+  // LAPAKIN_DASHBOARD_AI_DRAFT_BEFORE_APPLY_V1
+  const [applyingWebsiteAi, setApplyingWebsiteAi] = useState(false);
   const [readinessPanelOpen, setReadinessPanelOpen] = useState(false);
 
   const salesSummaryKey = `lapakin_sales_summary_collapsed_${user?.user_id || "user"}`;
@@ -247,7 +249,7 @@ export default function Dashboard() {
 
     setGeneratingWebsiteAi(true);
     try {
-      const { data } = await api.post("/shops/website-ai/generate");
+      const { data } = await api.post("/shops/website-ai/draft");
       setWebsiteAiPreview(data || null);
       // LAPAKIN_AI_PREVIEW_NO_SETTINGS_REDIRECT_V1
       // Tetap di dashboard agar owner bisa review hasil AI, lihat website, atau generate ulang.
@@ -277,6 +279,49 @@ export default function Dashboard() {
       setGeneratingWebsiteAi(false);
     }
   };
+
+  // LAPAKIN_DASHBOARD_AI_DRAFT_BEFORE_APPLY_V1
+  const handleApplyWebsiteAiDraft = async () => {
+    if (!websiteAiPreview?.generated) {
+      toast.error("Draft website AI belum tersedia.");
+      return;
+    }
+
+    setApplyingWebsiteAi(true);
+
+    try {
+      const { data } = await api.post("/shops/website-ai/apply", {
+        generated: websiteAiPreview.generated,
+        source: websiteAiPreview.source,
+      });
+
+      setWebsiteAiPreview({
+        ...(data || {}),
+        applied: true,
+      });
+
+      if (data?.readiness) {
+        setReadiness(data.readiness);
+        try {
+          sessionStorage.setItem(readinessCacheKey, JSON.stringify(data.readiness));
+        } catch {
+          // ignore storage errors
+        }
+      }
+
+      toast.success(data?.message || "Draft website AI siap direview.");
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      const message =
+        typeof detail === "string"
+          ? detail
+          : detail?.message || "Gagal menerapkan draft website AI";
+      toast.error(message);
+    } finally {
+      setApplyingWebsiteAi(false);
+    }
+  };
+
 
   useEffect(() => {
     (async () => {
@@ -426,8 +471,10 @@ export default function Dashboard() {
         open={!!websiteAiPreview}
         result={websiteAiPreview}
         generating={generatingWebsiteAi}
+        applying={applyingWebsiteAi}
         onClose={() => setWebsiteAiPreview(null)}
         onRegenerate={handleGenerateWebsiteAi}
+        onApply={handleApplyWebsiteAiDraft}
       />
 {user?.trial_expired && !user?.trial && (
       <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 p-5 text-orange-950 shadow-sm">
@@ -1016,7 +1063,7 @@ export default function Dashboard() {
 
 
 // LAPAKIN_AI_PREVIEW_REGENERATE_V2
-function WebsiteAiPreviewPanel({ open, result, generating, onClose, onRegenerate }) {
+function WebsiteAiPreviewPanel({ open, result, generating, applying, onClose, onRegenerate, onApply }) {
   if (!open || !result) return null;
 
   const generated = result.generated || {};
@@ -1040,10 +1087,10 @@ function WebsiteAiPreviewPanel({ open, result, generating, onClose, onRegenerate
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-mute">Website AI</p>
             <h2 className="mt-1 font-heading text-2xl font-extrabold text-brand-ink">
-              Draft website AI berhasil diterapkan
+              {result.applied ? "Draft website AI berhasil diterapkan" : "Draft website AI siap direview"}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-brand-mute">
-              Lapakin memilih desain dari variant stabil, lalu memperbarui copy website tanpa membuat kode UI bebas.
+              {result.applied ? "Draft sudah diterapkan ke storefront aktif." : "Lapakin membuat draft dari variant stabil. Review dulu sebelum diterapkan ke storefront aktif."}
             </p>
           </div>
 
@@ -1094,6 +1141,18 @@ function WebsiteAiPreviewPanel({ open, result, generating, onClose, onRegenerate
             >
               Lihat Website
             </a>
+          ) : null}
+
+          {!result.applied ? (
+            <button
+              type="button"
+              onClick={onApply}
+              disabled={applying || generating}
+              className="inline-flex rounded-xl bg-brand px-4 py-2 text-sm font-black text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              data-testid="website-ai-apply-draft-btn"
+            >
+              {applying ? "Menerapkan..." : "Gunakan Draft Ini"}
+            </button>
           ) : null}
 
           <button
