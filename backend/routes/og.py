@@ -85,6 +85,28 @@ def _lapakin_optimize_og_png(png: bytes) -> bytes:
         return png
 
 
+
+
+# LAPAKIN_PRODUCT_SHARE_OG_V1
+def _format_og_price(value) -> str:
+    try:
+        amount = int(float(value or 0))
+    except Exception:
+        amount = 0
+
+    if amount <= 0:
+        return ""
+
+    return "Rp " + f"{amount:,}".replace(",", ".")
+
+
+# LAPAKIN_PRODUCT_SHARE_OG_V1
+def _compact_og_text(*parts, limit: int = 200) -> str:
+    value = " ".join(str(part or "").strip() for part in parts if str(part or "").strip())
+    value = re.sub(r"\s+", " ", value).strip()
+    return value[:limit]
+
+
 # ---------- Shop OG PNG ----------
 @router.api_route("/og/shop/{slug}.png", methods=["GET", "HEAD"])
 async def og_image(slug: str):
@@ -137,21 +159,65 @@ async def og_html(slug: str, request: Request):
         desc = "Toko UMKM ini sudah tidak tersedia di Lapakin."
         og_img_url = ""
     else:
-        title = f"{shop.get('name') or 'Toko'} · Lapakin"
-        desc = (shop.get("storefront_seo_description") or shop.get("tagline") or shop.get("description")
-                or shop.get("about") or "Toko online UMKM Indonesia di Lapakin.")[:200]
-        og_img_version = _lapakin_og_version(
-            shop.get("shop_id"),
-            shop.get("name"),
-            shop.get("tagline"),
-            shop.get("description"),
-            shop.get("brand_color"),
-            shop.get("cover_image"),
-            shop.get("storefront_seo_image"),
-        )
-        og_img_url = shop.get("storefront_seo_image") or f"{base}/api/og/shop/{slug}.png?v={og_img_version}"
+        # LAPAKIN_PRODUCT_SHARE_OG_V1
+        # Jika URL toko punya ?product=<product_id>, crawler social harus melihat OG produk,
+        # sedangkan human tetap melihat storefront dan popup produk.
+        product_id = (request.query_params.get("product") or request.query_params.get("product_id") or "").strip()
+        product = None
 
-    canonical = f"{base}/toko/{slug}"
+        if product_id:
+            product = await db.products.find_one({
+                "product_id": product_id,
+                "shop_id": shop.get("shop_id"),
+            }, {"_id": 0})
+
+            if product and product.get("is_active") is False:
+                product = None
+
+        if product:
+            product_name = product.get("name") or product.get("product_name") or "Produk"
+            shop_name = shop.get("name") or "Toko"
+            product_price = _format_og_price(product.get("price"))
+            product_desc = product.get("description") or product.get("caption") or ""
+            title = f"{product_name} · {shop_name}"
+            desc = _compact_og_text(product_price, "—" if product_price and product_desc else "", product_desc or shop.get("tagline") or shop.get("description"), limit=200)
+
+            og_img_version = _lapakin_og_version(
+                shop.get("shop_id"),
+                shop.get("name"),
+                product.get("product_id"),
+                product.get("name"),
+                product.get("price"),
+                product.get("description"),
+                product.get("image_url"),
+                product.get("updated_at"),
+            )
+            og_img_url = f"{base}/api/og/product/{product_id}/post.png?v={og_img_version}"
+            canonical = f"{base}/toko/{slug}?product={product_id}"
+            og_img_width = "1080"
+            og_img_height = "1080"
+        else:
+            title = f"{shop.get('name') or 'Toko'} · Lapakin"
+            desc = (shop.get("storefront_seo_description") or shop.get("tagline") or shop.get("description")
+                    or shop.get("about") or "Toko online UMKM Indonesia di Lapakin.")[:200]
+            og_img_version = _lapakin_og_version(
+                shop.get("shop_id"),
+                shop.get("name"),
+                shop.get("tagline"),
+                shop.get("description"),
+                shop.get("brand_color"),
+                shop.get("cover_image"),
+                shop.get("storefront_seo_image"),
+            )
+            og_img_url = shop.get("storefront_seo_image") or f"{base}/api/og/shop/{slug}.png?v={og_img_version}"
+            canonical = f"{base}/toko/{slug}"
+            og_img_width = "1200"
+            og_img_height = "630"
+
+    if not shop or shop.get("status") == "suspended":
+        canonical = f"{base}/toko/{slug}"
+        og_img_width = "1200"
+        og_img_height = "630"
     html = f"""<!doctype html>
 <html lang="id">
 <head>
@@ -168,8 +234,8 @@ async def og_html(slug: str, request: Request):
 {f'<meta property="og:image" content="{og_img_url}" />' if og_img_url else ''}
 {f'<meta property="og:image:secure_url" content="{og_img_url}" />' if og_img_url else ''}
 {'<meta property="og:image:type" content="image/png" />' if og_img_url else ''}
-{'<meta property="og:image:width" content="1200" />' if og_img_url else ''}
-{'<meta property="og:image:height" content="630" />' if og_img_url else ''}
+{f'<meta property="og:image:width" content="{og_img_width}" />' if og_img_url else ''}
+{f'<meta property="og:image:height" content="{og_img_height}" />' if og_img_url else ''}
 <meta property="og:locale" content="id_ID" />
 <!-- Twitter -->
 <meta name="twitter:card" content="summary_large_image" />
@@ -195,6 +261,7 @@ async def product_card_post(product_id: str):
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     shop = await db.shops.find_one({"shop_id": product.get("shop_id")}, {"_id": 0}) or {}
     png = render_product_card(product, shop, "post")
+    png = _lapakin_optimize_og_png(png)
     return FastResponse(content=png, media_type="image/png",
                         headers={"Cache-Control": "public, max-age=600"})
 
@@ -206,6 +273,7 @@ async def product_card_story(product_id: str):
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     shop = await db.shops.find_one({"shop_id": product.get("shop_id")}, {"_id": 0}) or {}
     png = render_product_card(product, shop, "story")
+    png = _lapakin_optimize_og_png(png)
     return FastResponse(content=png, media_type="image/png",
                         headers={"Cache-Control": "public, max-age=600"})
 

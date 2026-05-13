@@ -803,6 +803,96 @@ function clearProductDetailUrl() {
   window.history.replaceState({}, "", url.toString());
 }
 
+
+// LAPAKIN_PRODUCT_SHARE_COPY_TOAST_V1
+async function copyStorefrontProductShareLink(link) {
+  const value = String(link || "").trim();
+  if (!value) return false;
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // fallback below
+  }
+
+  try {
+    if (typeof document !== "undefined") {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      textarea.style.top = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, value.length);
+      const copied = document.execCommand("copy");
+      document.body.removeChild(textarea);
+
+      if (copied) return true;
+    }
+  } catch {
+    // fallback below
+  }
+
+  if (typeof window !== "undefined") {
+    window.prompt("Salin link produk:", value);
+  }
+
+  return false;
+}
+
+// LAPAKIN_PRODUCT_SHARE_COPY_TOAST_V1
+function showStorefrontProductShareToast(message = "Link produk sudah disalin") {
+  if (typeof document === "undefined") return;
+
+  const toastId = "lapakin-product-share-copy-toast";
+  const oldToast = document.getElementById(toastId);
+  if (oldToast) oldToast.remove();
+
+  const toast = document.createElement("div");
+  toast.id = toastId;
+  toast.setAttribute("role", "status");
+  toast.setAttribute("aria-live", "polite");
+  toast.textContent = message;
+
+  Object.assign(toast.style, {
+    position: "fixed",
+    left: "50%",
+    bottom: "24px",
+    transform: "translateX(-50%)",
+    zIndex: "2147483647",
+    padding: "10px 14px",
+    borderRadius: "999px",
+    background: "rgba(17, 24, 39, 0.94)",
+    color: "#fff",
+    fontSize: "13px",
+    fontWeight: "800",
+    lineHeight: "1",
+    boxShadow: "0 16px 40px rgba(15, 23, 42, 0.28)",
+    pointerEvents: "none",
+    opacity: "0",
+    transition: "opacity 160ms ease, transform 160ms ease",
+  });
+
+  document.body.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.style.opacity = "1";
+    toast.style.transform = "translateX(-50%) translateY(-4px)";
+  });
+
+  window.setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateX(-50%) translateY(4px)";
+    window.setTimeout(() => toast.remove(), 180);
+  }, 1800);
+}
+
+
 function ProductDetailModal({ open, product, index = 0, shop, onClose, onAddToCart }) {
   if (!open || !product) return null;
 
@@ -816,31 +906,9 @@ function ProductDetailModal({ open, product, index = 0, shop, onClose, onAddToCa
   const shareUrl = getProductDetailShareUrl(product, index);
 
   const shareProduct = async () => {
-    const text = [
-      name,
-      price ? formatPrice(price) : "",
-      description,
-    ].filter(Boolean).join("\n");
-
-    try {
-      if (navigator?.share) {
-        await navigator.share({
-          title: name,
-          text,
-          url: shareUrl,
-        });
-        return;
-      }
-
-      await navigator.clipboard.writeText(shareUrl);
-      window.alert("Link produk berhasil disalin.");
-    } catch {
-      try {
-        await navigator.clipboard.writeText(shareUrl);
-        window.alert("Link produk berhasil disalin.");
-      } catch {
-        window.prompt("Salin link produk:", shareUrl);
-      }
+    const copied = await copyStorefrontProductShareLink(shareUrl);
+    if (copied) {
+      showStorefrontProductShareToast("Link produk sudah disalin");
     }
   };
 
@@ -1323,23 +1391,9 @@ function ProductQuickViewModal({
       : productLink;
 
   const handleShare = async () => {
-    try {
-      if (typeof navigator === "undefined") return;
-
-      if (navigator.share) {
-        await navigator.share({
-          title: name,
-          text: `${name} - ${formatPrice(price)}`,
-          url: productLink,
-        });
-        return;
-      }
-
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(productLink);
-      }
-    } catch {
-      // Best effort only.
+    const copied = await copyStorefrontProductShareLink(productLink);
+    if (copied) {
+      showStorefrontProductShareToast("Link produk sudah disalin");
     }
   };
 
