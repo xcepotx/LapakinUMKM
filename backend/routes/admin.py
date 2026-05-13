@@ -4160,3 +4160,171 @@ async def admin_tenant_timeline(shop_id: str, request: Request, limit: int = 60)
         },
     }
 
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2C_SUPPORT_CASE_V1
+class AdminTenantSupportCaseIn(BaseModel):
+    status: Optional[str] = "open"
+    priority: Optional[str] = "normal"
+    summary: Optional[str] = ""
+    next_step: Optional[str] = ""
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2C_SUPPORT_CASE_V1
+def _admin_tenant_support_case_clean(value, limit=1000):
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2C_SUPPORT_CASE_V1
+def _admin_tenant_support_case_default(shop_id: str, shop: dict):
+    return {
+        "case_id": f"case_{shop_id}",
+        "shop_id": shop_id,
+        "shop_name": (shop or {}).get("name"),
+        "shop_slug": (shop or {}).get("slug"),
+        "status": "open",
+        "priority": "normal",
+        "summary": "",
+        "next_step": "",
+        "created_at": None,
+        "updated_at": None,
+        "created_by_email": "",
+        "updated_by_email": "",
+        "is_default": True,
+    }
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2C_SUPPORT_CASE_V1
+@router.get("/admin/tenant-view/{shop_id}/case")
+async def admin_tenant_support_case_get(shop_id: str, request: Request):
+    await require_admin(request)
+
+    shop = await _admin_tenant_timeline_shop(shop_id)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    item = await db.admin_support_cases.find_one(
+        {"shop_id": shop_id},
+        {"_id": 0},
+        sort=[("updated_at", -1)],
+    )
+
+    return {
+        "item": item or _admin_tenant_support_case_default(shop_id, shop),
+    }
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2C_SUPPORT_CASE_V1
+@router.patch("/admin/tenant-view/{shop_id}/case")
+async def admin_tenant_support_case_update(shop_id: str, data: AdminTenantSupportCaseIn, request: Request):
+    from datetime import datetime, timezone
+
+    admin = await require_admin(request)
+
+    shop = await _admin_tenant_timeline_shop(shop_id)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    status = str(data.status or "open").strip().lower()
+    if status not in {"open", "in_progress", "resolved"}:
+        raise HTTPException(status_code=400, detail="Status harus open, in_progress, atau resolved")
+
+    priority = str(data.priority or "normal").strip().lower()
+    if priority not in {"low", "normal", "high", "urgent"}:
+        priority = "normal"
+
+    summary = _admin_tenant_support_case_clean(data.summary, 1200)
+    next_step = _admin_tenant_support_case_clean(data.next_step, 1200)
+
+    now = datetime.now(timezone.utc).isoformat()
+    existing = await db.admin_support_cases.find_one({"shop_id": shop_id}, {"_id": 0})
+
+    set_on_insert = {
+        "case_id": f"case_{shop_id}",
+        "shop_id": shop_id,
+        "shop_name": shop.get("name"),
+        "shop_slug": shop.get("slug"),
+        "created_at": now,
+        "created_by_user_id": (admin or {}).get("user_id"),
+        "created_by_email": (admin or {}).get("email"),
+    }
+
+    update = {
+        "status": status,
+        "priority": priority,
+        "summary": summary,
+        "next_step": next_step,
+        "updated_at": now,
+        "updated_by_user_id": (admin or {}).get("user_id"),
+        "updated_by_email": (admin or {}).get("email"),
+    }
+
+    if status == "resolved":
+        update["resolved_at"] = now
+        update["resolved_by_email"] = (admin or {}).get("email")
+    else:
+        update["resolved_at"] = None
+        update["resolved_by_email"] = ""
+
+    await db.admin_support_cases.update_one(
+        {"shop_id": shop_id},
+        {
+            "$setOnInsert": set_on_insert,
+            "$set": update,
+        },
+        upsert=True,
+    )
+
+    item = await db.admin_support_cases.find_one({"shop_id": shop_id}, {"_id": 0})
+
+    previous_status = (existing or {}).get("status")
+    previous_priority = (existing or {}).get("priority")
+
+    timeline_description = "\n".join([
+        f"Status: {previous_status or '-'} → {status}",
+        f"Priority: {previous_priority or '-'} → {priority}",
+        f"Summary: {summary or '-'}",
+        f"Next step: {next_step or '-'}",
+    ])
+
+    try:
+        await _admin_tenant_timeline_record(
+            shop_id,
+            shop,
+            "support_case",
+            "Support case updated",
+            timeline_description,
+            admin,
+            {
+                "status": status,
+                "priority": priority,
+                "previous_status": previous_status,
+                "previous_priority": previous_priority,
+            },
+        )
+    except Exception:
+        pass
+
+    try:
+        await log_admin_action(
+            admin,
+            "tenant_support_case_update",
+            "shop",
+            shop_id,
+            {
+                "shop_name": shop.get("name"),
+                "slug": shop.get("slug"),
+                "status": status,
+                "priority": priority,
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "item": item,
+    }
+

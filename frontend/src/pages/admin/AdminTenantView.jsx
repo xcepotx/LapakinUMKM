@@ -286,6 +286,14 @@ export default function AdminTenantView() {
   const [supportTimeline, setSupportTimeline] = useState([]);
   const [supportTimelineLoading, setSupportTimelineLoading] = useState(false);
 
+  // LAPAKIN_ADMIN_TENANT_VIEW_PHASE2C_SUPPORT_CASE_V1
+  const [supportCase, setSupportCase] = useState(null);
+  const [supportCaseLoading, setSupportCaseLoading] = useState(false);
+  const [caseStatus, setCaseStatus] = useState("open");
+  const [casePriority, setCasePriority] = useState("normal");
+  const [caseSummary, setCaseSummary] = useState("");
+  const [caseNextStep, setCaseNextStep] = useState("");
+
   const [productSearch, setProductSearch] = useState("");
   const [productStatusFilter, setProductStatusFilter] = useState("all");
   const [productCategoryFilter, setProductCategoryFilter] = useState("all");
@@ -480,6 +488,50 @@ export default function AdminTenantView() {
   };
 
   // LAPAKIN_ADMIN_TENANT_VIEW_PHASE2B_OG_TIMELINE_V1
+  // LAPAKIN_ADMIN_TENANT_VIEW_PHASE2C_SUPPORT_CASE_V1
+  const applySupportCase = (item) => {
+    const value = item || null;
+    setSupportCase(value);
+    setCaseStatus(value?.status || "open");
+    setCasePriority(value?.priority || "normal");
+    setCaseSummary(value?.summary || "");
+    setCaseNextStep(value?.next_step || "");
+  };
+
+  const loadSupportCase = async () => {
+    setSupportCaseLoading(true);
+
+    try {
+      const response = await api.get(`/admin/tenant-view/${shopId}/case`);
+      applySupportCase(response.data?.item || null);
+    } catch {
+      applySupportCase(null);
+    } finally {
+      setSupportCaseLoading(false);
+    }
+  };
+
+  const saveSupportCase = async () => {
+    setSupportCaseLoading(true);
+
+    try {
+      const response = await api.patch(`/admin/tenant-view/${shopId}/case`, {
+        status: caseStatus,
+        priority: casePriority,
+        summary: caseSummary,
+        next_step: caseNextStep,
+      });
+
+      applySupportCase(response.data?.item || null);
+      toast.success("Support case disimpan");
+      loadSupportTimeline();
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || "Gagal menyimpan support case");
+    } finally {
+      setSupportCaseLoading(false);
+    }
+  };
+
   const loadSupportTimeline = async () => {
     setSupportTimelineLoading(true);
 
@@ -517,6 +569,7 @@ export default function AdminTenantView() {
 
   useEffect(() => {
     load();
+    loadSupportCase();
     loadSupportTimeline();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shopId]);
@@ -778,7 +831,124 @@ export default function AdminTenantView() {
               ) : null}
             </div>
 
-            {/* LAPAKIN_ADMIN_TENANT_VIEW_PHASE2B_OG_TIMELINE_V1 */}
+            {/* LAPAKIN_ADMIN_TENANT_VIEW_PHASE2C_SUPPORT_CASE_V1 */}
+            <div className="rounded-2xl border border-brand-line bg-white p-5 shadow-card" data-testid="admin-tenant-support-case">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-brand" />
+                    <h2 className="font-heading text-xl font-black text-brand-ink">Support Case Status</h2>
+                  </div>
+                  <p className="mt-1 text-xs text-brand-mute">
+                    Workflow internal admin untuk follow-up issue toko. Tidak terlihat oleh tenant.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs font-black">
+                  <span className={`rounded-full px-3 py-1 ${
+                    caseStatus === "resolved"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : caseStatus === "in_progress"
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-red-50 text-red-700"
+                  }`}>
+                    {caseStatus === "in_progress" ? "In Progress" : caseStatus}
+                  </span>
+                  <span className={`rounded-full px-3 py-1 ${
+                    casePriority === "urgent"
+                      ? "bg-red-50 text-red-700"
+                      : casePriority === "high"
+                        ? "bg-orange-50 text-orange-700"
+                        : "bg-brand-off text-brand-mute"
+                  }`}>
+                    {casePriority}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:grid-cols-4">
+                <label className="block">
+                  <span className="text-xs font-black uppercase text-brand-mute">Status</span>
+                  <select
+                    value={caseStatus}
+                    onChange={(event) => setCaseStatus(event.target.value)}
+                    className="mt-1 h-11 w-full rounded-xl border border-brand-line bg-white px-3 text-sm font-bold text-brand-ink outline-none focus:border-brand"
+                    data-testid="admin-tenant-case-status"
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="resolved">Resolved</option>
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-black uppercase text-brand-mute">Priority</span>
+                  <select
+                    value={casePriority}
+                    onChange={(event) => setCasePriority(event.target.value)}
+                    className="mt-1 h-11 w-full rounded-xl border border-brand-line bg-white px-3 text-sm font-bold text-brand-ink outline-none focus:border-brand"
+                    data-testid="admin-tenant-case-priority"
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </label>
+
+                <div className="lg:col-span-2 rounded-xl bg-brand-off p-3 text-xs text-brand-mute">
+                  <div>Last updated:</div>
+                  <b className="text-brand-ink">{formatDate(supportCase?.updated_at)}</b>
+                  {supportCase?.updated_by_email ? (
+                    <div className="mt-1">by <b>{supportCase.updated_by_email}</b></div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-black uppercase text-brand-mute">Summary masalah</span>
+                  <textarea
+                    value={caseSummary}
+                    onChange={(event) => setCaseSummary(event.target.value)}
+                    placeholder="Contoh: Tenant lapor preview WA tidak update / klik WA tidak tercatat / produk tidak muncul."
+                    rows={4}
+                    className="mt-1 min-h-[112px] w-full rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm font-semibold text-brand-ink outline-none focus:border-brand"
+                    data-testid="admin-tenant-case-summary"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-black uppercase text-brand-mute">Next step</span>
+                  <textarea
+                    value={caseNextStep}
+                    onChange={(event) => setCaseNextStep(event.target.value)}
+                    placeholder="Contoh: Follow up owner besok, minta screenshot WA preview, cek ulang tracking setelah share link baru."
+                    rows={4}
+                    className="mt-1 min-h-[112px] w-full rounded-2xl border border-brand-line bg-white px-4 py-3 text-sm font-semibold text-brand-ink outline-none focus:border-brand"
+                    data-testid="admin-tenant-case-next-step"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-brand-mute">
+                  Case ini internal admin only. Untuk catatan detail harian, pakai Admin Support Notes.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={saveSupportCase}
+                  disabled={supportCaseLoading}
+                  className="inline-flex items-center rounded-xl bg-brand px-4 py-2 text-sm font-black text-white hover:bg-brand-dark disabled:opacity-60"
+                  data-testid="admin-tenant-case-save"
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Save Case
+                </button>
+              </div>
+            </div>
+
             <div className="rounded-2xl border border-brand-line bg-white p-5 shadow-card" data-testid="admin-tenant-support-timeline">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
