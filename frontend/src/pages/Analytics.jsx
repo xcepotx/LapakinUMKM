@@ -16,6 +16,8 @@ export default function Analytics() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState(7);
+  // LAPAKIN_ANALYTICS_CHART_TYPE_SELECTOR_V2
+  const [dailyChartType, setDailyChartType] = useState("bar");
   const [locked, setLocked] = useState(false);
   const { user } = useAuth();
 
@@ -99,7 +101,25 @@ export default function Analytics() {
     </DashboardLayout>
   );
 
-  const maxDaily = Math.max(1, ...data.daily.map((d) => d.visits));
+  // LAPAKIN_ANALYTICS_CHART_TYPE_SELECTOR_V2
+  const maxDaily = Math.max(1, ...data.daily.map((d) => Number(d.visits || 0)));
+  const dailyTotal = data.daily.reduce((sum, d) => sum + Number(d.visits || 0), 0);
+  const dailyChartPoints = data.daily.map((d, index, arr) => {
+    const visits = Number(d.visits || 0);
+    const x = arr.length <= 1 ? 50 : 6 + (index / (arr.length - 1)) * 88;
+    const y = 92 - (visits / maxDaily) * 80;
+
+    return {
+      ...d,
+      visits,
+      x,
+      y,
+    };
+  });
+  const dailyChartPolyline = dailyChartPoints.map((p) => `${p.x},${p.y}`).join(" ");
+  const dailyChartAreaPath = dailyChartPoints.length
+    ? `M ${dailyChartPoints[0].x},100 L ${dailyChartPoints.map((p) => `${p.x},${p.y}`).join(" L ")} L ${dailyChartPoints[dailyChartPoints.length - 1].x},100 Z`
+    : "";
 
   return (
     <DashboardLayout>
@@ -138,19 +158,203 @@ export default function Analytics() {
 
       {/* Daily chart */}
       <div className="bg-white border border-brand-line rounded-2xl p-6 shadow-card mb-6" data-testid="daily-chart">
-        <h2 className="font-heading font-bold text-xl mb-4">Pengunjung Harian</h2>
+        <div className="flex flex-col gap-4 mb-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="font-heading font-bold text-xl">Pengunjung Harian</h2>
+            <p className="mt-1 text-xs text-brand-mute">
+              Pilih bentuk grafik yang paling enak dibaca untuk melihat tren kunjungan toko.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDailyChartType("bar")}
+                className={`rounded-full border px-4 py-2 text-xs font-black transition ${
+                  dailyChartType === "bar"
+                    ? "border-brand bg-brand text-white shadow-sm"
+                    : "border-brand-line bg-white text-brand-mute hover:border-brand/40 hover:text-brand-ink"
+                }`}
+                data-testid="daily-chart-type-bar"
+              >
+                Bar
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyChartType("line")}
+                className={`rounded-full border px-4 py-2 text-xs font-black transition ${
+                  dailyChartType === "line"
+                    ? "border-brand bg-brand text-white shadow-sm"
+                    : "border-brand-line bg-white text-brand-mute hover:border-brand/40 hover:text-brand-ink"
+                }`}
+                data-testid="daily-chart-type-line"
+              >
+                Line
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyChartType("area")}
+                className={`rounded-full border px-4 py-2 text-xs font-black transition ${
+                  dailyChartType === "area"
+                    ? "border-brand bg-brand text-white shadow-sm"
+                    : "border-brand-line bg-white text-brand-mute hover:border-brand/40 hover:text-brand-ink"
+                }`}
+                data-testid="daily-chart-type-area"
+              >
+                Area
+              </button>
+          </div>
+        </div>
+
         {data.daily.length === 0 ? (
           <p className="text-brand-mute text-sm text-center py-8">Belum ada kunjungan. Bagikan link tokomu ke WhatsApp!</p>
         ) : (
-          <div className="flex items-end gap-1 h-40 border-b border-brand-line pb-2">
-            {data.daily.map((d) => (
-              <div key={d.date} className="flex-1 flex flex-col items-center gap-1 min-w-0" title={`${d.date}: ${d.visits} visits`}>
-                <div className="w-full bg-brand rounded-t-md transition-all hover:bg-brand-ink"
-                  style={{ height: `${(d.visits / maxDaily) * 100}%`, minHeight: "4px" }} />
-                <span className="text-[10px] text-brand-mute truncate w-full text-center">{d.date.slice(5)}</span>
+          <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="rounded-full bg-brand-off px-3 py-1 text-xs font-bold text-brand-mute">
+                Total harian: <span className="text-brand-ink">{dailyTotal}</span>
               </div>
-            ))}
-          </div>
+
+              <div className="rounded-full bg-brand-off px-3 py-1 text-xs font-bold text-brand-mute">
+                Tertinggi: <span className="text-brand-ink">{maxDaily}</span> kunjungan
+              </div>
+            </div>
+
+            {dailyTotal === 0 && Number(data.total_visits || 0) > 0 ? (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+                Total kunjungan sudah ada, tapi rincian harian belum terbaca. Kunjungan baru setelah visitor tracking aktif akan mulai mengisi grafik harian.
+              </div>
+            ) : null}
+
+            {dailyChartType === "bar" ? (
+              <div className="h-56 rounded-2xl border border-brand-line bg-brand-off/40 px-4 pb-3 pt-8">
+                <div className="flex h-full items-stretch gap-2">
+                  {data.daily.map((d) => {
+                    const visits = Number(d.visits || 0);
+                    const percent = maxDaily > 0 ? (visits / maxDaily) * 100 : 0;
+                    const barHeight = visits > 0 ? Math.max(10, percent) : 0;
+
+                    return (
+                      <div
+                        key={d.date}
+                        className="flex min-w-0 flex-1 flex-col items-center gap-2"
+                        title={`${d.date}: ${visits} kunjungan`}
+                      >
+                        <div className="relative flex min-h-0 w-full flex-1 items-end justify-center border-b border-brand-line/70">
+                          {visits > 0 ? (
+                            <span className="absolute -top-6 rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-brand-ink shadow-sm">
+                              {visits}
+                            </span>
+                          ) : null}
+
+                          <div
+                            className={`w-full max-w-[58px] rounded-t-xl transition-all ${
+                              visits > 0 ? "bg-brand hover:bg-brand-ink" : "bg-brand-line/80"
+                            }`}
+                            style={{
+                              height: visits > 0 ? `${barHeight}%` : "4px",
+                            }}
+                          />
+                        </div>
+
+                        <span className="text-[10px] text-brand-mute truncate w-full text-center">
+                          {d.date.slice(5)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="relative h-56 rounded-2xl border border-brand-line bg-brand-off/40 px-4 pb-8 pt-8">
+                <div className="absolute left-4 right-4 top-8 bottom-8">
+                  <svg
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    className="h-full w-full overflow-visible"
+                    role="img"
+                    aria-label={`Grafik ${dailyChartType} pengunjung harian`}
+                  >
+                    {[20, 40, 60, 80].map((y) => (
+                      <line
+                        key={y}
+                        x1="0"
+                        x2="100"
+                        y1={y}
+                        y2={y}
+                        stroke="currentColor"
+                        strokeWidth="0.5"
+                        className="text-brand-line"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+
+                    {dailyChartType === "area" ? (
+                      <path
+                        d={dailyChartAreaPath}
+                        fill="currentColor"
+                        className="text-brand/15"
+                      />
+                    ) : null}
+
+                    <polyline
+                      points={dailyChartPolyline}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="text-brand"
+                      vectorEffect="non-scaling-stroke"
+                    />
+
+                    {dailyChartPoints.map((point) => (
+                      <circle
+                        key={point.date}
+                        cx={point.x}
+                        cy={point.y}
+                        r="2.5"
+                        fill="currentColor"
+                        className="text-brand"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+                  </svg>
+
+                  {dailyChartPoints.map((point) =>
+                    point.visits > 0 ? (
+                      <span
+                        key={`${point.date}-label`}
+                        className="absolute rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-brand-ink shadow-sm"
+                        style={{
+                          left: `${point.x}%`,
+                          top: `${point.y}%`,
+                          transform: "translate(-50%, -135%)",
+                        }}
+                      >
+                        {point.visits}
+                      </span>
+                    ) : null
+                  )}
+                </div>
+
+                <div
+                  className="absolute inset-x-4 bottom-2 grid gap-1"
+                  style={{ gridTemplateColumns: `repeat(${data.daily.length}, minmax(0, 1fr))` }}
+                >
+                  {data.daily.map((d) => (
+                    <span key={d.date} className="truncate text-center text-[10px] text-brand-mute">
+                      {d.date.slice(5)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 text-xs text-brand-mute">
+              Mode aktif: <b className="text-brand-ink capitalize">{dailyChartType}</b>.
+            </div>
+          </>
         )}
       </div>
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { toast } from "sonner";
@@ -11,6 +11,10 @@ import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/DashboardLayout";
 import { rupiah } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
+
+
+// LAPAKIN_CONTENT_STUDIO_ASYNC_JOB_V1
+const sleepContentStudio = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * ContentStudio — Pro/Bisnis page to generate IG carousel + multi-platform captions
@@ -28,10 +32,86 @@ export default function ContentStudio() {
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [selected, setSelected] = useState([]);
+  // LAPAKIN_CONTENT_STUDIO_PRODUCT_FILTER_V3
+  const [productSearch, setProductSearch] = useState("");
+  const [productCategory, setProductCategory] = useState("all");
   const [style, setStyle] = useState("hangat");
+  // LAPAKIN_CONTENT_STUDIO_PROMO_TOGGLE_V1
+  const [promoEnabled, setPromoEnabled] = useState(false);
+  const [promoUseCode, setPromoUseCode] = useState(false);
+  const [promoTitle, setPromoTitle] = useState("Promo Spesial");
+  const [promoDescription, setPromoDescription] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [promoNote, setPromoNote] = useState("");
+  // LAPAKIN_CONTENT_STUDIO_PROMO_AI_ENHANCE_V1
+  const [enhancingPromo, setEnhancingPromo] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState(null);
   const [activeSlide, setActiveSlide] = useState(0);
+  // LAPAKIN_CONTENT_STUDIO_EXPORT_VIDEO_V1
+  const [exportingVideo, setExportingVideo] = useState(false);
+  const [videoDuration, setVideoDuration] = useState(3);
+  const [videoTransition, setVideoTransition] = useState("fade");
+
+  // LAPAKIN_CONTENT_STUDIO_PRODUCT_FILTER_V3
+  const getProductCategory = (product) => {
+    const raw =
+      product?.category_name ||
+      product?.category?.name ||
+      product?.category ||
+      product?.type ||
+      "";
+
+    if (raw && typeof raw === "object") {
+      return raw?.name || raw?.label || raw?.title || "";
+    }
+
+    return String(raw || "").trim();
+  };
+
+  // LAPAKIN_CONTENT_STUDIO_PRODUCT_FILTER_V3
+  const productCategories = useMemo(() => {
+    const seen = new Set();
+
+    products.forEach((product) => {
+      const category = getProductCategory(product);
+      if (category) seen.add(category);
+    });
+
+    return Array.from(seen).sort((a, b) => a.localeCompare(b, "id"));
+  }, [products]);
+
+  // LAPAKIN_CONTENT_STUDIO_PRODUCT_FILTER_V3
+  const filteredProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+
+    return products.filter((product) => {
+      const category = getProductCategory(product);
+      const matchCategory = productCategory === "all" || category === productCategory;
+
+      const haystack = [
+        product?.name,
+        product?.description,
+        product?.caption,
+        product?.price,
+        category,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchSearch = !query || haystack.includes(query);
+
+      return matchCategory && matchSearch;
+    });
+  }, [products, productSearch, productCategory]);
+
+  // LAPAKIN_CONTENT_STUDIO_PRODUCT_FILTER_V3
+  const resetProductFilter = () => {
+    setProductSearch("");
+    setProductCategory("all");
+  };
+
 
   const canUse = quota && quota.limit !== 0;
   const tier = user?.tier || "free";
@@ -68,23 +148,116 @@ export default function ContentStudio() {
     });
   };
 
+  // LAPAKIN_CONTENT_STUDIO_ASYNC_JOB_V1
+
+  // LAPAKIN_CONTENT_STUDIO_PROMO_TOGGLE_V1
+  const buildPromoPayload = () => ({
+    enabled: promoEnabled,
+    title: promoTitle.trim() || "Promo Spesial",
+    description: promoDescription.trim(),
+    use_code: promoUseCode,
+    code: promoUseCode ? promoCode.trim().toUpperCase() : "",
+    note: promoNote.trim(),
+  });
+
+
+  // LAPAKIN_CONTENT_STUDIO_PROMO_AI_ENHANCE_V1
+  const getSelectedProductsForPromo = () =>
+    products
+      .filter((product) => selected.includes(product.product_id))
+      .map((product) => ({
+        product_id: product.product_id,
+        name: product.name,
+        price: product.price,
+        category: product.category_name || product.category,
+        description: product.description || product.caption,
+      }));
+
+  // LAPAKIN_CONTENT_STUDIO_PROMO_AI_ENHANCE_V1
+  const enhancePromoWithAi = async () => {
+    if (selected.length === 0) {
+      toast.error("Pilih produk dulu sebelum AI Enhance promo");
+      return;
+    }
+
+    setPromoEnabled(true);
+    setEnhancingPromo(true);
+
+    try {
+      const response = await api.post("/content-studio/promo-suggest", {
+        product_ids: selected,
+        selected_products: getSelectedProductsForPromo(),
+        style,
+      });
+
+      const promo = response.data || {};
+
+      setPromoTitle(promo.title || "Promo Spesial");
+      setPromoDescription(promo.description || "");
+      setPromoUseCode(Boolean(promo.use_code));
+      setPromoCode(promo.code || "");
+      setPromoNote(promo.note || "");
+
+      toast.success("Promo berhasil diisi AI");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "AI Enhance promo gagal. Coba lagi.");
+    } finally {
+      setEnhancingPromo(false);
+    }
+  };
+
   const generate = async () => {
     if (selected.length === 0) {
       toast.error("Pilih minimal 1 produk");
       return;
     }
+
     setGenerating(true);
+
     try {
-      const r = await api.post("/content-studio/generate", {
+      const start = await api.post("/content-studio/generate-job", {
         product_ids: selected,
         style,
+        promo: buildPromoPayload(),
       });
-      setResult(r.data);
-      setQuota(r.data.quota);
-      setActiveSlide(0);
-      setTab("result");
+
+      const jobId = start.data?.job_id;
+
+      if (!jobId) {
+        throw new Error("Job generate tidak terbentuk.");
+      }
+
+      toast.message("Konten sedang dibuat", {
+        description: "Kamu bisa tunggu di halaman ini. Proses bisa lebih lama untuk banyak produk.",
+      });
+
+      let lastStatus = null;
+
+      for (let attempt = 0; attempt < 240; attempt += 1) {
+        await sleepContentStudio(attempt < 3 ? 1200 : 2500);
+
+        const statusResponse = await api.get(`/content-studio/generate-job/${jobId}`);
+        const status = statusResponse.data || {};
+        lastStatus = status;
+
+        if (status.status === "done") {
+          const data = status.result || {};
+          setResult(data);
+          setQuota(data.quota);
+          setActiveSlide(0);
+          setTab("result");
+          toast.success("Konten berhasil dibuat!");
+          return;
+        }
+
+        if (status.status === "failed") {
+          throw new Error(status.message || "Gagal generate konten.");
+        }
+      }
+
+      throw new Error(lastStatus?.message || "Generate masih berjalan terlalu lama. Coba pilih produk lebih sedikit.");
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal generate. Coba lagi.");
+      toast.error(e.response?.data?.detail || e.message || "Gagal generate. Coba lagi.");
     } finally {
       setGenerating(false);
     }
@@ -123,6 +296,52 @@ export default function ContentStudio() {
     URL.revokeObjectURL(url);
     toast.success("ZIP didownload — siap upload ke IG! 📦");
   };
+
+  // LAPAKIN_CONTENT_STUDIO_EXPORT_VIDEO_V1
+  const downloadVideoMp4 = async () => {
+    if (!result?.slides?.length) {
+      toast.error("Belum ada slide untuk dibuat video");
+      return;
+    }
+
+    setExportingVideo(true);
+
+    try {
+      const response = await api.post("/content-studio/video", {
+        slides: result.slides,
+        duration_per_slide: Number(videoDuration) || 3,
+        transition: videoTransition,
+        filename: `${result.shop_name?.replace(/\s+/g, "-").toLowerCase() || "content-studio"}-video`,
+      });
+
+      const data = response.data || {};
+      const binary = atob(data.video_b64 || "");
+      const bytes = new Uint8Array(binary.length);
+
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+
+      const blob = new Blob([bytes], { type: data.content_type || "video/mp4" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+
+      a.href = url;
+      a.download = data.filename || "content-studio-video.mp4";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success("Video MP4 berhasil dibuat");
+    } catch (e) {
+      const detail = e.response?.data?.detail;
+      toast.error(detail || "Gagal membuat video MP4. Coba lagi.");
+    } finally {
+      setExportingVideo(false);
+    }
+  };
+
 
   // ---------- Upsell for Free tier ----------
   if (quota && !canUse) {
@@ -218,6 +437,68 @@ export default function ContentStudio() {
                 data-testid="content-studio-download-slide">
                 <Download className="w-4 h-4 mr-2" /> Download Slide Ini Saja
               </Button>
+
+              {/* LAPAKIN_CONTENT_STUDIO_EXPORT_VIDEO_V1 */}
+              <div className="mt-4 rounded-2xl border border-brand-line bg-brand-off/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-heading font-bold text-brand-ink">Export Video MP4</div>
+                    <p className="mt-1 text-xs text-brand-mute">
+                      Khusus Pro &amp; Bisnis. Cocok untuk Reels, TikTok, dan Shorts.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-[11px] font-bold text-brand-mute">Durasi / slide</span>
+                    <select
+                      value={videoDuration}
+                      onChange={(e) => setVideoDuration(Number(e.target.value))}
+                      className="mt-1 h-10 w-full rounded-xl border border-brand-line bg-white px-3 text-sm font-bold text-brand-ink outline-none focus:border-brand"
+                      data-testid="content-studio-video-duration"
+                    >
+                      <option value={2}>2 detik</option>
+                      <option value={3}>3 detik</option>
+                      <option value={4}>4 detik</option>
+                      <option value={5}>5 detik</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[11px] font-bold text-brand-mute">Transisi</span>
+                    <select
+                      value={videoTransition}
+                      onChange={(e) => setVideoTransition(e.target.value)}
+                      className="mt-1 h-10 w-full rounded-xl border border-brand-line bg-white px-3 text-sm font-bold text-brand-ink outline-none focus:border-brand"
+                      data-testid="content-studio-video-transition"
+                    >
+                      <option value="fade">Fade halus</option>
+                      <option value="none">Cut biasa</option>
+                    </select>
+                  </label>
+                </div>
+
+                <Button
+                  onClick={downloadVideoMp4}
+                  disabled={exportingVideo || !result?.slides?.length}
+                  className="mt-3 w-full bg-brand text-white hover:bg-brand-dark rounded-xl font-bold h-11"
+                  data-testid="content-studio-export-video"
+                >
+                  {exportingVideo ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Membuat Video...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Buat Video MP4
+                    </>
+                  )}
+                </Button>
+              </div>
+
             </div>
 
             {/* Captions */}
@@ -244,7 +525,7 @@ export default function ContentStudio() {
             <div className="text-[10px] uppercase tracking-widest font-bold text-brand mb-1">CONTENT STUDIO</div>
             <h1 className="font-heading font-extrabold text-3xl">Bikin Konten Promosi</h1>
             <p className="text-brand-mute text-sm mt-1">
-              Pilih produk &amp; gaya — kami bikin carousel siap upload + 3 caption.
+              Pilih produk, promo optional, dan gaya visual — kami bikin carousel siap upload + 3 caption.
             </p>
           </div>
           {quota && (
@@ -268,6 +549,49 @@ export default function ContentStudio() {
               {selected.length} dipilih
             </span>
           </div>
+
+          {/* LAPAKIN_CONTENT_STUDIO_PRODUCT_FILTER_V3 */}
+          <div className="mb-4 rounded-2xl border border-brand-line bg-brand-off/70 p-3">
+            <div className="flex flex-col md:flex-row gap-3">
+              <input
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Cari produk, harga, deskripsi, atau kategori..."
+                className="h-11 flex-1 rounded-xl border border-brand-line bg-white px-4 text-sm font-semibold text-brand-ink placeholder:text-brand-mute/70 outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+                data-testid="content-studio-product-search"
+              />
+
+              <select
+                value={productCategory}
+                onChange={(e) => setProductCategory(e.target.value)}
+                className="h-11 rounded-xl border border-brand-line bg-white px-4 text-sm font-bold text-brand-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/10 md:w-56"
+                data-testid="content-studio-product-category-filter"
+              >
+                <option value="all">Semua kategori</option>
+                {productCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={resetProductFilter}
+                className="h-11 rounded-xl border border-brand-line bg-white px-4 text-sm font-bold text-brand-ink hover:border-brand/40"
+                data-testid="content-studio-product-filter-reset"
+              >
+                Reset
+              </button>
+            </div>
+
+            <div className="mt-2 text-xs text-brand-mute">
+              Menampilkan <b className="text-brand-ink">{filteredProducts.length}</b> dari <b className="text-brand-ink">{products.length}</b> produk
+              {productCategory !== "all" ? <> · kategori <b className="text-brand-ink">{productCategory}</b></> : null}
+              {productSearch.trim() ? <> · pencarian <b className="text-brand-ink">“{productSearch.trim()}”</b></> : null}
+            </div>
+          </div>
+
           {loadingProducts ? (
             <div className="text-center py-6 text-brand-mute text-sm">
               <Loader2 className="w-5 h-5 animate-spin mx-auto" />
@@ -278,7 +602,7 @@ export default function ContentStudio() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {products.map((p) => {
+              {filteredProducts.map((p) => {
                 const isOn = selected.includes(p.product_id);
                 const img = (p.images || [])[0];
                 return (
@@ -306,14 +630,164 @@ export default function ContentStudio() {
                   </button>
                 );
               })}
+
+              {/* LAPAKIN_CONTENT_STUDIO_PRODUCT_FILTER_V3 */}
+              {filteredProducts.length === 0 && products.length > 0 ? (
+                <div className="col-span-full rounded-2xl border border-dashed border-brand-line bg-white p-8 text-center">
+                  <div className="font-heading font-bold text-brand-ink">Produk tidak ditemukan</div>
+                  <p className="mt-1 text-sm text-brand-mute">
+                    Coba ubah kata pencarian atau pilih kategori lain.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetProductFilter}
+                    className="mt-4 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-dark"
+                  >
+                    Reset filter
+                  </button>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
 
+        {/* LAPAKIN_CONTENT_STUDIO_PROMO_TOGGLE_V1 */}
+        <div className="bg-white border border-brand-line rounded-2xl p-5 shadow-card">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-heading font-bold text-lg flex items-center gap-2">
+                🎁 2. Promo / Penawaran
+              </h2>
+              <p className="text-sm text-brand-mute mt-1">
+                Tambahkan slide promo optional sebelum closing. Bisa pakai kode promo atau tanpa kode.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPromoEnabled((v) => !v)}
+              className={`relative h-7 w-12 rounded-full transition ${promoEnabled ? "bg-brand" : "bg-brand-line"}`}
+              data-testid="content-studio-promo-toggle"
+              aria-pressed={promoEnabled}
+            >
+              <span
+                className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${promoEnabled ? "left-6" : "left-1"}`}
+              />
+            </button>
+          </div>
+
+          {promoEnabled ? (
+            <div className="mt-4 space-y-3">
+
+              {/* LAPAKIN_CONTENT_STUDIO_PROMO_AI_ENHANCE_V1 */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-brand-line bg-brand-off/70 p-3">
+                <div>
+                  <div className="text-sm font-bold text-brand-ink">AI Enhance Promo</div>
+                  <div className="text-xs text-brand-mute">
+                    Isi otomatis judul, penawaran, kode promo, dan catatan dari produk yang dipilih.
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={enhancePromoWithAi}
+                  disabled={enhancingPromo || selected.length === 0}
+                  variant="outline"
+                  className="rounded-xl border-brand-line font-bold"
+                  data-testid="content-studio-promo-ai-enhance"
+                >
+                  {enhancingPromo ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Mengisi...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      AI Enhance
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-bold text-brand-mute">Judul promo</span>
+                  <input
+                    value={promoTitle}
+                    onChange={(e) => setPromoTitle(e.target.value)}
+                    placeholder="Promo Spesial"
+                    className="mt-1 h-11 w-full rounded-xl border border-brand-line bg-white px-4 text-sm font-semibold text-brand-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+                    data-testid="content-studio-promo-title"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-xs font-bold text-brand-mute">Catatan kecil</span>
+                  <input
+                    value={promoNote}
+                    onChange={(e) => setPromoNote(e.target.value)}
+                    placeholder="Contoh: Berlaku sampai stok habis"
+                    className="mt-1 h-11 w-full rounded-xl border border-brand-line bg-white px-4 text-sm font-semibold text-brand-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+                    data-testid="content-studio-promo-note"
+                  />
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="text-xs font-bold text-brand-mute">Isi promo</span>
+                <textarea
+                  value={promoDescription}
+                  onChange={(e) => setPromoDescription(e.target.value)}
+                  placeholder="Contoh: Diskon 10% untuk semua menu pilihan hari ini"
+                  rows={3}
+                  className="mt-1 w-full rounded-xl border border-brand-line bg-white px-4 py-3 text-sm font-semibold text-brand-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+                  data-testid="content-studio-promo-description"
+                />
+              </label>
+
+              <label className="flex items-center gap-3 rounded-xl border border-brand-line bg-brand-off/70 p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={promoUseCode}
+                  onChange={(e) => setPromoUseCode(e.target.checked)}
+                  className="h-4 w-4 accent-brand"
+                  data-testid="content-studio-promo-use-code"
+                />
+                <div>
+                  <div className="text-sm font-bold text-brand-ink">Pakai kode promo</div>
+                  <div className="text-xs text-brand-mute">Matikan kalau promo cukup disebut tanpa kode.</div>
+                </div>
+              </label>
+
+              {promoUseCode ? (
+                <label className="block">
+                  <span className="text-xs font-bold text-brand-mute">Kode promo</span>
+                  <input
+                    value={promoCode}
+                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                    placeholder="HEMAT10"
+                    className="mt-1 h-11 w-full rounded-xl border border-brand-line bg-white px-4 text-sm font-extrabold tracking-wider text-brand-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/10"
+                    data-testid="content-studio-promo-code"
+                  />
+                </label>
+              ) : (
+                <div className="rounded-xl bg-brand-off p-3 text-xs text-brand-mute">
+                  Promo akan tampil sebagai <b className="text-brand-ink">tanpa kode promo</b>.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl bg-brand-off p-3 text-sm text-brand-mute">
+              Promo dimatikan. Carousel tetap memakai format opening → produk → closing.
+            </div>
+          )}
+        </div>
+
+
         {/* Step 2: Pilih style */}
         <div className="bg-white border border-brand-line rounded-2xl p-5 shadow-card mb-5">
           <h2 className="font-heading font-bold text-lg flex items-center gap-2 mb-3">
-            <Sparkles className="w-5 h-5 text-brand" /> 2. Pilih Gaya Visual
+            <Sparkles className="w-5 h-5 text-brand" /> 3. Pilih Gaya Visual
           </h2>
           <div className="grid sm:grid-cols-3 gap-3">
             {styles.map((s) => (
@@ -334,12 +808,13 @@ export default function ContentStudio() {
           </div>
         </div>
 
+
         {/* Generate button */}
         <div className="bg-white border-2 border-brand rounded-2xl p-5 shadow-cardHover flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h2 className="font-heading font-bold text-lg">Siap bikin?</h2>
             <p className="text-sm text-brand-mute">
-              {selected.length} produk · gaya <b className="text-brand-ink capitalize">{style}</b> · est. 10-15 detik
+              {selected.length} produk · {promoEnabled ? "pakai promo" : "tanpa promo"} · gaya <b className="text-brand-ink capitalize">{style}</b> · est. 10-15 detik
             </p>
           </div>
           <Button onClick={generate} disabled={generating || selected.length === 0}

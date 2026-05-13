@@ -300,7 +300,7 @@ function postStorefrontJson(path, payload) {
   const url = `${getApiBaseUrl()}${path}`;
   try {
     const body = JSON.stringify(payload || {});
-    if (navigator.sendBeacon && path === "/storefront/events") {
+    if (navigator.sendBeacon && (path === "/storefront/events" || path === "/analytics/track")) {
       const blob = new Blob([body], { type: "application/json" });
       navigator.sendBeacon(url, blob);
       return Promise.resolve({ ok: true });
@@ -328,8 +328,50 @@ function getShopId(shop) { return getValue(shop, ["shop_id", "id", "_id"], ""); 
 function getAnalyticsBasePayload(shop) {
   return { shop_id: getShopId(shop) || undefined, shop_slug: getShopSlug(shop) || undefined, campaign_slug: getCampaignSlugFromUrl() || undefined, source: getTrafficSourceFromUrl() };
 }
+// LAPAKIN_TEMPLATE_LEGACY_ANALYTICS_BRIDGE_V1
+function getLegacyAnalyticsEvent(event_type) {
+  const event = String(event_type || "");
+
+  if (event === "whatsapp_checkout_click" || event === "add_to_cart" || event === "cart_checkout") {
+    return "click_order";
+  }
+
+  if (event === "product_share_click" || event === "share_product" || event === "share_wa") {
+    return "share_wa";
+  }
+
+  if (event === "product_click" || event === "view_product") {
+    return "view_product";
+  }
+
+  if (event === "view_shop" || event === "storefront_view" || event === "page_view") {
+    return "view_shop";
+  }
+
+  return "";
+}
+
+// LAPAKIN_TEMPLATE_LEGACY_ANALYTICS_BRIDGE_V1
+function trackLegacyAnalyticsEvent(shop, event_type, extra = {}) {
+  const legacyEvent = getLegacyAnalyticsEvent(event_type);
+  if (!legacyEvent) return Promise.resolve({ ok: true });
+
+  return postStorefrontJson("/analytics/track", {
+    event: legacyEvent,
+    slug: getShopSlug(shop) || undefined,
+    product_id: extra.product_id || extra?.metadata?.product_id || undefined,
+  });
+}
+
 function trackTemplateEvent(shop, event_type, extra = {}) {
-  return postStorefrontJson("/storefront/events", { ...getAnalyticsBasePayload(shop), event_type, ...extra, metadata: extra.metadata || {} });
+  const payload = { ...getAnalyticsBasePayload(shop), event_type, ...extra, metadata: extra.metadata || {} };
+  const tracked = postStorefrontJson("/storefront/events", payload);
+
+  // LAPAKIN_TEMPLATE_LEGACY_ANALYTICS_BRIDGE_V1
+  // Mirror event penting ke sistem analytics lama yang masih dipakai halaman /dashboard/analytics.
+  trackLegacyAnalyticsEvent(shop, event_type, extra);
+
+  return tracked;
 }
 function enrichWhatsappHrefWithLead(href, form) {
   if (!href || href === "#") return href;
@@ -906,6 +948,14 @@ function ProductDetailModal({ open, product, index = 0, shop, onClose, onAddToCa
   const shareUrl = getProductDetailShareUrl(product, index);
 
   const shareProduct = async () => {
+    trackTemplateEvent(shop, "product_share_click", {
+      product_id: productId,
+      metadata: {
+        product_name: name,
+        source: "product_detail",
+      },
+    });
+
     const copied = await copyStorefrontProductShareLink(shareUrl);
     if (copied) {
       showStorefrontProductShareToast("Link produk sudah disalin");
@@ -1384,6 +1434,7 @@ function ProductQuickViewModal({
   const price = getProductPrice(product);
   const outOfStock = isTemplateProductOutOfStock(product);
   const whatsappHref = buildWhatsappLink(shop, product);
+  const productId = getProductId(product, index);
   const productLink = getTemplateProductPermalink(product, index);
   const displayProductLink =
     typeof window !== "undefined"
@@ -1391,6 +1442,14 @@ function ProductQuickViewModal({
       : productLink;
 
   const handleShare = async () => {
+    trackTemplateEvent(shop, "product_share_click", {
+      product_id: productId,
+      metadata: {
+        product_name: name,
+        source: "product_quick_view",
+      },
+    });
+
     const copied = await copyStorefrontProductShareLink(productLink);
     if (copied) {
       showStorefrontProductShareToast("Link produk sudah disalin");
@@ -3761,6 +3820,25 @@ function LeadCaptureModal({ open, onClose, onSkip, onContinue, cartItems = [], s
   );
 }
 
+
+// LAPAKIN_TEMPLATE_DAILY_VISITOR_ANALYTICS_V2
+function shouldTrackTemplateDailyVisit(shop) {
+  if (typeof window === "undefined") return false;
+
+  const slug = getShopSlug(shop) || getShopId(shop) || "unknown";
+  const date = new Date().toISOString().slice(0, 10);
+  const key = `lapakin:template-visit:${slug}:${date}`;
+
+  try {
+    if (window.sessionStorage.getItem(key)) return false;
+    window.sessionStorage.setItem(key, "1");
+  } catch {
+    // Kalau sessionStorage tidak tersedia, tetap track sekali dari mount.
+  }
+
+  return true;
+}
+
 export default function StorefrontTemplateRenderer({ data, template }) {
   const shop = getShop(data);
   const products = getProducts(data);
@@ -3839,6 +3917,15 @@ export default function StorefrontTemplateRenderer({ data, template }) {
   const cartCount = cartItems.reduce((sum, item) => sum + Number(item.qty || 0), 0);
 
   const addToCart = (product, index = 0) => {
+    // LAPAKIN_TEMPLATE_LEGACY_ANALYTICS_BRIDGE_V1
+    trackTemplateEvent(shop, "add_to_cart", {
+      product_id: getProductId(product, index),
+      metadata: {
+        product_name: getProductName(product),
+        source: "add_to_cart",
+      },
+    });
+
     if (isTemplateProductOutOfStock(product) || isTemplateProductHidden(product)) {
       return;
     }
@@ -4152,6 +4239,19 @@ export default function StorefrontTemplateRenderer({ data, template }) {
 
   // LAPAKIN_GROWTH_SPRINT_V2_TEMPLATE_STATE
   const promoViewedRef = useRef(false);
+
+  // LAPAKIN_TEMPLATE_DAILY_VISITOR_ANALYTICS_V2
+  useEffect(() => {
+    if (!shop) return;
+    if (!shouldTrackTemplateDailyVisit(shop)) return;
+
+    trackTemplateEvent(shop, "storefront_view", {
+      metadata: {
+        path: typeof window !== "undefined" ? window.location.pathname : "",
+        referrer: typeof document !== "undefined" ? document.referrer || "" : "",
+      },
+    });
+  }, [shop]);
   const [leadCapture, setLeadCapture] = useState({ open: false, href: "", context: {} });
 
   useEffect(() => {
