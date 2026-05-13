@@ -1,4 +1,4 @@
-/* LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1 */
+/* LAPAKIN_MALL_PHASE1G_PUBLIC_POLISH_V1 */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api, { rupiah } from "@/lib/api";
@@ -13,6 +13,7 @@ import {
   ShoppingBag,
   Sparkles,
   Store,
+  Tags,
 } from "lucide-react";
 
 function formatPrice(value) {
@@ -23,31 +24,36 @@ function formatPrice(value) {
   }
 }
 
-function trackMallEvent(event, item, extra = {}) {
-  try {
-    api.post("/mall/events", {
-      event,
-      listing_id: item?.listing_id || "",
-      product_id: item?.product_id || "",
-      shop_id: item?.shop_id || "",
-      path: window.location.pathname,
-      ...extra,
-    }).catch(() => {});
-  } catch {
-    // no-op
-  }
-}
-
-
-// LAPAKIN_MALL_PHASE1E_SUBDOMAIN_READY_V1
 function isMallSubdomainHost() {
   if (typeof window === "undefined") return false;
   const host = window.location.hostname.toLowerCase();
-  return host === "mall.lapakin.my.id" || host === "mall-dev.lapakin.my.id" || host === "mall.dev.lapakin.my.id" || host.startsWith("mall.");
+  return (
+    host === "mall.lapakin.my.id" ||
+    host === "mall-dev.lapakin.my.id" ||
+    host === "mall.dev.lapakin.my.id" ||
+    host.startsWith("mall.")
+  );
 }
 
 function mallHomePath() {
   return isMallSubdomainHost() ? "/" : "/mall";
+}
+
+function trackMallEvent(event, item, extra = {}) {
+  try {
+    api
+      .post("/mall/events", {
+        event,
+        listing_id: item?.listing_id || "",
+        product_id: item?.product_id || "",
+        shop_id: item?.shop_id || "",
+        path: window.location.pathname,
+        ...extra,
+      })
+      .catch(() => {});
+  } catch {
+    // no-op
+  }
 }
 
 function ProductImage({ item, large = false }) {
@@ -163,6 +169,28 @@ export default function MallProductDetail() {
     }
   };
 
+  const nativeShare = async () => {
+    const url = shareUrl || detailUrl;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: item?.name || "Produk Lapakin Mall",
+          text: `${item?.name || "Produk"} dari ${item?.shop?.name || "Lapakin Mall"}`,
+          url,
+        });
+        trackMallEvent("mall_product_click", item, { action: "native_share" });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Browser belum support native share, link sudah disalin");
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        toast.error("Gagal share produk");
+      }
+    }
+  };
+
   const copyDetailLink = async () => {
     try {
       await navigator.clipboard.writeText(detailUrl);
@@ -243,17 +271,16 @@ export default function MallProductDetail() {
                   ) : null}
                 </div>
 
-                <div className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-brand-mute">
+                <div className="mt-4 inline-flex items-center rounded-full border border-brand-line bg-brand-off px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-brand-mute">
+                  <Tags className="mr-1.5 h-3.5 w-3.5" />
                   {item.category || "Produk UMKM"}
                 </div>
 
-                <h1 className="mt-2 font-heading text-3xl font-black leading-tight text-brand-ink sm:text-4xl">
+                <h1 className="mt-3 font-heading text-3xl font-black leading-tight text-brand-ink sm:text-4xl">
                   {item.name}
                 </h1>
 
-                <div className="mt-4 text-3xl font-black text-brand">
-                  {formatPrice(item.price)}
-                </div>
+                <div className="mt-4 text-3xl font-black text-brand">{formatPrice(item.price)}</div>
 
                 {item.description ? (
                   <p className="mt-5 whitespace-pre-wrap text-base font-medium leading-relaxed text-brand-mute">
@@ -298,18 +325,28 @@ export default function MallProductDetail() {
                     Pesan ke Toko
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={nativeShare}
+                    className="inline-flex h-14 items-center justify-center rounded-2xl border border-brand-line bg-white px-5 text-sm font-black text-brand-ink hover:bg-brand-off"
+                    data-testid="mall-detail-native-share"
+                  >
+                    <Share2 className="mr-2 h-5 w-5" />
+                    Share Produk
+                  </button>
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
                   <Link
                     to={item?.links?.storefront || `/toko/${item?.shop?.slug || ""}`}
                     onClick={() => trackMallEvent("mall_store_click", item)}
-                    className="inline-flex h-14 items-center justify-center rounded-2xl border border-brand-line bg-white px-5 text-sm font-black text-brand-ink hover:bg-brand-off"
+                    className="inline-flex h-12 items-center justify-center rounded-2xl border border-brand-line bg-white px-5 text-sm font-black text-brand-ink hover:bg-brand-off"
                     data-testid="mall-detail-store"
                   >
-                    <Store className="mr-2 h-5 w-5" />
-                    Lihat Toko
+                    <Store className="mr-2 h-4 w-4" />
+                    Toko
                   </Link>
-                </div>
 
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={copyShareLink}
@@ -317,7 +354,7 @@ export default function MallProductDetail() {
                     data-testid="mall-detail-copy-share"
                   >
                     <Share2 className="mr-2 h-4 w-4" />
-                    Copy Share OG
+                    Copy OG
                   </button>
 
                   <button
@@ -326,12 +363,12 @@ export default function MallProductDetail() {
                     className="inline-flex h-12 items-center justify-center rounded-2xl border border-brand-line bg-white px-5 text-sm font-black text-brand-ink hover:bg-brand-off"
                   >
                     <Copy className="mr-2 h-4 w-4" />
-                    Copy Link Detail
+                    Copy Link
                   </button>
                 </div>
 
                 <div className="mt-4 rounded-2xl bg-brand-off p-3 text-xs font-semibold leading-relaxed text-brand-mute">
-                  Share OG dipakai untuk preview WhatsApp/FB. Saat dibuka customer, link akan diarahkan ke halaman detail produk ini.
+                  Share Produk memakai native share jika tersedia. Copy OG dipakai untuk preview WhatsApp/FB yang lebih rapi.
                 </div>
               </div>
             </section>
