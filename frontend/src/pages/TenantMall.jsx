@@ -5,6 +5,10 @@ import DashboardLayout from "@/components/DashboardLayout";
 import api, { rupiah } from "@/lib/api";
 import { toast } from "sonner";
 import {
+  TrendingUp,
+  MousePointerClick,
+  MessageCircle,
+  BarChart3,
   AlertTriangle,
   CheckCircle2,
   Clock,
@@ -94,6 +98,42 @@ export default function TenantMall() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
 
+  // LAPAKIN_MALL_PHASE1F_ANALYTICS_V1
+  const [mallAnalytics, setMallAnalytics] = useState({
+    totals: {},
+    daily: [],
+    top_products: [],
+    listing_summary: {},
+    conversion_rate: 0,
+  });
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+
+  // LAPAKIN_MALL_PHASE1F_ANALYTICS_V1
+  const loadMallAnalytics = async () => {
+    setAnalyticsLoading(true);
+
+    try {
+      const response = await api.get("/mall/my-analytics", { params: { days: 30, limit: 10 } });
+      setMallAnalytics(response.data || {
+        totals: {},
+        daily: [],
+        top_products: [],
+        listing_summary: {},
+        conversion_rate: 0,
+      });
+    } catch {
+      setMallAnalytics({
+        totals: {},
+        daily: [],
+        top_products: [],
+        listing_summary: {},
+        conversion_rate: 0,
+      });
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
   const load = async () => {
     setLoading(true);
 
@@ -128,6 +168,7 @@ export default function TenantMall() {
 
   useEffect(() => {
     load();
+    loadMallAnalytics();
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -315,6 +356,95 @@ export default function TenantMall() {
             </div>
           </section>
         ) : null}
+
+        {/* LAPAKIN_MALL_PHASE1F_ANALYTICS_V1 */}
+        <section className="rounded-2xl border border-brand-line bg-white p-5 shadow-card" data-testid="tenant-mall-analytics">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-brand" />
+                <h2 className="font-heading text-xl font-black text-brand-ink">Mall Analytics</h2>
+              </div>
+              <p className="mt-1 text-sm text-brand-mute">
+                Performa produk tokomu dari Lapakin Mall 30 hari terakhir.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={loadMallAnalytics}
+              disabled={analyticsLoading}
+              className="inline-flex items-center rounded-xl border border-brand-line bg-white px-3 py-2 text-xs font-black text-brand-ink hover:bg-brand-off disabled:opacity-60"
+            >
+              <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${analyticsLoading ? "animate-spin" : ""}`} />
+              Refresh Analytics
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-brand-mute">Detail Views</span>
+                <MousePointerClick className="h-4 w-4 text-brand" />
+              </div>
+              <div className="mt-1 text-2xl font-black text-brand-ink">{Number(mallAnalytics?.totals?.mall_product_view || 0).toLocaleString("id-ID")}</div>
+            </div>
+
+            <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-brand-mute">Card Clicks</span>
+                <ShoppingBag className="h-4 w-4 text-brand" />
+              </div>
+              <div className="mt-1 text-2xl font-black text-brand-ink">{Number(mallAnalytics?.totals?.mall_product_click || 0).toLocaleString("id-ID")}</div>
+            </div>
+
+            <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-brand-mute">Klik Pesan</span>
+                <MessageCircle className="h-4 w-4 text-brand" />
+              </div>
+              <div className="mt-1 text-2xl font-black text-brand-ink">{Number(mallAnalytics?.totals?.mall_order_click || 0).toLocaleString("id-ID")}</div>
+            </div>
+
+            <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-brand-mute">Klik Toko</span>
+                <Store className="h-4 w-4 text-brand" />
+              </div>
+              <div className="mt-1 text-2xl font-black text-brand-ink">{Number(mallAnalytics?.totals?.mall_store_click || 0).toLocaleString("id-ID")}</div>
+            </div>
+
+            <div className="rounded-2xl border border-brand-line bg-brand-off/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-brand-mute">Conversion</span>
+                <TrendingUp className="h-4 w-4 text-brand" />
+              </div>
+              <div className="mt-1 text-2xl font-black text-brand-ink">{Number(mallAnalytics?.conversion_rate || 0).toLocaleString("id-ID")}%</div>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-brand-line bg-white p-4">
+            <h3 className="font-heading text-lg font-black text-brand-ink">Top Produk Kamu di Mall</h3>
+            <div className="mt-3 divide-y divide-brand-line">
+              {(mallAnalytics?.top_products || []).length === 0 ? (
+                <div className="py-6 text-sm font-semibold text-brand-mute">
+                  Belum ada traffic dari Mall untuk produkmu.
+                </div>
+              ) : mallAnalytics.top_products.map((row, index) => (
+                <div key={row.product_id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <div className="font-bold text-brand-ink">{index + 1}. {row.name}</div>
+                    <div className="text-xs font-semibold text-brand-mute">{row.product_id}</div>
+                  </div>
+                  <div className="shrink-0 text-right text-xs font-black text-brand-mute">
+                    <div>{row.order_clicks} pesan</div>
+                    <div>{row.detail_views} views</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <section className="rounded-2xl border border-brand-line bg-white p-4 shadow-card">
           <div className="grid gap-3 md:grid-cols-[1fr_220px]">

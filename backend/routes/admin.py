@@ -4848,3 +4848,219 @@ async def admin_mall_update_listing(listing_id: str, data: AdminMallListingUpdat
 
     return {"ok": True, "item": enriched[0] if enriched else item}
 
+
+# LAPAKIN_MALL_PHASE1F_ANALYTICS_V1
+def _admin_mall_analytics_date_key(value):
+    text = str(value or "")
+    if len(text) >= 10:
+        return text[:10]
+    return ""
+
+
+# LAPAKIN_MALL_PHASE1F_ANALYTICS_V1
+async def _admin_mall_analytics_enrich_products(product_stats: dict, limit: int = 10):
+    product_ids = [pid for pid in product_stats.keys() if pid]
+    if not product_ids:
+        return []
+
+    products = await db.products.find({"product_id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products_by_id = {p.get("product_id"): p for p in products}
+
+    shop_ids = [p.get("shop_id") for p in products if p.get("shop_id")]
+    shops_by_id = {}
+    if shop_ids:
+        shops = await db.shops.find({"shop_id": {"$in": shop_ids}}, {"_id": 0, "shop_id": 1, "name": 1, "slug": 1}).to_list(len(shop_ids))
+        shops_by_id = {s.get("shop_id"): s for s in shops}
+
+    rows = []
+    for product_id, stats in product_stats.items():
+        product = products_by_id.get(product_id) or {}
+        shop = shops_by_id.get(product.get("shop_id")) or {}
+
+        rows.append({
+            "product_id": product_id,
+            "name": product.get("name") or product_id,
+            "price": product.get("price") or 0,
+            "shop_id": product.get("shop_id") or stats.get("shop_id") or "",
+            "shop_name": shop.get("name") or "-",
+            "shop_slug": shop.get("slug") or "",
+            "views": stats.get("views", 0),
+            "detail_views": stats.get("detail_views", 0),
+            "product_clicks": stats.get("product_clicks", 0),
+            "order_clicks": stats.get("order_clicks", 0),
+            "store_clicks": stats.get("store_clicks", 0),
+        })
+
+    rows.sort(key=lambda row: (row["order_clicks"], row["detail_views"], row["product_clicks"], row["views"]), reverse=True)
+    return rows[:limit]
+
+
+# LAPAKIN_MALL_PHASE1F_ANALYTICS_V1
+async def _admin_mall_analytics_enrich_shops(shop_stats: dict, limit: int = 10):
+    shop_ids = [sid for sid in shop_stats.keys() if sid]
+    if not shop_ids:
+        return []
+
+    shops = await db.shops.find({"shop_id": {"$in": shop_ids}}, {"_id": 0, "shop_id": 1, "name": 1, "slug": 1, "business_type": 1}).to_list(len(shop_ids))
+    shops_by_id = {s.get("shop_id"): s for s in shops}
+
+    rows = []
+    for shop_id, stats in shop_stats.items():
+        shop = shops_by_id.get(shop_id) or {}
+
+        rows.append({
+            "shop_id": shop_id,
+            "name": shop.get("name") or shop_id,
+            "slug": shop.get("slug") or "",
+            "business_type": shop.get("business_type") or "",
+            "views": stats.get("views", 0),
+            "detail_views": stats.get("detail_views", 0),
+            "product_clicks": stats.get("product_clicks", 0),
+            "order_clicks": stats.get("order_clicks", 0),
+            "store_clicks": stats.get("store_clicks", 0),
+        })
+
+    rows.sort(key=lambda row: (row["order_clicks"], row["detail_views"], row["product_clicks"], row["views"]), reverse=True)
+    return rows[:limit]
+
+
+# LAPAKIN_MALL_PHASE1F_ANALYTICS_V1
+@router.get("/admin/mall/analytics")
+async def admin_mall_analytics(request: Request, days: int = 30, limit: int = 10):
+    from datetime import datetime, timezone, timedelta
+
+    await require_admin(request)
+
+    days = max(1, min(int(days or 30), 180))
+    limit = max(3, min(int(limit or 10), 30))
+
+    now = datetime.now(timezone.utc)
+    start_date = now - timedelta(days=days - 1)
+    cutoff = start_date.strftime("%Y-%m-%dT00:00:00")
+
+    events = await db.mall_events.find(
+        {"created_at": {"$gte": cutoff}},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(20000).to_list(20000)
+
+    totals = {
+        "mall_view": 0,
+        "mall_search": 0,
+        "mall_product_click": 0,
+        "mall_product_view": 0,
+        "mall_order_click": 0,
+        "mall_store_click": 0,
+        "total_events": 0,
+    }
+
+    daily = {}
+    for i in range(days):
+        key = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
+        daily[key] = {
+            "date": key,
+            "views": 0,
+            "searches": 0,
+            "product_views": 0,
+            "product_clicks": 0,
+            "order_clicks": 0,
+            "store_clicks": 0,
+        }
+
+    product_stats = {}
+    shop_stats = {}
+
+    for event in events:
+        event_type = str(event.get("event_type") or event.get("event") or "").strip().lower()
+        if event_type not in totals:
+            continue
+
+        totals[event_type] += 1
+        totals["total_events"] += 1
+
+        date_key = _admin_mall_analytics_date_key(event.get("created_at"))
+        if date_key in daily:
+            if event_type == "mall_view":
+                daily[date_key]["views"] += 1
+            elif event_type == "mall_search":
+                daily[date_key]["searches"] += 1
+            elif event_type == "mall_product_view":
+                daily[date_key]["product_views"] += 1
+            elif event_type == "mall_product_click":
+                daily[date_key]["product_clicks"] += 1
+            elif event_type == "mall_order_click":
+                daily[date_key]["order_clicks"] += 1
+            elif event_type == "mall_store_click":
+                daily[date_key]["store_clicks"] += 1
+
+        product_id = str(event.get("product_id") or "").strip()
+        shop_id = str(event.get("shop_id") or "").strip()
+
+        if product_id:
+            stats = product_stats.setdefault(product_id, {
+                "shop_id": shop_id,
+                "views": 0,
+                "detail_views": 0,
+                "product_clicks": 0,
+                "order_clicks": 0,
+                "store_clicks": 0,
+            })
+
+            if shop_id and not stats.get("shop_id"):
+                stats["shop_id"] = shop_id
+
+            if event_type == "mall_view":
+                stats["views"] += 1
+            elif event_type == "mall_product_view":
+                stats["detail_views"] += 1
+            elif event_type == "mall_product_click":
+                stats["product_clicks"] += 1
+            elif event_type == "mall_order_click":
+                stats["order_clicks"] += 1
+            elif event_type == "mall_store_click":
+                stats["store_clicks"] += 1
+
+        if shop_id:
+            stats = shop_stats.setdefault(shop_id, {
+                "views": 0,
+                "detail_views": 0,
+                "product_clicks": 0,
+                "order_clicks": 0,
+                "store_clicks": 0,
+            })
+
+            if event_type == "mall_view":
+                stats["views"] += 1
+            elif event_type == "mall_product_view":
+                stats["detail_views"] += 1
+            elif event_type == "mall_product_click":
+                stats["product_clicks"] += 1
+            elif event_type == "mall_order_click":
+                stats["order_clicks"] += 1
+            elif event_type == "mall_store_click":
+                stats["store_clicks"] += 1
+
+    product_views = totals["mall_product_view"] + totals["mall_product_click"]
+    conversion_rate = round((totals["mall_order_click"] / product_views) * 100, 2) if product_views > 0 else 0
+
+    listing_summary = {
+        "all": await db.mall_listings.count_documents({}),
+        "approved": await db.mall_listings.count_documents({"status": "approved"}),
+        "pending": await db.mall_listings.count_documents({"status": "pending"}),
+        "rejected": await db.mall_listings.count_documents({"status": "rejected"}),
+        "hidden": await db.mall_listings.count_documents({"status": "hidden"}),
+        "featured": await db.mall_listings.count_documents({"status": "approved", "featured": True}),
+    }
+
+    return {
+        "totals": totals,
+        "daily": list(daily.values()),
+        "top_products": await _admin_mall_analytics_enrich_products(product_stats, limit),
+        "top_shops": await _admin_mall_analytics_enrich_shops(shop_stats, limit),
+        "listing_summary": listing_summary,
+        "conversion_rate": conversion_rate,
+        "filters": {
+            "days": days,
+            "limit": limit,
+        },
+    }
+
