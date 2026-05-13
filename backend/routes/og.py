@@ -1,3 +1,4 @@
+import html
 """OpenGraph routes: shop share HTML/PNG, product IG post/story, bulk card pack."""
 import re
 import time
@@ -322,3 +323,168 @@ async def bulk_card_pack(request: Request):
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{slug}-cards-pack.zip"'},
     )
+
+
+# LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1
+def _mall_og_base_url(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto") or "https"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+
+    if not host:
+        return ""
+
+    return f"{proto}://{host}".rstrip("/")
+
+
+# LAPAKIN_MALL_PHASE1E_SUBDOMAIN_READY_V1
+def _mall_og_is_mall_host(request: Request) -> bool:
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(":")[0].lower()
+    return host in {"mall.lapakin.my.id", "mall-dev.lapakin.my.id", "mall.dev.lapakin.my.id"} or host.startswith("mall.")
+
+
+# LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1
+def _mall_og_escape(value) -> str:
+    return html.escape(str(value or ""), quote=True)
+
+
+# LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1
+def _mall_og_price(value) -> str:
+    try:
+        amount = int(float(value or 0))
+        return "Rp " + f"{amount:,}".replace(",", ".")
+    except Exception:
+        return "Rp 0"
+
+
+# LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1
+async def _mall_og_listing_payload(listing_id: str, request: Request):
+    listing = await db.mall_listings.find_one(
+        {
+            "$or": [
+                {"listing_id": listing_id},
+                {"product_id": listing_id},
+            ],
+            "status": "approved",
+            "$and": [
+                {"$or": [{"hidden": {"$ne": True}}, {"hidden": {"$exists": False}}]},
+            ],
+        },
+        {"_id": 0},
+    )
+
+    if not listing:
+        return None
+
+    product = await db.products.find_one({"product_id": listing.get("product_id")}, {"_id": 0}) or {}
+    shop = await db.shops.find_one({"shop_id": listing.get("shop_id")}, {"_id": 0}) or {}
+
+    if not product or not shop:
+        return None
+
+    shop_status = str(shop.get("status") or "active").lower()
+    product_status = str(product.get("status") or "").lower()
+    availability = str(product.get("availability_status") or "").lower()
+
+    if shop_status in {"deleted", "suspended", "inactive"}:
+        return None
+
+    if product_status in {"hidden", "deleted", "inactive"} or availability in {"hidden", "out_of_stock"} or product.get("is_active") is False:
+        return None
+
+    base_url = _mall_og_base_url(request)
+    listing_id = listing.get("listing_id") or listing.get("product_id")
+    product_id = product.get("product_id") or ""
+    # LAPAKIN_MALL_PHASE1E_SUBDOMAIN_READY_V1
+    detail_path = f"/p/{listing_id}" if _mall_og_is_mall_host(request) else f"/mall/p/{listing_id}"
+    detail_url = f"{base_url}{detail_path}" if base_url else detail_path
+    og_image = f"{base_url}/api/og/product/{product_id}/post.png?v=mall-{listing_id}" if base_url and product_id else ""
+
+    category = listing.get("mall_category") or product.get("category_name") or product.get("category") or "Produk UMKM"
+    title = f"{product.get('name') or 'Produk'} · Lapakin Mall"
+    description = f"{_mall_og_price(product.get('price'))} — {shop.get('name') or 'Toko Lapakin'} · {category}"
+
+    if listing.get("highlight"):
+        description = f"{_mall_og_price(product.get('price'))} — {listing.get('highlight')}"
+
+    return {
+        "title": title,
+        "description": description,
+        "detail_url": detail_url,
+        "og_image": og_image,
+        "listing_id": listing_id,
+        "product_id": product_id,
+    }
+
+
+# LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1
+@router.get("/og/mall/{listing_id}", response_class=HTMLResponse)
+async def og_mall_listing_html(listing_id: str, request: Request):
+    payload = await _mall_og_listing_payload(listing_id, request)
+
+    if not payload:
+        fallback = _mall_og_base_url(request) + "/mall"
+        return HTMLResponse(
+            f"""<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>Lapakin Mall</title>
+  <meta http-equiv="refresh" content="0; url={_mall_og_escape(fallback)}" />
+</head>
+<body>
+  <a href="{_mall_og_escape(fallback)}">Buka Lapakin Mall</a>
+</body>
+</html>""",
+            status_code=404,
+        )
+
+    title = _mall_og_escape(payload["title"])
+    description = _mall_og_escape(payload["description"])
+    detail_url = _mall_og_escape(payload["detail_url"])
+    og_image = _mall_og_escape(payload["og_image"])
+
+    image_tags = ""
+    if og_image:
+        image_tags = f"""
+  <meta property="og:image" content="{og_image}" />
+  <meta property="og:image:secure_url" content="{og_image}" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1080" />
+  <meta property="og:image:height" content="1080" />
+  <meta name="twitter:image" content="{og_image}" />"""
+
+    html_doc = f"""<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>{title}</title>
+  <link rel="canonical" href="{detail_url}" />
+  <meta name="description" content="{description}" />
+
+  <meta property="og:type" content="product" />
+  <meta property="og:site_name" content="Lapakin Mall" />
+  <meta property="og:title" content="{title}" />
+  <meta property="og:description" content="{description}" />
+  <meta property="og:url" content="{detail_url}" />
+  <meta property="og:locale" content="id_ID" />{image_tags}
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{title}" />
+  <meta name="twitter:description" content="{description}" />
+
+  <meta http-equiv="refresh" content="0; url={detail_url}" />
+  <script>
+    window.location.replace("{detail_url}");
+  </script>
+</head>
+<body>
+  <main style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 32px;">
+    <h1>{title}</h1>
+    <p>{description}</p>
+    <p><a href="{detail_url}">Buka produk di Lapakin Mall</a></p>
+  </main>
+</body>
+</html>"""
+
+    return HTMLResponse(html_doc)
+

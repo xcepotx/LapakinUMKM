@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/sonner";
 
 import SalesBook from "./pages/SalesBook";
 import Landing from "@/pages/Landing";
+import Mall from "@/pages/Mall";
+import MallProductDetail from "@/pages/MallProductDetail";
 import Manual from "@/pages/Manual";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -14,6 +16,7 @@ import Onboarding from "@/pages/Onboarding";
 import Dashboard from "@/pages/Dashboard";
 import AIStudio from "@/pages/AIStudio";
 import Products from "@/pages/Products";
+import TenantMall from "@/pages/TenantMall";
 import ShopSettings from "@/pages/ShopSettings";
 import ShopQR from "@/pages/ShopQR";
 import WhatsAppConnect from "@/pages/WhatsAppConnect";
@@ -32,6 +35,7 @@ import AdminShops from "@/pages/admin/AdminShops";
 import AdminUsers from "@/pages/admin/AdminUsers";
 import AdminPricing from "@/pages/admin/AdminPricing";
 import AdminProducts from "@/pages/admin/AdminProducts";
+import AdminMall from "@/pages/admin/AdminMall";
 import AdminBroadcasts from "@/pages/admin/AdminBroadcasts";
 import AdminAIUsage from "@/pages/admin/AdminAIUsage";
 import AdminAudit from "@/pages/admin/AdminAudit";
@@ -51,6 +55,7 @@ import AdminOpsDashboard from "@/pages/admin/AdminOpsDashboard";
 import AdminNotifications from "@/pages/admin/AdminNotifications";
 import AdminErrorLogs from "@/pages/admin/AdminErrorLogs";
 import AdminTenantView from "@/pages/admin/AdminTenantView";
+import AdminSupportQueue from "@/pages/admin/AdminSupportQueue";
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -86,8 +91,11 @@ function AppRouter() {
         <Route path="/" element={<Storefront tenantSlug={tenantSlug} />} />
       ) : (
         <>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<HostAwareLanding />} />
           <Route path="/manual" element={<Manual />} />
+      <Route path="/mall" element={<Mall />} />
+      <Route path="/mall/p/:listingId" element={<MallProductDetail />} />
+      <Route path="/p/:listingId" element={<MallProductDetail />} /> {/* LAPAKIN_MALL_PHASE1E_SUBDOMAIN_READY_V1 */} {/* LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1 */} {/* LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1 */}
         </>
       )}
       <Route path="/login" element={<Login />} />
@@ -99,6 +107,7 @@ function AppRouter() {
       <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
       <Route path="/dashboard/ai-studio" element={<ProtectedRoute><AIStudio /></ProtectedRoute>} />
       <Route path="/dashboard/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
+      <Route path="/dashboard/mall" element={<ProtectedRoute><TenantMall /></ProtectedRoute>} /> {/* LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1 */}
       <Route path="/dashboard/whatsapp" element={<ProtectedRoute><WhatsAppConnect /></ProtectedRoute>} />
       <Route path="/dashboard/settings" element={<ProtectedRoute><ShopSettings /></ProtectedRoute>} />
       <Route path="/dashboard/website" element={<ProtectedRoute><ShopSettings settingsView="website" /></ProtectedRoute>} />
@@ -117,7 +126,8 @@ function AppRouter() {
       <Route path="/admin/ops" element={<AdminRoute><AdminOpsDashboard /></AdminRoute>} />
       <Route path="/admin/notifications" element={<AdminRoute><AdminNotifications /></AdminRoute>} />
       <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />
-      <Route path="/admin/tenant-view/:shopId" element={<AdminRoute><AdminTenantView /></AdminRoute>} /> {/* LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2 */}
+      <Route path="/admin/tenant-view/:shopId" element={<AdminRoute><AdminTenantView /></AdminRoute>} />
+      <Route path="/admin/support-queue" element={<AdminRoute><AdminSupportQueue /></AdminRoute>} /> {/* LAPAKIN_ADMIN_SUPPORT_QUEUE_PHASE2D_V1 */} {/* LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2 */}
       <Route path="/admin/billing" element={<AdminRoute><AdminBillingMonitor /></AdminRoute>} />
       <Route path="/admin/payments" element={<AdminRoute><AdminPayments /></AdminRoute>} />
       <Route path="/admin/store-health" element={<AdminRoute><AdminStoreHealth /></AdminRoute>} />
@@ -125,6 +135,7 @@ function AppRouter() {
       <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
       <Route path="/admin/pricing" element={<AdminRoute><AdminPricing /></AdminRoute>} />
       <Route path="/admin/products" element={<AdminRoute><AdminProducts /></AdminRoute>} />
+      <Route path="/admin/mall" element={<AdminRoute><AdminMall /></AdminRoute>} /> {/* LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1 */}
       <Route path="/admin/broadcasts" element={<AdminRoute><AdminBroadcasts /></AdminRoute>} />
       <Route path="/admin/ai-usage" element={<AdminRoute><AdminAIUsage /></AdminRoute>} />
       <Route path="/admin/audit" element={<AdminRoute><AdminAudit /></AdminRoute>} />
@@ -138,6 +149,18 @@ function AppRouter() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+
+// LAPAKIN_MALL_PHASE1E_SUBDOMAIN_READY_V1
+function isMallSubdomainHost() {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname.toLowerCase();
+  return host === "mall.lapakin.my.id" || host === "mall-dev.lapakin.my.id" || host === "mall.dev.lapakin.my.id" || host.startsWith("mall.");
+}
+
+function HostAwareLanding() {
+  return isMallSubdomainHost() ? <Mall /> : <Landing />;
 }
 
 function App() {
@@ -154,3 +177,5 @@ function App() {
 }
 
 export default App;
+
+/* LAPAKIN_MALL_HOST_BYPASS_STOREFRONT_ROUTING_V1 mall host must bypass storefront fallback */

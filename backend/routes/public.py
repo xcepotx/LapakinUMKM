@@ -657,3 +657,432 @@ async def storefront_growth_update_lead_status(lead_id: str, data: StorefrontLea
 
 # /LAPAKIN_GROWTH_SPRINT_V2
 
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_clean_text(value, limit=500):
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_pick_first(doc, keys):
+    for key in keys:
+        value = str((doc or {}).get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_normalize_wa(raw):
+    import re
+
+    digits = re.sub(r"\D+", "", str(raw or ""))
+    if not digits:
+        return ""
+
+    if digits.startswith("00"):
+        digits = digits[2:]
+    if digits.startswith("0"):
+        digits = "62" + digits[1:]
+    if digits.startswith("8"):
+        digits = "62" + digits
+
+    return digits
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_product_image(product):
+    product = product or {}
+
+    for key in ["image_url", "thumbnail_url", "photo_url", "image_data"]:
+        value = product.get(key)
+        if value:
+            return value
+
+    images = product.get("images")
+    if isinstance(images, list) and images:
+        return images[0]
+
+    return ""
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_product_active(product):
+    if not product:
+        return False
+
+    availability = str(product.get("availability_status") or "").lower()
+    if availability in {"hidden", "out_of_stock"}:
+        return False
+
+    if product.get("is_active") is False:
+        return False
+
+    status = str(product.get("status") or "").lower()
+    if status in {"hidden", "deleted", "inactive"}:
+        return False
+
+    return True
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_shop_active(shop):
+    if not shop:
+        return False
+
+    status = str(shop.get("status") or "active").lower()
+    if status in {"deleted", "suspended", "inactive"}:
+        return False
+
+    if shop.get("deleted_at"):
+        return False
+
+    return bool(shop.get("slug"))
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_public_base_url(request: Request):
+    proto = request.headers.get("x-forwarded-proto") or "https"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+
+    if not host:
+        return ""
+
+    return f"{proto}://{host}".rstrip("/")
+
+
+# LAPAKIN_MALL_PHASE1E_SUBDOMAIN_READY_V1
+def _mall_is_mall_host(request: Request):
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(":")[0].lower()
+    return host in {"mall.lapakin.my.id", "mall-dev.lapakin.my.id", "mall.dev.lapakin.my.id"} or host.startswith("mall.")
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_build_order_url(shop, product):
+    import urllib.parse
+
+    raw_phone = _mall_pick_first(shop, [
+        "whatsapp",
+        "whatsapp_number",
+        "wa_number",
+        "phone",
+        "phone_number",
+        "contact_phone",
+        "order_phone",
+        "order_whatsapp",
+        "contact_whatsapp",
+    ])
+
+    phone = _mall_normalize_wa(raw_phone)
+    if not phone:
+        return ""
+
+    message = (
+        f"Halo {shop.get('name') or 'Toko'}, saya lihat produk "
+        f"{product.get('name') or 'ini'} dari Lapakin Mall. "
+        "Saya mau pesan, apakah masih tersedia?"
+    )
+
+    return f"https://wa.me/{phone}?text={urllib.parse.quote(message)}"
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+def _mall_make_listing_response(listing, product, shop, request: Request):
+    product = product or {}
+    shop = shop or {}
+    listing = listing or {}
+
+    base_url = _mall_public_base_url(request)
+    slug = shop.get("slug") or ""
+    product_id = product.get("product_id") or listing.get("product_id") or ""
+    shop_id = shop.get("shop_id") or listing.get("shop_id") or ""
+    category = (
+        listing.get("mall_category")
+        or product.get("category_name")
+        or product.get("category")
+        or "Lainnya"
+    )
+
+    storefront_url = f"/toko/{slug}" if slug else ""
+    public_storefront_url = f"{base_url}/toko/{slug}" if base_url and slug else storefront_url
+
+    # LAPAKIN_MALL_PHASE1E_SUBDOMAIN_READY_V1
+    listing_detail_id = listing.get("listing_id") or product_id
+    detail_path = f"/p/{listing_detail_id}" if _mall_is_mall_host(request) else f"/mall/p/{listing_detail_id}"
+    public_detail_url = f"{base_url}{detail_path}" if base_url else detail_path
+    share_og_url = f"{base_url}/api/og/mall/{listing_detail_id}" if base_url else f"/api/og/mall/{listing_detail_id}"
+
+    return {
+        "listing_id": listing.get("listing_id"),
+        "shop_id": shop_id,
+        "product_id": product_id,
+        "name": product.get("name") or listing.get("title") or "Produk",
+        "description": _mall_clean_text(
+            listing.get("highlight")
+            or product.get("description")
+            or product.get("caption")
+            or "",
+            260,
+        ),
+        "price": product.get("price") or 0,
+        "stock": product.get("stock"),
+        "image": _mall_product_image(product),
+        "category": category,
+        "badge": listing.get("mall_badge") or ("Unggulan" if listing.get("featured") else ""),
+        "featured": bool(listing.get("featured")),
+        "rank": listing.get("mall_rank") or 100,
+        "shop": {
+            "shop_id": shop_id,
+            "name": shop.get("name") or "Toko",
+            "slug": slug,
+            "tagline": shop.get("tagline") or shop.get("description") or "",
+            "business_type": shop.get("business_type") or "",
+            "city": shop.get("city") or shop.get("service_area") or "",
+            "brand_color": shop.get("brand_color") or "#C04A3B",
+        },
+        "links": {
+            "storefront": storefront_url,
+            "public_storefront": public_storefront_url,
+            "detail": detail_path,
+            "public_detail": public_detail_url,
+            "share_og": share_og_url,
+            "order": _mall_build_order_url(shop, product),
+        },  # LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1
+    }
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+async def _mall_load_approved_listings():
+    return await db.mall_listings.find(
+        {
+            "status": "approved",
+            "$or": [
+                {"hidden": {"$ne": True}},
+                {"hidden": {"$exists": False}},
+            ],
+        },
+        {"_id": 0},
+    ).sort([("featured", -1), ("mall_rank", 1), ("created_at", -1)]).limit(300).to_list(300)
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+@router.get("/mall/listings")
+async def public_mall_listings(request: Request, q: str = "", category: str = "all", limit: int = 60):
+    limit = max(1, min(int(limit or 60), 120))
+    q_norm = str(q or "").strip().lower()
+    category_norm = str(category or "all").strip().lower()
+
+    listings = await _mall_load_approved_listings()
+
+    product_ids = [item.get("product_id") for item in listings if item.get("product_id")]
+    shop_ids = [item.get("shop_id") for item in listings if item.get("shop_id")]
+
+    products_by_id = {}
+    shops_by_id = {}
+
+    if product_ids:
+        products = await db.products.find({"product_id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+        products_by_id = {item.get("product_id"): item for item in products}
+
+    if shop_ids:
+        shops = await db.shops.find({"shop_id": {"$in": shop_ids}}, {"_id": 0}).to_list(len(shop_ids))
+        shops_by_id = {item.get("shop_id"): item for item in shops}
+
+    items = []
+    categories = set()
+
+    for listing in listings:
+        product = products_by_id.get(listing.get("product_id")) or {}
+        shop = shops_by_id.get(listing.get("shop_id")) or {}
+
+        if not _mall_product_active(product):
+            continue
+        if not _mall_shop_active(shop):
+            continue
+
+        row = _mall_make_listing_response(listing, product, shop, request)
+        categories.add(row.get("category") or "Lainnya")
+
+        if category_norm not in {"all", ""} and str(row.get("category") or "").lower() != category_norm:
+            continue
+
+        if q_norm:
+            haystack = " ".join([
+                str(row.get("name") or ""),
+                str(row.get("description") or ""),
+                str(row.get("category") or ""),
+                str(row.get("shop", {}).get("name") or ""),
+                str(row.get("shop", {}).get("business_type") or ""),
+                str(row.get("shop", {}).get("city") or ""),
+            ]).lower()
+
+            if q_norm not in haystack:
+                continue
+
+        items.append(row)
+
+        if len(items) >= limit:
+            break
+
+    return {
+        "items": items,
+        "categories": sorted(categories),
+        "summary": {
+            "total": len(items),
+            "total_approved_raw": len(listings),
+            "q": q,
+            "category": category,
+        },
+    }
+
+
+# LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+@router.post("/mall/events")
+async def public_mall_event(request: Request):
+    from datetime import datetime, timezone
+
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            payload = {}
+    except Exception:
+        payload = {}
+
+    event = str(payload.get("event") or payload.get("event_type") or "").strip().lower()
+    allowed = {
+        "mall_view",
+        "mall_search",
+        "mall_product_click",
+        "mall_product_view",
+        "mall_order_click",
+        "mall_store_click",
+    }
+
+    if event not in allowed:
+        event = "mall_view"
+
+    doc = {
+        "event_id": f"mall_evt_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}",
+        "event_type": event,
+        "listing_id": _mall_clean_text(payload.get("listing_id"), 120),
+        "product_id": _mall_clean_text(payload.get("product_id"), 120),
+        "shop_id": _mall_clean_text(payload.get("shop_id"), 120),
+        "query": _mall_clean_text(payload.get("query"), 160),
+        "category": _mall_clean_text(payload.get("category"), 160),
+        "path": _mall_clean_text(payload.get("path") or request.url.path, 260),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "request": {
+            "user_agent": request.headers.get("user-agent", ""),
+            "referer": request.headers.get("referer", ""),
+            "origin": request.headers.get("origin", ""),
+            "client_host": request.client.host if request.client else "",
+            "x_forwarded_for": request.headers.get("x-forwarded-for", ""),
+        },
+    }
+
+    try:
+        await db.mall_events.insert_one(doc)
+    except Exception:
+        pass
+
+    return {"ok": True}
+
+
+# LAPAKIN_MALL_PHASE1D_PRODUCT_DETAIL_OG_V1
+@router.get("/mall/listings/{listing_id}")
+async def public_mall_listing_detail(listing_id: str, request: Request):
+    listing_id = _mall_clean_text(listing_id, 140)
+    if not listing_id:
+        raise HTTPException(status_code=404, detail="Produk Mall tidak ditemukan")
+
+    listing = await db.mall_listings.find_one(
+        {
+            "$or": [
+                {"listing_id": listing_id},
+                {"product_id": listing_id},
+            ],
+            "status": "approved",
+            "$and": [
+                {"$or": [{"hidden": {"$ne": True}}, {"hidden": {"$exists": False}}]},
+            ],
+        },
+        {"_id": 0},
+    )
+
+    if not listing:
+        raise HTTPException(status_code=404, detail="Produk Mall tidak ditemukan")
+
+    product = await db.products.find_one({"product_id": listing.get("product_id")}, {"_id": 0}) or {}
+    shop = await db.shops.find_one({"shop_id": listing.get("shop_id")}, {"_id": 0}) or {}
+
+    if not _mall_product_active(product) or not _mall_shop_active(shop):
+        raise HTTPException(status_code=404, detail="Produk Mall tidak tersedia")
+
+    item = _mall_make_listing_response(listing, product, shop, request)
+
+    all_listings = await _mall_load_approved_listings()
+    product_ids = [row.get("product_id") for row in all_listings if row.get("product_id") and row.get("product_id") != listing.get("product_id")]
+    shop_ids = [row.get("shop_id") for row in all_listings if row.get("shop_id")]
+
+    products_by_id = {}
+    shops_by_id = {}
+
+    if product_ids:
+        products = await db.products.find({"product_id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+        products_by_id = {row.get("product_id"): row for row in products}
+
+    if shop_ids:
+        shops = await db.shops.find({"shop_id": {"$in": shop_ids}}, {"_id": 0}).to_list(len(shop_ids))
+        shops_by_id = {row.get("shop_id"): row for row in shops}
+
+    related = []
+    category = str(item.get("category") or "").lower()
+    shop_id = item.get("shop_id")
+
+    for row in all_listings:
+        if row.get("listing_id") == listing.get("listing_id"):
+            continue
+
+        related_product = products_by_id.get(row.get("product_id")) or {}
+        related_shop = shops_by_id.get(row.get("shop_id")) or {}
+
+        if not _mall_product_active(related_product) or not _mall_shop_active(related_shop):
+            continue
+
+        related_item = _mall_make_listing_response(row, related_product, related_shop, request)
+        same_category = str(related_item.get("category") or "").lower() == category
+        same_shop = related_item.get("shop_id") == shop_id
+
+        if same_category or same_shop:
+            related.append(related_item)
+
+        if len(related) >= 8:
+            break
+
+    if len(related) < 4:
+        for row in all_listings:
+            if row.get("listing_id") == listing.get("listing_id"):
+                continue
+
+            if any(existing.get("listing_id") == row.get("listing_id") for existing in related):
+                continue
+
+            related_product = products_by_id.get(row.get("product_id")) or {}
+            related_shop = shops_by_id.get(row.get("shop_id")) or {}
+
+            if not _mall_product_active(related_product) or not _mall_shop_active(related_shop):
+                continue
+
+            related.append(_mall_make_listing_response(row, related_product, related_shop, request))
+
+            if len(related) >= 8:
+                break
+
+    return {
+        "item": item,
+        "related": related,
+    }
+

@@ -1,3 +1,4 @@
+from typing import Optional
 """Products and product category CRUD routes."""
 import re
 import uuid
@@ -7,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from deps import db, require_user
 from models import ProductIn
+from pydantic import BaseModel
 from tiers import get_tier, get_limits, is_unlimited
 
 router = APIRouter()
@@ -586,3 +588,397 @@ async def delete_product(product_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     await db.products.delete_one({"product_id": product_id, "shop_id": user["shop_id"]})
     return {"ok": True}
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+class TenantMallSubmitIn(BaseModel):
+    product_id: str
+    mall_category: Optional[str] = ""
+    mall_badge: Optional[str] = ""
+    highlight: Optional[str] = ""
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+class TenantMallListingActionIn(BaseModel):
+    action: str
+    mall_category: Optional[str] = ""
+    mall_badge: Optional[str] = ""
+    highlight: Optional[str] = ""
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+def _tenant_mall_clean_text(value, limit=500):
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+def _tenant_mall_product_active(product):
+    if not product:
+        return False
+
+    availability = str(product.get("availability_status") or "").lower()
+    if availability in {"hidden", "out_of_stock"}:
+        return False
+
+    status = str(product.get("status") or "").lower()
+    if status in {"hidden", "deleted", "inactive"}:
+        return False
+
+    if product.get("is_active") is False:
+        return False
+
+    return True
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+def _tenant_mall_shop_active(shop):
+    if not shop:
+        return False
+
+    status = str(shop.get("status") or "active").lower()
+    if status in {"deleted", "suspended", "inactive"}:
+        return False
+
+    if shop.get("deleted_at"):
+        return False
+
+    return bool(shop.get("slug"))
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+def _tenant_mall_has_order_contact(shop):
+    keys = [
+        "whatsapp",
+        "whatsapp_number",
+        "wa_number",
+        "phone",
+        "phone_number",
+        "contact_phone",
+        "order_phone",
+        "order_whatsapp",
+        "contact_whatsapp",
+    ]
+
+    return any(str((shop or {}).get(key) or "").strip() for key in keys)
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+def _tenant_mall_product_image(product):
+    product = product or {}
+
+    for key in ["image_url", "thumbnail_url", "photo_url", "image_data"]:
+        value = product.get(key)
+        if value:
+            return value
+
+    images = product.get("images")
+    if isinstance(images, list) and images:
+        return images[0]
+
+    return ""
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+def _tenant_mall_default_category(product, shop):
+    return (
+        product.get("category_name")
+        or product.get("category")
+        or shop.get("business_type")
+        or "Pilihan UMKM"
+    )
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+def _tenant_mall_listing_public_status(listing):
+    if not listing:
+        return "not_submitted"
+
+    status = str(listing.get("status") or "pending").lower()
+    if listing.get("hidden") and status == "approved":
+        return "hidden"
+
+    return status
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+def _tenant_mall_listing_response(product, listing, shop):
+    product = product or {}
+    listing = listing or {}
+    shop = shop or {}
+
+    eligible_product = _tenant_mall_product_active(product)
+    eligible_shop = _tenant_mall_shop_active(shop)
+    has_contact = _tenant_mall_has_order_contact(shop)
+
+    status = _tenant_mall_listing_public_status(listing)
+
+    return {
+        "product_id": product.get("product_id"),
+        "shop_id": product.get("shop_id"),
+        "name": product.get("name") or "-",
+        "description": product.get("description") or product.get("caption") or "",
+        "price": product.get("price") or 0,
+        "stock": product.get("stock"),
+        "category": product.get("category_name") or product.get("category") or "",
+        "image": _tenant_mall_product_image(product),
+        "availability_status": product.get("availability_status") or "active",
+        "is_active": product.get("is_active", True),
+        "eligible_for_mall": bool(eligible_product and eligible_shop),
+        "eligibility": {
+            "product_active": eligible_product,
+            "shop_active": eligible_shop,
+            "has_order_contact": has_contact,
+            "shop_slug": shop.get("slug") or "",
+        },
+        "listing": {
+            "listing_id": listing.get("listing_id") or "",
+            "status": status,
+            "raw_status": listing.get("status") or "",
+            "mall_category": listing.get("mall_category") or _tenant_mall_default_category(product, shop),
+            "mall_badge": listing.get("mall_badge") or "",
+            "highlight": listing.get("highlight") or product.get("description") or product.get("caption") or "",
+            "featured": bool(listing.get("featured")),
+            "submitted_at": listing.get("submitted_at") or listing.get("created_at") or "",
+            "approved_at": listing.get("approved_at") or "",
+            "rejected_at": listing.get("rejected_at") or "",
+            "updated_at": listing.get("updated_at") or "",
+            "admin_note": listing.get("admin_note") or listing.get("reject_reason") or "",
+        },
+    }
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+@router.get("/mall/my-listings")
+async def tenant_mall_my_listings(request: Request, limit: int = 500):
+    user, shop_id = await _get_shop_id(request)
+
+    shop = await db.shops.find_one({"shop_id": shop_id}, {"_id": 0}) or {}
+    limit = max(1, min(int(limit or 500), 1000))
+
+    products = await db.products.find({"shop_id": shop_id}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    product_ids = [product.get("product_id") for product in products if product.get("product_id")]
+
+    listings_by_product = {}
+    if product_ids:
+        listings = await db.mall_listings.find(
+            {"shop_id": shop_id, "product_id": {"$in": product_ids}},
+            {"_id": 0},
+        ).to_list(len(product_ids))
+
+        listings_by_product = {
+            item.get("product_id"): item
+            for item in listings
+            if item.get("product_id")
+        }
+
+    items = [
+        _tenant_mall_listing_response(product, listings_by_product.get(product.get("product_id")), shop)
+        for product in products
+    ]
+
+    summary = {
+        "total_products": len(products),
+        "not_submitted": len([item for item in items if item["listing"]["status"] == "not_submitted"]),
+        "pending": len([item for item in items if item["listing"]["status"] == "pending"]),
+        "approved": len([item for item in items if item["listing"]["status"] == "approved"]),
+        "rejected": len([item for item in items if item["listing"]["status"] == "rejected"]),
+        "hidden": len([item for item in items if item["listing"]["status"] == "hidden"]),
+        "eligible": len([item for item in items if item.get("eligible_for_mall")]),
+        "shop_ready": _tenant_mall_shop_active(shop),
+        "has_order_contact": _tenant_mall_has_order_contact(shop),
+        "shop_slug": shop.get("slug") or "",
+    }
+
+    return {
+        "items": items,
+        "summary": summary,
+        "shop": {
+            "shop_id": shop_id,
+            "name": shop.get("name") or "",
+            "slug": shop.get("slug") or "",
+            "status": shop.get("status") or "active",
+        },
+    }
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+@router.post("/mall/submit")
+async def tenant_mall_submit_product(data: TenantMallSubmitIn, request: Request):
+    import uuid
+    from datetime import datetime, timezone
+
+    user, shop_id = await _get_shop_id(request)
+
+    product_id = _tenant_mall_clean_text(data.product_id, 120)
+    if not product_id:
+        raise HTTPException(status_code=400, detail="product_id wajib diisi")
+
+    product = await db.products.find_one({"shop_id": shop_id, "product_id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produk tidak ditemukan di toko kamu")
+
+    shop = await db.shops.find_one({"shop_id": shop_id}, {"_id": 0}) or {}
+
+    if not _tenant_mall_product_active(product):
+        raise HTTPException(status_code=400, detail="Produk hidden/habis/tidak aktif belum bisa diajukan ke Mall")
+
+    if not _tenant_mall_shop_active(shop):
+        raise HTTPException(status_code=400, detail="Toko belum aktif atau slug belum tersedia")
+
+    existing = await db.mall_listings.find_one({"shop_id": shop_id, "product_id": product_id}, {"_id": 0})
+    now = datetime.now(timezone.utc).isoformat()
+
+    category = _tenant_mall_clean_text(
+        data.mall_category or _tenant_mall_default_category(product, shop),
+        120,
+    ) or "Pilihan UMKM"
+    badge = _tenant_mall_clean_text(data.mall_badge, 60)
+    highlight = _tenant_mall_clean_text(data.highlight or product.get("description") or product.get("caption") or "", 500)
+
+    if existing and str(existing.get("status") or "").lower() == "approved":
+        raise HTTPException(status_code=409, detail="Produk sudah approved di Mall. Hubungi admin untuk ubah data listing.")
+
+    if existing:
+        update = {
+            "status": "pending",
+            "hidden": False,
+            "mall_category": category,
+            "mall_badge": badge,
+            "highlight": highlight,
+            "submitted_at": now,
+            "updated_at": now,
+            "submitted_by_user_id": user.get("user_id"),
+            "submitted_by_email": user.get("email"),
+            "submission_count": int(existing.get("submission_count") or 0) + 1,
+            "tenant_note": "resubmitted",
+        }
+
+        await db.mall_listings.update_one({"listing_id": existing["listing_id"]}, {"$set": update})
+        item = await db.mall_listings.find_one({"listing_id": existing["listing_id"]}, {"_id": 0})
+    else:
+        item = {
+            "listing_id": f"mall_{uuid.uuid4().hex[:14]}",
+            "shop_id": shop_id,
+            "product_id": product_id,
+            "status": "pending",
+            "hidden": False,
+            "mall_category": category,
+            "mall_badge": badge,
+            "mall_rank": 100,
+            "featured": False,
+            "highlight": highlight,
+            "created_at": now,
+            "updated_at": now,
+            "submitted_at": now,
+            "submitted_by_user_id": user.get("user_id"),
+            "submitted_by_email": user.get("email"),
+            "submission_count": 1,
+            "source": "tenant_submit",
+        }
+
+        await db.mall_listings.insert_one(dict(item))
+
+    try:
+        await db.mall_submission_events.insert_one({
+            "event_id": f"mall_sub_{uuid.uuid4().hex[:14]}",
+            "event_type": "tenant_submit",
+            "listing_id": item.get("listing_id"),
+            "shop_id": shop_id,
+            "product_id": product_id,
+            "created_at": now,
+            "user_id": user.get("user_id"),
+            "email": user.get("email"),
+            "status": item.get("status"),
+        })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "item": _tenant_mall_listing_response(product, item, shop),
+        "message": "Produk berhasil diajukan ke Lapakin Mall. Menunggu approval admin.",
+    }
+
+
+# LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
+@router.patch("/mall/my-listings/{listing_id}")
+async def tenant_mall_listing_action(listing_id: str, data: TenantMallListingActionIn, request: Request):
+    import uuid
+    from datetime import datetime, timezone
+
+    user, shop_id = await _get_shop_id(request)
+
+    listing = await db.mall_listings.find_one({"shop_id": shop_id, "listing_id": listing_id}, {"_id": 0})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing Mall tidak ditemukan")
+
+    product = await db.products.find_one({"shop_id": shop_id, "product_id": listing.get("product_id")}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produk listing tidak ditemukan")
+
+    shop = await db.shops.find_one({"shop_id": shop_id}, {"_id": 0}) or {}
+    action = str(data.action or "").strip().lower()
+    now = datetime.now(timezone.utc).isoformat()
+
+    if action == "withdraw":
+        update = {
+            "status": "hidden",
+            "hidden": True,
+            "withdrawn_at": now,
+            "updated_at": now,
+            "withdrawn_by_user_id": user.get("user_id"),
+            "withdrawn_by_email": user.get("email"),
+        }
+        event_type = "tenant_withdraw"
+
+    elif action == "resubmit":
+        if not _tenant_mall_product_active(product):
+            raise HTTPException(status_code=400, detail="Produk hidden/habis/tidak aktif belum bisa diajukan ulang")
+
+        if not _tenant_mall_shop_active(shop):
+            raise HTTPException(status_code=400, detail="Toko belum aktif atau slug belum tersedia")
+
+        update = {
+            "status": "pending",
+            "hidden": False,
+            "mall_category": _tenant_mall_clean_text(data.mall_category or listing.get("mall_category") or _tenant_mall_default_category(product, shop), 120),
+            "mall_badge": _tenant_mall_clean_text(data.mall_badge if data.mall_badge is not None else listing.get("mall_badge"), 60),
+            "highlight": _tenant_mall_clean_text(data.highlight or listing.get("highlight") or product.get("description") or product.get("caption") or "", 500),
+            "submitted_at": now,
+            "updated_at": now,
+            "submitted_by_user_id": user.get("user_id"),
+            "submitted_by_email": user.get("email"),
+            "submission_count": int(listing.get("submission_count") or 0) + 1,
+        }
+        event_type = "tenant_resubmit"
+
+    else:
+        raise HTTPException(status_code=400, detail="Action harus withdraw atau resubmit")
+
+    await db.mall_listings.update_one({"listing_id": listing_id, "shop_id": shop_id}, {"$set": update})
+    item = await db.mall_listings.find_one({"listing_id": listing_id, "shop_id": shop_id}, {"_id": 0})
+
+    try:
+        await db.mall_submission_events.insert_one({
+            "event_id": f"mall_sub_{uuid.uuid4().hex[:14]}",
+            "event_type": event_type,
+            "listing_id": listing_id,
+            "shop_id": shop_id,
+            "product_id": listing.get("product_id"),
+            "created_at": now,
+            "user_id": user.get("user_id"),
+            "email": user.get("email"),
+            "status": item.get("status"),
+        })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "item": _tenant_mall_listing_response(product, item, shop),
+        "message": "Status listing Mall diperbarui.",
+    }
+

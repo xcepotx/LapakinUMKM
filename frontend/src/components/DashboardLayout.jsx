@@ -16,8 +16,7 @@ import {
   ExternalLink,
   MessageSquare,
   CreditCard,
-  BarChart3,
-} from "lucide-react";
+  BarChart3, ShoppingBag} from "lucide-react";
 
 const TIER_BADGE = {
   free: {
@@ -51,6 +50,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
   const mainItems = [
     { to: "/dashboard", icon: LayoutDashboard, label: "Beranda", tid: "nav-home" },
     { to: "/dashboard/products", icon: Package, label: "Produk", tid: "nav-products" },
+    { to: "/dashboard/mall", icon: ShoppingBag, label: "Mall", tid: "nav-mall" }, // LAPAKIN_MALL_PHASE1C_TENANT_SUBMIT_V1
     { to: "/dashboard/settings", icon: Settings, label: "Pengaturan Toko", tid: "nav-shop-settings" },
   ];
 

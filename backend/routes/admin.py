@@ -4328,3 +4328,523 @@ async def admin_tenant_support_case_update(shop_id: str, data: AdminTenantSuppor
         "item": item,
     }
 
+
+# LAPAKIN_ADMIN_SUPPORT_QUEUE_PHASE2D_V1
+def _admin_support_queue_clean_status(value: str) -> str:
+    value = str(value or "active").strip().lower()
+    if value in {"all", "open", "in_progress", "resolved", "active"}:
+        return value
+    return "active"
+
+
+# LAPAKIN_ADMIN_SUPPORT_QUEUE_PHASE2D_V1
+def _admin_support_queue_clean_priority(value: str) -> str:
+    value = str(value or "all").strip().lower()
+    if value in {"all", "low", "normal", "high", "urgent"}:
+        return value
+    return "all"
+
+
+# LAPAKIN_ADMIN_SUPPORT_QUEUE_PHASE2D_V1
+async def _admin_support_queue_enrich_cases(items: list[dict]) -> list[dict]:
+    shop_ids = [item.get("shop_id") for item in items if item.get("shop_id")]
+    shops_by_id = {}
+
+    if shop_ids:
+        shops = await db.shops.find(
+            {"shop_id": {"$in": shop_ids}},
+            {"_id": 0, "shop_id": 1, "name": 1, "slug": 1, "status": 1, "owner_user_id": 1, "user_id": 1},
+        ).to_list(len(shop_ids))
+        shops_by_id = {shop.get("shop_id"): shop for shop in shops}
+
+    owner_ids = []
+    for shop in shops_by_id.values():
+        owner_id = shop.get("owner_user_id") or shop.get("user_id")
+        if owner_id:
+            owner_ids.append(owner_id)
+
+    owners_by_id = {}
+    if owner_ids:
+        owners = await db.users.find(
+            {"user_id": {"$in": owner_ids}},
+            {"_id": 0, "user_id": 1, "name": 1, "email": 1, "tier": 1, "plan": 1},
+        ).to_list(len(owner_ids))
+        owners_by_id = {owner.get("user_id"): owner for owner in owners}
+
+    enriched = []
+    for item in items:
+        row = dict(item or {})
+        row.pop("_id", None)
+
+        shop = shops_by_id.get(row.get("shop_id")) or {}
+        owner_id = shop.get("owner_user_id") or shop.get("user_id")
+        owner = owners_by_id.get(owner_id) or {}
+
+        row["shop"] = shop
+        row["owner"] = owner
+        row["shop_name"] = row.get("shop_name") or shop.get("name") or "-"
+        row["shop_slug"] = row.get("shop_slug") or shop.get("slug") or ""
+
+        enriched.append(row)
+
+    return enriched
+
+
+# LAPAKIN_ADMIN_SUPPORT_QUEUE_PHASE2D_V1
+@router.get("/admin/support-cases")
+async def admin_support_cases_queue(
+    request: Request,
+    status: str = "active",
+    priority: str = "all",
+    q: str = "",
+    limit: int = 100,
+):
+    await require_admin(request)
+
+    status = _admin_support_queue_clean_status(status)
+    priority = _admin_support_queue_clean_priority(priority)
+    limit = max(1, min(int(limit or 100), 300))
+
+    query = {}
+
+    if status == "active":
+        query["status"] = {"$in": ["open", "in_progress"]}
+    elif status != "all":
+        query["status"] = status
+
+    if priority != "all":
+        query["priority"] = priority
+
+    if q:
+        needle = str(q).strip()
+        query["$or"] = [
+            {"shop_name": {"$regex": needle, "$options": "i"}},
+            {"shop_slug": {"$regex": needle, "$options": "i"}},
+            {"shop_id": {"$regex": needle, "$options": "i"}},
+            {"summary": {"$regex": needle, "$options": "i"}},
+            {"next_step": {"$regex": needle, "$options": "i"}},
+            {"updated_by_email": {"$regex": needle, "$options": "i"}},
+        ]
+
+    items = await db.admin_support_cases.find(query, {"_id": 0}).sort("updated_at", -1).limit(limit).to_list(limit)
+    enriched_items = await _admin_support_queue_enrich_cases(items)
+
+    summary = {
+        "open": await db.admin_support_cases.count_documents({"status": "open"}),
+        "in_progress": await db.admin_support_cases.count_documents({"status": "in_progress"}),
+        "resolved": await db.admin_support_cases.count_documents({"status": "resolved"}),
+        "urgent": await db.admin_support_cases.count_documents({"status": {"$in": ["open", "in_progress"]}, "priority": "urgent"}),
+        "high": await db.admin_support_cases.count_documents({"status": {"$in": ["open", "in_progress"]}, "priority": "high"}),
+        "active": await db.admin_support_cases.count_documents({"status": {"$in": ["open", "in_progress"]}}),
+    }
+
+    return {
+        "items": enriched_items,
+        "summary": summary,
+        "filters": {
+            "status": status,
+            "priority": priority,
+            "q": q,
+            "limit": limit,
+        },
+    }
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+class AdminMallListingIn(BaseModel):
+    product_id: str
+    status: Optional[str] = "approved"
+    mall_category: Optional[str] = ""
+    mall_badge: Optional[str] = ""
+    mall_rank: Optional[int] = 100
+    featured: Optional[bool] = False
+    highlight: Optional[str] = ""
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+class AdminMallListingUpdateIn(BaseModel):
+    status: Optional[str] = None
+    mall_category: Optional[str] = None
+    mall_badge: Optional[str] = None
+    mall_rank: Optional[int] = None
+    featured: Optional[bool] = None
+    highlight: Optional[str] = None
+    hidden: Optional[bool] = None
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+def _admin_mall_clean_text(value, limit=500):
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+def _admin_mall_status(value, default="approved"):
+    value = str(value or default).strip().lower()
+    if value not in {"pending", "approved", "rejected", "hidden"}:
+        return default
+    return value
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+def _admin_mall_product_active(product):
+    if not product:
+        return False
+
+    availability = str(product.get("availability_status") or "").lower()
+    if availability in {"hidden", "out_of_stock"}:
+        return False
+
+    status = str(product.get("status") or "").lower()
+    if status in {"hidden", "deleted", "inactive"}:
+        return False
+
+    if product.get("is_active") is False:
+        return False
+
+    return True
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+def _admin_mall_shop_active(shop):
+    if not shop:
+        return False
+
+    status = str(shop.get("status") or "active").lower()
+    if status in {"deleted", "suspended", "inactive"}:
+        return False
+
+    if shop.get("deleted_at"):
+        return False
+
+    return bool(shop.get("slug"))
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+def _admin_mall_product_image(product):
+    product = product or {}
+
+    for key in ["image_url", "thumbnail_url", "photo_url", "image_data"]:
+        value = product.get(key)
+        if value:
+            return value
+
+    images = product.get("images")
+    if isinstance(images, list) and images:
+        return images[0]
+
+    return ""
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+async def _admin_mall_enrich_listings(listings):
+    product_ids = [item.get("product_id") for item in listings if item.get("product_id")]
+    shop_ids = [item.get("shop_id") for item in listings if item.get("shop_id")]
+
+    products_by_id = {}
+    shops_by_id = {}
+
+    if product_ids:
+        products = await db.products.find({"product_id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+        products_by_id = {item.get("product_id"): item for item in products}
+
+    if shop_ids:
+        shops = await db.shops.find({"shop_id": {"$in": shop_ids}}, {"_id": 0}).to_list(len(shop_ids))
+        shops_by_id = {item.get("shop_id"): item for item in shops}
+
+    rows = []
+    for listing in listings:
+        row = dict(listing or {})
+        row.pop("_id", None)
+
+        product = products_by_id.get(row.get("product_id")) or {}
+        shop = shops_by_id.get(row.get("shop_id")) or {}
+
+        row["product"] = {
+            "product_id": product.get("product_id") or row.get("product_id"),
+            "name": product.get("name") or "-",
+            "description": product.get("description") or product.get("caption") or "",
+            "price": product.get("price") or 0,
+            "stock": product.get("stock"),
+            "category": product.get("category_name") or product.get("category") or "",
+            "image": _admin_mall_product_image(product),
+            "availability_status": product.get("availability_status"),
+            "is_active": product.get("is_active", True),
+            "active_for_mall": _admin_mall_product_active(product),
+        }
+
+        row["shop"] = {
+            "shop_id": shop.get("shop_id") or row.get("shop_id"),
+            "name": shop.get("name") or "-",
+            "slug": shop.get("slug") or "",
+            "status": shop.get("status") or "active",
+            "business_type": shop.get("business_type") or "",
+            "brand_color": shop.get("brand_color") or "#C04A3B",
+            "active_for_mall": _admin_mall_shop_active(shop),
+        }
+
+        rows.append(row)
+
+    return rows
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+@router.get("/admin/mall/listings")
+async def admin_mall_listings(request: Request, status: str = "all", q: str = "", limit: int = 100):
+    await require_admin(request)
+
+    status = str(status or "all").strip().lower()
+    limit = max(1, min(int(limit or 100), 300))
+
+    query = {}
+    if status != "all":
+        query["status"] = _admin_mall_status(status)
+
+    if q:
+        needle = str(q).strip()
+        query["$or"] = [
+            {"listing_id": {"$regex": needle, "$options": "i"}},
+            {"product_id": {"$regex": needle, "$options": "i"}},
+            {"shop_id": {"$regex": needle, "$options": "i"}},
+            {"mall_category": {"$regex": needle, "$options": "i"}},
+            {"mall_badge": {"$regex": needle, "$options": "i"}},
+            {"highlight": {"$regex": needle, "$options": "i"}},
+        ]
+
+    listings = await db.mall_listings.find(query, {"_id": 0}).sort([("featured", -1), ("mall_rank", 1), ("created_at", -1)]).limit(limit).to_list(limit)
+    items = await _admin_mall_enrich_listings(listings)
+
+    summary = {
+        "all": await db.mall_listings.count_documents({}),
+        "pending": await db.mall_listings.count_documents({"status": "pending"}),
+        "approved": await db.mall_listings.count_documents({"status": "approved"}),
+        "rejected": await db.mall_listings.count_documents({"status": "rejected"}),
+        "hidden": await db.mall_listings.count_documents({"status": "hidden"}),
+        "featured": await db.mall_listings.count_documents({"featured": True, "status": "approved"}),
+    }
+
+    return {
+        "items": items,
+        "summary": summary,
+        "filters": {
+            "status": status,
+            "q": q,
+            "limit": limit,
+        },
+    }
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+@router.get("/admin/mall/candidate-products")
+async def admin_mall_candidate_products(request: Request, q: str = "", limit: int = 80):
+    await require_admin(request)
+
+    limit = max(1, min(int(limit or 80), 200))
+    query = {}
+
+    if q:
+        needle = str(q).strip()
+        query["$or"] = [
+            {"name": {"$regex": needle, "$options": "i"}},
+            {"description": {"$regex": needle, "$options": "i"}},
+            {"caption": {"$regex": needle, "$options": "i"}},
+            {"category": {"$regex": needle, "$options": "i"}},
+            {"category_name": {"$regex": needle, "$options": "i"}},
+            {"product_id": {"$regex": needle, "$options": "i"}},
+            {"shop_id": {"$regex": needle, "$options": "i"}},
+        ]
+
+    products = await db.products.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+
+    shop_ids = [item.get("shop_id") for item in products if item.get("shop_id")]
+    product_ids = [item.get("product_id") for item in products if item.get("product_id")]
+
+    shops_by_id = {}
+    listing_product_ids = set()
+
+    if shop_ids:
+        shops = await db.shops.find({"shop_id": {"$in": shop_ids}}, {"_id": 0}).to_list(len(shop_ids))
+        shops_by_id = {item.get("shop_id"): item for item in shops}
+
+    if product_ids:
+        listings = await db.mall_listings.find({"product_id": {"$in": product_ids}}, {"_id": 0, "product_id": 1, "status": 1}).to_list(len(product_ids))
+        listing_product_ids = {item.get("product_id") for item in listings if item.get("product_id")}
+
+    items = []
+    for product in products:
+        shop = shops_by_id.get(product.get("shop_id")) or {}
+        active = _admin_mall_product_active(product) and _admin_mall_shop_active(shop)
+
+        items.append({
+            "product_id": product.get("product_id"),
+            "shop_id": product.get("shop_id"),
+            "name": product.get("name") or "-",
+            "description": product.get("description") or product.get("caption") or "",
+            "price": product.get("price") or 0,
+            "stock": product.get("stock"),
+            "category": product.get("category_name") or product.get("category") or shop.get("business_type") or "Pilihan UMKM",
+            "image": _admin_mall_product_image(product),
+            "active_for_mall": active,
+            "already_listed": product.get("product_id") in listing_product_ids,
+            "shop": {
+                "shop_id": shop.get("shop_id"),
+                "name": shop.get("name") or "-",
+                "slug": shop.get("slug") or "",
+                "status": shop.get("status") or "active",
+                "active_for_mall": _admin_mall_shop_active(shop),
+            },
+        })
+
+    return {
+        "items": items,
+        "summary": {
+            "total": len(items),
+            "active_candidates": len([item for item in items if item.get("active_for_mall") and not item.get("already_listed")]),
+        },
+    }
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+@router.post("/admin/mall/listings")
+async def admin_mall_create_listing(data: AdminMallListingIn, request: Request):
+    import uuid
+    from datetime import datetime, timezone
+
+    admin = await require_admin(request)
+
+    product_id = _admin_mall_clean_text(data.product_id, 120)
+    if not product_id:
+        raise HTTPException(status_code=400, detail="product_id wajib diisi")
+
+    product = await db.products.find_one({"product_id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+
+    shop = await db.shops.find_one({"shop_id": product.get("shop_id")}, {"_id": 0})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko produk tidak ditemukan")
+
+    if not _admin_mall_product_active(product):
+        raise HTTPException(status_code=400, detail="Produk tidak aktif/hidden/habis, tidak bisa masuk mall")
+
+    if not _admin_mall_shop_active(shop):
+        raise HTTPException(status_code=400, detail="Toko tidak aktif atau slug tidak valid, tidak bisa masuk mall")
+
+    existing = await db.mall_listings.find_one({"product_id": product_id}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=409, detail="Produk sudah ada di Mall")
+
+    now = datetime.now(timezone.utc).isoformat()
+    status = _admin_mall_status(data.status, "approved")
+    rank = int(data.mall_rank or 100)
+
+    doc = {
+        "listing_id": f"mall_{uuid.uuid4().hex[:14]}",
+        "shop_id": product.get("shop_id"),
+        "product_id": product_id,
+        "status": status,
+        "mall_category": _admin_mall_clean_text(data.mall_category or product.get("category_name") or product.get("category") or shop.get("business_type") or "Pilihan UMKM", 120),
+        "mall_badge": _admin_mall_clean_text(data.mall_badge, 60),
+        "mall_rank": rank,
+        "featured": bool(data.featured),
+        "highlight": _admin_mall_clean_text(data.highlight or product.get("description") or product.get("caption") or "", 500),
+        "hidden": status == "hidden",
+        "created_at": now,
+        "updated_at": now,
+        "approved_at": now if status == "approved" else "",
+        "created_by_user_id": (admin or {}).get("user_id"),
+        "created_by_email": (admin or {}).get("email"),
+        "source": "admin",
+    }
+
+    await db.mall_listings.insert_one(dict(doc))
+
+    try:
+        await log_admin_action(
+            admin,
+            "mall_listing_create",
+            "mall_listing",
+            doc["listing_id"],
+            {
+                "product_id": product_id,
+                "shop_id": product.get("shop_id"),
+                "shop_name": shop.get("name"),
+                "status": status,
+            },
+        )
+    except Exception:
+        pass
+
+    enriched = await _admin_mall_enrich_listings([doc])
+    return {"ok": True, "item": enriched[0] if enriched else doc}
+
+
+# LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
+@router.patch("/admin/mall/listings/{listing_id}")
+async def admin_mall_update_listing(listing_id: str, data: AdminMallListingUpdateIn, request: Request):
+    from datetime import datetime, timezone
+
+    admin = await require_admin(request)
+
+    existing = await db.mall_listings.find_one({"listing_id": listing_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Listing Mall tidak ditemukan")
+
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "updated_at": now,
+        "updated_by_user_id": (admin or {}).get("user_id"),
+        "updated_by_email": (admin or {}).get("email"),
+    }
+
+    if data.status is not None:
+        status = _admin_mall_status(data.status, existing.get("status") or "approved")
+        update["status"] = status
+        update["hidden"] = status == "hidden"
+        if status == "approved" and not existing.get("approved_at"):
+            update["approved_at"] = now
+
+    if data.mall_category is not None:
+        update["mall_category"] = _admin_mall_clean_text(data.mall_category, 120)
+
+    if data.mall_badge is not None:
+        update["mall_badge"] = _admin_mall_clean_text(data.mall_badge, 60)
+
+    if data.mall_rank is not None:
+        update["mall_rank"] = int(data.mall_rank or 100)
+
+    if data.featured is not None:
+        update["featured"] = bool(data.featured)
+
+    if data.highlight is not None:
+        update["highlight"] = _admin_mall_clean_text(data.highlight, 500)
+
+    if data.hidden is not None:
+        update["hidden"] = bool(data.hidden)
+        if bool(data.hidden):
+            update["status"] = "hidden"
+
+    await db.mall_listings.update_one({"listing_id": listing_id}, {"$set": update})
+
+    item = await db.mall_listings.find_one({"listing_id": listing_id}, {"_id": 0})
+    enriched = await _admin_mall_enrich_listings([item])
+
+    try:
+        await log_admin_action(
+            admin,
+            "mall_listing_update",
+            "mall_listing",
+            listing_id,
+            {
+                "product_id": existing.get("product_id"),
+                "shop_id": existing.get("shop_id"),
+                "changes": update,
+            },
+        )
+    except Exception:
+        pass
+
+    return {"ok": True, "item": enriched[0] if enriched else item}
+

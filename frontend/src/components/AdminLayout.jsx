@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard, ClipboardList, Bell, Bug} from "lucide-react";
+import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard, ClipboardList, Bell, Bug, Headset, ShoppingBag} from "lucide-react";
 
 import api from "@/lib/api";
 
@@ -74,6 +74,7 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
     {
       title: "Operasional",
       items: [
+        { to: "/admin/support-queue", icon: Headset, label: "Support Queue", tid: "admin-nav-support-queue" }, // LAPAKIN_ADMIN_SUPPORT_QUEUE_PHASE2D_V1
         { label: (<><span>Daily Ops</span><AdminNavBadge count={adminNavBadges.ops} /></>), to: "/admin/ops", icon: Activity, tid: "admin-nav-ops" },
         { label: (<><span>Notifications</span><AdminNavBadge count={adminNavBadges.notifications} /></>), to: "/admin/notifications", icon: Bell, tid: "admin-nav-notifications" },
         { label: (<><span>Onboarding</span><AdminNavBadge count={adminNavBadges.onboarding} /></>), to: "/admin/onboarding", icon: ClipboardList, tid: "admin-nav-onboarding" },
@@ -92,6 +93,7 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
       title: "Konten & AI",
       items: [
         { to: "/admin/products", icon: Trash2, label: "Moderasi Produk", tid: "admin-nav-products" },
+        { to: "/admin/mall", icon: ShoppingBag, label: "Mall", tid: "admin-nav-mall" }, // LAPAKIN_MALL_PHASE1B_ADMIN_MANAGEMENT_V1
         { to: "/admin/broadcasts", icon: Megaphone, label: "Broadcast", tid: "admin-nav-broadcasts" },
         { to: "/admin/ai-usage", icon: Activity, label: "AI Usage", tid: "admin-nav-ai" },
         { to: "/admin/stories", icon: BookOpen, label: "Cerita UMKM", tid: "admin-nav-stories" },
