@@ -1,6 +1,7 @@
 """OpenGraph routes: shop share HTML/PNG, product IG post/story, bulk card pack."""
 import re
 import time
+import hashlib
 import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
@@ -34,6 +35,56 @@ def _public_base_url(request: Request) -> str:
     return f"{proto}://{host}"
 
 
+
+
+# LAPAKIN_OG_WHATSAPP_THUMB_V1
+def _lapakin_og_version(*parts) -> str:
+    raw = "|".join(str(p or "") for p in parts)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
+# LAPAKIN_OG_WHATSAPP_THUMB_V1
+def _lapakin_optimize_og_png(png: bytes) -> bytes:
+    """
+    WhatsApp kadang mengambil title/description tapi skip thumbnail kalau file OG terlalu besar.
+    Tetap keluarkan PNG 1200x630, tapi diperkecil via adaptive palette + optimize.
+    Kalau gagal, fallback ke PNG original supaya endpoint tidak rusak.
+    """
+    try:
+        from PIL import Image
+
+        src = Image.open(BytesIO(png))
+        src.load()
+
+        # Pastikan ukuran tidak berubah. Test existing mengharapkan 1200x630.
+        if src.mode not in ("RGB", "RGBA"):
+            src = src.convert("RGBA")
+
+        # Hilangkan alpha ke background putih agar hasil paletted PNG lebih stabil.
+        if src.mode == "RGBA":
+            bg = Image.new("RGB", src.size, "white")
+            bg.paste(src, mask=src.getchannel("A"))
+            src = bg
+        else:
+            src = src.convert("RGB")
+
+        # Adaptive palette signifikan mengecilkan PNG photo-rich untuk kebutuhan thumbnail OG.
+        paletted = src.convert("P", palette=Image.Palette.ADAPTIVE, colors=192)
+
+        out = BytesIO()
+        paletted.save(out, format="PNG", optimize=True, compress_level=9)
+
+        optimized = out.getvalue()
+
+        # Pakai versi optimized hanya kalau benar-benar lebih kecil dan masih PNG valid.
+        if optimized.startswith(b"\x89PNG\r\n\x1a\n") and len(optimized) < len(png):
+            return optimized
+
+        return png
+    except Exception:
+        return png
+
+
 # ---------- Shop OG PNG ----------
 @router.api_route("/og/shop/{slug}.png", methods=["GET", "HEAD"])
 async def og_image(slug: str):
@@ -62,6 +113,7 @@ async def og_image(slug: str):
             shop.get("tagline") or "",
             shop.get("brand_color") or "#C04A3B",
         )
+    png = _lapakin_optimize_og_png(png)
     OG_PNG_CACHE[shop_id] = (png, chash, now)
     # Cap cache size — drop oldest entry if >100 shops cached.
     if len(OG_PNG_CACHE) > 100:
@@ -88,7 +140,16 @@ async def og_html(slug: str, request: Request):
         title = f"{shop.get('name') or 'Toko'} · Lapakin"
         desc = (shop.get("storefront_seo_description") or shop.get("tagline") or shop.get("description")
                 or shop.get("about") or "Toko online UMKM Indonesia di Lapakin.")[:200]
-        og_img_url = shop.get("storefront_seo_image") or f"{base}/api/og/shop/{slug}.png"
+        og_img_version = _lapakin_og_version(
+            shop.get("shop_id"),
+            shop.get("name"),
+            shop.get("tagline"),
+            shop.get("description"),
+            shop.get("brand_color"),
+            shop.get("cover_image"),
+            shop.get("storefront_seo_image"),
+        )
+        og_img_url = shop.get("storefront_seo_image") or f"{base}/api/og/shop/{slug}.png?v={og_img_version}"
 
     canonical = f"{base}/toko/{slug}"
     html = f"""<!doctype html>
@@ -105,6 +166,8 @@ async def og_html(slug: str, request: Request):
 <meta property="og:description" content="{_esc(desc)}" />
 <meta property="og:url" content="{canonical}" />
 {f'<meta property="og:image" content="{og_img_url}" />' if og_img_url else ''}
+{f'<meta property="og:image:secure_url" content="{og_img_url}" />' if og_img_url else ''}
+{'<meta property="og:image:type" content="image/png" />' if og_img_url else ''}
 {'<meta property="og:image:width" content="1200" />' if og_img_url else ''}
 {'<meta property="og:image:height" content="630" />' if og_img_url else ''}
 <meta property="og:locale" content="id_ID" />

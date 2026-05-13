@@ -142,6 +142,12 @@ class ProductIn(BaseModel):
     price: int = Field(ge=0)
     stock: int = Field(ge=0, default=0)
     description: Optional[str] = ""
+    # LAPAKIN_PRODUCTIN_CATEGORY_FIELDS_V1
+    # Kategori produk harus diterima oleh ProductIn karena endpoint create/update
+    # memakai data.model_dump() sebelum _resolve_category_for_product().
+    category_id: Optional[str] = ""
+    category: Optional[str] = ""
+    category_name: Optional[str] = ""
     image_data: Optional[str] = ""  # primary image (kept for backward compat — first item of images)
     images: List[str] = []           # all images (data URLs or base64)
     ig_caption: Optional[str] = ""

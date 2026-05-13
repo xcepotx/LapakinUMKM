@@ -1641,6 +1641,8 @@ function CategoryChips({
               placeholder="Cari produk, menu, atau layanan..."
               data-testid="storefront-template-product-search"
               style={{
+                /* LAPAKIN_HIDE_EMPTY_CATEGORY_DROPDOWN_V2: search spans full width when category dropdown is hidden. */
+                gridColumn: categories.length ? undefined : "1 / -1",
                 minWidth: 0,
                 height: 44,
                 borderRadius: 14,
@@ -1649,26 +1651,28 @@ function CategoryChips({
               }}
             />
 
-            <select
-              value={categoryFilter}
-              onChange={(event) => setCategoryFilter?.(event.target.value)}
-              data-testid="storefront-template-category-filter"
-              style={{
-                height: 44,
-                borderRadius: 14,
-                border: "1px solid rgba(15, 23, 42, 0.12)",
-                padding: "0 12px",
-                fontWeight: 800,
-                background: "#fff",
-              }}
-            >
-              <option value="all">Semua kategori</option>
-              {categories.map((category) => (
-                <option key={category} value={category.toLowerCase()}>
-                  {category}
-                </option>
-              ))}
-            </select>
+            {categories.length ? (
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter?.(event.target.value)}
+                data-testid="storefront-template-category-filter"
+                style={{
+                  height: 44,
+                  borderRadius: 14,
+                  border: "1px solid rgba(15, 23, 42, 0.12)",
+                  padding: "0 12px",
+                  fontWeight: 800,
+                  background: "#fff",
+                }}
+              >
+                <option value="all">Semua kategori</option>
+                {categories.map((category) => (
+                  <option key={category} value={category.toLowerCase()}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            ) : null /* LAPAKIN_HIDE_EMPTY_CATEGORY_DROPDOWN_V2: hide empty category dropdown. */}
           </div>
 
           <small style={{ color: "#64748b" }}>
@@ -2389,7 +2393,10 @@ function ProductSection({
   return (
     <section className="ltr-section" data-lapakin-product-section={productSectionType}>
       <div className="ltr-section-heading">
-        <span>{lapakinIsFeaturedMenuSection ? "Menu Unggulan" : template.label}</span>
+        {/* LAPAKIN_HIDE_MAIN_MENU_TEMPLATE_LABEL_V2: hide template label above main menu title. */}
+        {lapakinIsFeaturedMenuSection ? (
+          <span>Menu Unggulan</span>
+        ) : null}
         <h2>{finalTitle}</h2>
         <p>
           {lapakinIsFeaturedMenuSection
@@ -2446,7 +2453,7 @@ function ProductSection({
 
       {hasMoreProducts ? (
         <div className="ltr-load-more-wrap">
-          <p>Menampilkan {visibleProducts.length} dari {sourceProducts.length} menu</p>
+          {/* LAPAKIN_HIDE_STOREFRONT_BOTTOM_MENU_COUNT_V1: count already shown in filter panel above. */}
           <button
             type="button"
             onClick={() => setVisibleCount((current) => current + initialMainCount)}
@@ -2454,9 +2461,7 @@ function ProductSection({
             Lihat menu lainnya
           </button>
         </div>
-      ) : lapakinIsMainMenuSection ? (
-        <p className="ltr-menu-count-note">Menampilkan {visibleProducts.length} menu</p>
-      ) : null}
+      ) : null /* LAPAKIN_HIDE_STOREFRONT_BOTTOM_MENU_COUNT_V1: bottom count hidden because filter panel already shows item count. */}
     </section>
   );
 }
