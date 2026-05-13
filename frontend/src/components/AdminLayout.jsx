@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard, ClipboardList, Bell } from "lucide-react";
+import { Sparkles, ShieldCheck, Store, Users, Tags, Trash2, Megaphone, ScrollText, Activity, LogOut, ExternalLink, BookOpen, HeartPulse, Server, CreditCard, ClipboardList, Bell, Bug} from "lucide-react";
 
 import api from "@/lib/api";
 
@@ -28,13 +28,31 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
     let alive = true;
 
     async function loadAdminNavBadges() {
-      try {
-        const { data } = await api.get("/admin/nav-badges");
-        if (alive) setAdminNavBadges(data?.badges || {});
-      } catch (_err) {
-        if (alive) setAdminNavBadges({});
+        try {
+          // LAPAKIN_ERROR_CENTER_PHASE4B_BADGE_CLEANUP_UI_V4
+          const [badgesResponse, errorLogsResponse] = await Promise.allSettled([
+            api.get("/admin/nav-badges"),
+            api.get("/admin/error-logs", { params: { status: "open", limit: 1 } }),
+          ]);
+
+          const baseBadges = badgesResponse.status === "fulfilled"
+            ? badgesResponse.value?.data?.badges || {}
+            : {};
+
+          const errorLogsOpen = errorLogsResponse.status === "fulfilled"
+            ? Number(errorLogsResponse.value?.data?.summary?.open || 0)
+            : 0;
+
+          if (alive) {
+            setAdminNavBadges({
+              ...baseBadges,
+              error_logs_open: errorLogsOpen,
+            });
+          }
+        } catch (_err) {
+          if (alive) setAdminNavBadges({});
+        }
       }
-    }
 
     loadAdminNavBadges();
     const timer = window.setInterval(loadAdminNavBadges, 60000);
@@ -43,24 +61,51 @@ export default function AdminLayout({ children, title, subtitle, actions }) {
       window.clearInterval(timer);
     };
   }, []);
-
-const items = [
-    { to: "/admin", icon: ShieldCheck, label: "Overview", tid: "admin-nav-overview" },
-    { label: (<><span>Daily Ops</span><AdminNavBadge count={adminNavBadges.ops} /></>), to: "/admin/ops", icon: Activity },{ to: "/admin/shops", icon: Store, label: "Toko UMKM", tid: "admin-nav-shops" },
-    { label: (<><span>Notifications</span><AdminNavBadge count={adminNavBadges.notifications} /></>), to: "/admin/notifications", icon: Bell },
-    { label: (<><span>Billing</span><AdminNavBadge count={adminNavBadges.billing} /></>), to: "/admin/billing", icon: CreditCard },
-  { label: (<><span>Payments</span><AdminNavBadge count={adminNavBadges.payments} /></>), to: "/admin/payments", icon: CreditCard },
-  { label: (<><span>Store Health</span><AdminNavBadge count={adminNavBadges.store_health} /></>), to: "/admin/store-health", icon: Activity },
-  { label: (<><span>Onboarding</span><AdminNavBadge count={adminNavBadges.onboarding} /></>), to: "/admin/onboarding", icon: ClipboardList },
-  { to: "/admin/users", icon: Users, label: "Pengguna", tid: "admin-nav-users" },
-    { to: "/admin/pricing", icon: Tags, label: "Pricing", tid: "admin-nav-pricing" },
-    { to: "/admin/products", icon: Trash2, label: "Moderasi Produk", tid: "admin-nav-products" },
-    { to: "/admin/broadcasts", icon: Megaphone, label: "Broadcast", tid: "admin-nav-broadcasts" },
-    { to: "/admin/ai-usage", icon: Activity, label: "AI Usage", tid: "admin-nav-ai" },
-    { to: "/admin/stories", icon: BookOpen, label: "Cerita UMKM", tid: "admin-nav-stories" },
-    { to: "/admin/audit", icon: ScrollText, label: "Audit Log", tid: "admin-nav-audit" },
-    { to: "/admin/health", icon: HeartPulse, label: "Health Check", tid: "admin-nav-health" },
-    { to: "/admin/server", icon: Server, label: "Server Monitor", tid: "admin-nav-server" },
+  // LAPAKIN_ADMIN_SIDEBAR_GROUPS_V2
+  const navGroups = [
+    {
+      title: "Utama",
+      items: [
+        { to: "/admin", icon: ShieldCheck, label: "Overview", tid: "admin-nav-overview" },
+        { to: "/admin/shops", icon: Store, label: "Toko UMKM", tid: "admin-nav-shops" },
+        { to: "/admin/users", icon: Users, label: "Pengguna", tid: "admin-nav-users" },
+      ],
+    },
+    {
+      title: "Operasional",
+      items: [
+        { label: (<><span>Daily Ops</span><AdminNavBadge count={adminNavBadges.ops} /></>), to: "/admin/ops", icon: Activity, tid: "admin-nav-ops" },
+        { label: (<><span>Notifications</span><AdminNavBadge count={adminNavBadges.notifications} /></>), to: "/admin/notifications", icon: Bell, tid: "admin-nav-notifications" },
+        { label: (<><span>Onboarding</span><AdminNavBadge count={adminNavBadges.onboarding} /></>), to: "/admin/onboarding", icon: ClipboardList, tid: "admin-nav-onboarding" },
+        { label: (<><span>Store Health</span><AdminNavBadge count={adminNavBadges.store_health} /></>), to: "/admin/store-health", icon: Activity, tid: "admin-nav-store-health" },
+      ],
+    },
+    {
+      title: "Billing & Monetisasi",
+      items: [
+        { label: (<><span>Billing</span><AdminNavBadge count={adminNavBadges.billing} /></>), to: "/admin/billing", icon: CreditCard, tid: "admin-nav-billing" },
+        { label: (<><span>Payments</span><AdminNavBadge count={adminNavBadges.payments} /></>), to: "/admin/payments", icon: CreditCard, tid: "admin-nav-payments" },
+        { to: "/admin/pricing", icon: Tags, label: "Pricing", tid: "admin-nav-pricing" },
+      ],
+    },
+    {
+      title: "Konten & AI",
+      items: [
+        { to: "/admin/products", icon: Trash2, label: "Moderasi Produk", tid: "admin-nav-products" },
+        { to: "/admin/broadcasts", icon: Megaphone, label: "Broadcast", tid: "admin-nav-broadcasts" },
+        { to: "/admin/ai-usage", icon: Activity, label: "AI Usage", tid: "admin-nav-ai" },
+        { to: "/admin/stories", icon: BookOpen, label: "Cerita UMKM", tid: "admin-nav-stories" },
+      ],
+    },
+    {
+      title: "Monitoring & Audit",
+      items: [
+        { to: "/admin/audit", icon: ScrollText, label: "Audit Log", tid: "admin-nav-audit" },
+        { to: "/admin/health", icon: HeartPulse, label: "Health Check", tid: "admin-nav-health" },
+        { to: "/admin/server", icon: Server, label: "Server Monitor", tid: "admin-nav-server" },
+        { label: (<><span>Error Logs</span><AdminNavBadge count={adminNavBadges.error_logs_open} /></>), to: "/admin/error-logs", icon: Bug, tid: "admin-nav-error-logs" },
+      ],
+    },
   ];
 
   const handleLogout = async () => { await logout(); navigate("/"); };
@@ -76,19 +121,38 @@ const items = [
             <div className="text-[10px] uppercase tracking-[0.2em] text-white/60 mt-0.5">Admin</div>
           </div>
         </div>
-        <nav className="flex lg:flex-col gap-0.5 lg:gap-1 px-3 py-3 overflow-x-auto lg:overflow-visible">
-          {items.map((it) => {
-            const active = location.pathname === it.to;
-            return (
-              <Link key={it.to} to={it.to} data-testid={it.tid}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${
-                  active ? "bg-white text-brand-ink" : "text-white/70 hover:text-white hover:bg-white/10"
-                }`}>
-                <it.icon className="w-4 h-4" />
-                <span>{it.label}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex flex-col gap-3 px-3 py-3 overflow-y-auto lg:overflow-visible">
+
+          {/* LAPAKIN_ADMIN_SIDEBAR_GROUPS_V2 */}
+          {navGroups.map((group) => (
+            <div key={group.title} className="min-w-0">
+              <div className="px-3 pb-1 pt-2 text-[10px] font-black uppercase tracking-[0.16em] text-white/35">
+                {group.title}
+              </div>
+
+              <div className="flex flex-col gap-1">
+                {group.items.map((it) => {
+                  const active = location.pathname === it.to || (it.to !== "/admin" && location.pathname.startsWith(`${it.to}/`));
+
+                  return (
+                    <Link
+                      key={it.to}
+                      to={it.to}
+                      data-testid={it.tid}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold whitespace-nowrap transition-colors ${
+                        active ? "bg-white text-brand-ink" : "text-white/70 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      <it.icon className="h-4 w-4 shrink-0" />
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        {it.label}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
           {/* Mobile-only logout button (sidebar bottom block hidden on mobile) */}
           <button
             onClick={handleLogout}

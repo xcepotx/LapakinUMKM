@@ -1,5 +1,6 @@
 import axios from "axios";
 
+import { logApiErrorToErrorCenter } from "./errorLogger";
 // When user is on a tenant subdomain (<slug>.lapakin.my.id), keep API calls
 // same-origin so the session cookie + nginx subdomain block is used. Falls
 // back to REACT_APP_BACKEND_URL (main domain or preview) otherwise.
@@ -22,6 +23,23 @@ const api = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
 });
+
+
+
+// LAPAKIN_ERROR_CENTER_PHASE2_FRONTEND_LOGGER_V1
+// Capture failed API calls into Error Center without blocking the app.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    try {
+      logApiErrorToErrorCenter(error);
+    } catch {
+      // Never block the original API error flow.
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export default api;
 

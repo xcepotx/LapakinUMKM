@@ -49,6 +49,8 @@ import AdminStoreHealth from "@/pages/admin/AdminStoreHealth";
 import AdminOnboardingQueue from "@/pages/admin/AdminOnboardingQueue";
 import AdminOpsDashboard from "@/pages/admin/AdminOpsDashboard";
 import AdminNotifications from "@/pages/admin/AdminNotifications";
+import AdminErrorLogs from "@/pages/admin/AdminErrorLogs";
+import AdminTenantView from "@/pages/admin/AdminTenantView";
 function AdminRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) {
@@ -115,6 +117,7 @@ function AppRouter() {
       <Route path="/admin/ops" element={<AdminRoute><AdminOpsDashboard /></AdminRoute>} />
       <Route path="/admin/notifications" element={<AdminRoute><AdminNotifications /></AdminRoute>} />
       <Route path="/admin/shops" element={<AdminRoute><AdminShops /></AdminRoute>} />
+      <Route path="/admin/tenant-view/:shopId" element={<AdminRoute><AdminTenantView /></AdminRoute>} /> {/* LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2 */}
       <Route path="/admin/billing" element={<AdminRoute><AdminBillingMonitor /></AdminRoute>} />
       <Route path="/admin/payments" element={<AdminRoute><AdminPayments /></AdminRoute>} />
       <Route path="/admin/store-health" element={<AdminRoute><AdminStoreHealth /></AdminRoute>} />
@@ -128,6 +131,7 @@ function AppRouter() {
       <Route path="/admin/stories" element={<AdminRoute><AdminStories /></AdminRoute>} />
       <Route path="/admin/health" element={<AdminRoute><AdminHealth /></AdminRoute>} />
       <Route path="/admin/server" element={<AdminRoute><AdminServerMonitor /></AdminRoute>} />
+      <Route path="/admin/error-logs" element={<AdminRoute><AdminErrorLogs /></AdminRoute>} /> {/* LAPAKIN_ERROR_CENTER_PHASE3_ADMIN_UI_V1 */}
       <Route path="/admin/manual-payments" element={<AdminRoute><AdminManualPayments /></AdminRoute>} />
       <Route path="/admin/manual-activation" element={<AdminRoute><AdminManualActivation /></AdminRoute>} />
       <Route path="/bot-ui/*" element={null} />

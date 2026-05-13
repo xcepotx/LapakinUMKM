@@ -3,7 +3,7 @@ import api, { formatApiError } from "@/lib/api";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Star, StarOff, Power, ExternalLink, Search, Trash2} from "lucide-react";
+import { Star, StarOff, Power, ExternalLink, Search, Trash2, LayoutDashboard} from "lucide-react";
 import { toast } from "sonner";
 
 export default function AdminShops() {
@@ -151,7 +151,18 @@ export default function AdminShops() {
                     </td>
                     <td className="px-5 py-3 text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => window.open(`/toko/${s.slug}`, "_blank")}>
+                        {/* LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2 */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => window.open(`/admin/tenant-view/${s.shop_id}`, "_blank")}
+                          title="Lihat dashboard tenant (read-only)"
+                          className="text-brand"
+                          data-testid={`tenant-view-${s.shop_id}`}
+                        >
+                          <LayoutDashboard className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => window.open(`/toko/${s.slug}`, "_blank")} title="Lihat storefront publik">
                           <ExternalLink className="w-3.5 h-3.5" />
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => toggleFeatured(s)}

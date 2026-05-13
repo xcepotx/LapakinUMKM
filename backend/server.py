@@ -27,6 +27,7 @@ from routes.whatsapp import _parse_product_text  # noqa: F401
 
 from routes import ALL_ROUTERS
 from pydantic import BaseModel
+from error_log_service import log_backend_exception, log_backend_response_error
 
 
 app = FastAPI(title="Lapakin API")
@@ -47,6 +48,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# LAPAKIN_ERROR_CENTER_PHASE1_BACKEND_V1
+@app.middleware("http")
+async def lapakin_error_center_middleware(request: Request, call_next):
+    """Capture unhandled backend errors without changing existing response behavior."""
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        error_id = await log_backend_exception(request, exc)
+        try:
+            logger.exception("Error Center captured backend exception: %s", error_id)
+        except Exception:
+            pass
+        raise
+
+    try:
+        if getattr(response, "status_code", 200) >= 500:
+            await log_backend_response_error(request, response.status_code)
+    except Exception:
+        # Logging must never break normal API response.
+        pass
+
+    return response
 
 
 @app.on_event("startup")
@@ -76,6 +101,13 @@ async def on_startup():
     await db.team_invites.create_index("invite_id", unique=True)
     await db.audit_logs.create_index("timestamp")
     await db.audit_logs.create_index("admin_user_id")
+    # LAPAKIN_ERROR_CENTER_PHASE1_BACKEND_V1
+    await db.error_logs.create_index("error_id", unique=True)
+    await db.error_logs.create_index("fingerprint")
+    await db.error_logs.create_index([("status", 1), ("last_seen", -1)])
+    await db.error_logs.create_index([("source", 1), ("severity", 1), ("last_seen", -1)])
+    await db.error_logs.create_index([("feature", 1), ("last_seen", -1)])
+    await db.error_logs.create_index("created_at")
     await db.broadcasts.create_index("created_at")
     await db.broadcasts.create_index("active")
     await db.ai_usage.create_index("user_id")

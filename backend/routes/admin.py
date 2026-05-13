@@ -22,6 +22,7 @@ from tiers import VALID_TIERS, get_tier
 from payment_service import get_plan_with_dynamic_price
 from pricing_config import get_pricing_settings, save_pricing_settings
 from routes.whatsapp import _wa_send
+from error_log_service import log_client_error, public_error_log
 
 router = APIRouter()
 
@@ -2760,5 +2761,1402 @@ async def admin_soft_delete_shop(shop_id: str, request: Request):
         "slug": shop.get("slug"),
         "dependency_counts": dependency_counts,
         "owner_active_shop_id": switched_active_shop_id,
+    }
+
+
+# LAPAKIN_ERROR_CENTER_PHASE1_BACKEND_V1
+class AdminErrorLogStatusIn(BaseModel):
+    status: str = "resolved"
+    note: Optional[str] = ""
+
+
+# LAPAKIN_ERROR_CENTER_PHASE1_BACKEND_V1
+@router.post("/errors/client")
+async def collect_client_error(request: Request):
+    """Client-side error collector. Public endpoint, data is redacted/deduped server-side."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    error_id = await log_client_error(request, payload)
+    return {"ok": True, "error_id": error_id}
+
+
+# LAPAKIN_ERROR_CENTER_PHASE1_BACKEND_V1
+def _admin_error_log_query(status: str, source: str, severity: str, feature: str, q: str) -> dict:
+    query = {}
+
+    if status and status != "all":
+        query["status"] = status
+
+    if source and source != "all":
+        query["source"] = source
+
+    if severity and severity != "all":
+        query["severity"] = severity
+
+    if feature and feature != "all":
+        query["feature"] = feature
+
+    if q:
+        needle = str(q).strip()
+        query["$or"] = [
+            {"message": {"$regex": needle, "$options": "i"}},
+            {"path": {"$regex": needle, "$options": "i"}},
+            {"feature": {"$regex": needle, "$options": "i"}},
+            {"error_id": {"$regex": needle, "$options": "i"}},
+        ]
+
+    return query
+
+
+# LAPAKIN_ERROR_CENTER_PHASE1_BACKEND_V1
+@router.get("/admin/error-logs")
+async def admin_error_logs(
+    request: Request,
+    status: str = "open",
+    source: str = "all",
+    severity: str = "all",
+    feature: str = "all",
+    q: str = "",
+    limit: int = 100,
+):
+    await require_admin(request)
+
+    limit = max(1, min(int(limit or 100), 300))
+    query = _admin_error_log_query(status, source, severity, feature, q)
+
+    items = await db.error_logs.find(query, {"_id": 0}).sort("last_seen", -1).limit(limit).to_list(limit)
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    summary = {
+        "open": await db.error_logs.count_documents({"status": "open"}),
+        "resolved": await db.error_logs.count_documents({"status": "resolved"}),
+        "ignored": await db.error_logs.count_documents({"status": "ignored"}),
+        "today": await db.error_logs.count_documents({"last_seen": {"$gte": today_start}}),
+        "critical_open": await db.error_logs.count_documents({"status": "open", "severity": "critical"}),
+        "frontend_open": await db.error_logs.count_documents({"status": "open", "source": "frontend"}),
+        "backend_open": await db.error_logs.count_documents({"status": "open", "source": "backend"}),
+    }
+
+    return {
+        "items": [public_error_log(item) for item in items],
+        "summary": summary,
+        "filters": {
+            "status": status,
+            "source": source,
+            "severity": severity,
+            "feature": feature,
+            "q": q,
+            "limit": limit,
+        },
+    }
+
+
+
+# LAPAKIN_ERROR_CENTER_PHASE4A_OVERVIEW_RETENTION_V1
+def _admin_error_logs_day_key(value):
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+# LAPAKIN_ERROR_CENTER_PHASE4A_OVERVIEW_RETENTION_V1
+def _admin_error_logs_bucket(items: list[dict], key: str, limit: int = 8) -> list[dict]:
+    counts = {}
+    for item in items:
+        value = item.get(key) or "unknown"
+        counts[value] = counts.get(value, 0) + int(item.get("count") or 1)
+
+    rows = [{"key": k, "count": v} for k, v in counts.items()]
+    rows.sort(key=lambda row: row["count"], reverse=True)
+    return rows[:limit]
+
+
+# LAPAKIN_ERROR_CENTER_PHASE4A_OVERVIEW_RETENTION_V1
+@router.get("/admin/error-logs/overview")
+async def admin_error_logs_overview(request: Request, days: int = 14):
+    await require_admin(request)
+
+    days = max(7, min(int(days or 14), 90))
+    now = datetime.now(timezone.utc)
+    start = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_iso = start.isoformat()
+
+    docs = await db.error_logs.find(
+        {"last_seen": {"$gte": start_iso}},
+        {
+            "_id": 0,
+            "source": 1,
+            "severity": 1,
+            "feature": 1,
+            "status": 1,
+            "last_seen": 1,
+            "count": 1,
+        },
+    ).sort("last_seen", -1).limit(5000).to_list(5000)
+
+    daily_map = {}
+    for i in range(days):
+        day = (start + timedelta(days=i)).strftime("%Y-%m-%d")
+        daily_map[day] = {
+            "date": day,
+            "total": 0,
+            "open": 0,
+            "critical": 0,
+            "frontend": 0,
+            "backend": 0,
+        }
+
+    for item in docs:
+        day = _admin_error_logs_day_key(item.get("last_seen"))
+        if day not in daily_map:
+            continue
+
+        amount = int(item.get("count") or 1)
+        daily_map[day]["total"] += amount
+
+        if item.get("status") == "open":
+            daily_map[day]["open"] += amount
+
+        if item.get("severity") == "critical":
+            daily_map[day]["critical"] += amount
+
+        if item.get("source") == "frontend":
+            daily_map[day]["frontend"] += amount
+        elif item.get("source") == "backend":
+            daily_map[day]["backend"] += amount
+
+    open_docs = await db.error_logs.find(
+        {"status": "open"},
+        {"_id": 0, "source": 1, "severity": 1, "feature": 1, "count": 1},
+    ).sort("last_seen", -1).limit(5000).to_list(5000)
+
+    return {
+        "days": days,
+        "daily": list(daily_map.values()),
+        "by_source": _admin_error_logs_bucket(open_docs, "source"),
+        "by_severity": _admin_error_logs_bucket(open_docs, "severity"),
+        "by_feature": _admin_error_logs_bucket(open_docs, "feature", limit=10),
+        "open_total_weighted": sum(int(item.get("count") or 1) for item in open_docs),
+    }
+
+
+# LAPAKIN_ERROR_CENTER_PHASE4A_OVERVIEW_RETENTION_V1
+@router.post("/admin/error-logs/cleanup")
+async def admin_error_logs_cleanup(request: Request):
+    admin = await require_admin(request)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    days = max(7, min(int(body.get("days") or 30), 365))
+    dry_run = bool(body.get("dry_run", True))
+
+    raw_statuses = body.get("statuses") or ["resolved", "ignored"]
+    if not isinstance(raw_statuses, list):
+        raw_statuses = ["resolved", "ignored"]
+
+    statuses = [str(s).strip().lower() for s in raw_statuses if str(s).strip().lower() in {"resolved", "ignored"}]
+    if not statuses:
+        statuses = ["resolved", "ignored"]
+
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    query = {
+        "status": {"$in": statuses},
+        "last_seen": {"$lt": cutoff},
+    }
+
+    count = await db.error_logs.count_documents(query)
+
+    deleted = 0
+    if not dry_run:
+        result = await db.error_logs.delete_many(query)
+        deleted = int(getattr(result, "deleted_count", 0) or 0)
+
+        try:
+            await log_admin_action(
+                admin,
+                "error_logs_cleanup",
+                "error_log",
+                "bulk",
+                {
+                    "days": days,
+                    "statuses": statuses,
+                    "deleted": deleted,
+                    "cutoff": cutoff,
+                },
+            )
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "matched": count,
+        "deleted": deleted,
+        "days": days,
+        "statuses": statuses,
+        "cutoff": cutoff,
+    }
+
+
+# LAPAKIN_ERROR_CENTER_PHASE1_BACKEND_V1
+@router.get("/admin/error-logs/{error_id}")
+async def admin_error_log_detail(error_id: str, request: Request):
+    await require_admin(request)
+
+    item = await db.error_logs.find_one({"error_id": error_id}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Error log tidak ditemukan")
+
+    return public_error_log(item)
+
+
+# LAPAKIN_ERROR_CENTER_PHASE1_BACKEND_V1
+@router.patch("/admin/error-logs/{error_id}/status")
+async def admin_update_error_log_status(error_id: str, data: AdminErrorLogStatusIn, request: Request):
+    admin = await require_admin(request)
+
+    status = (data.status or "").strip().lower()
+    if status not in {"open", "resolved", "ignored"}:
+        raise HTTPException(status_code=400, detail="Status harus open, resolved, atau ignored")
+
+    existing = await db.error_logs.find_one({"error_id": error_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Error log tidak ditemukan")
+
+    now = datetime.now(timezone.utc).isoformat()
+    update = {
+        "status": status,
+        "updated_at": now,
+        "admin_note": (data.note or "").strip()[:500],
+        "status_updated_by": (admin or {}).get("user_id"),
+        "status_updated_by_email": (admin or {}).get("email"),
+    }
+
+    if status == "resolved":
+        update["resolved_at"] = now
+    elif status == "ignored":
+        update["ignored_at"] = now
+
+    await db.error_logs.update_one({"error_id": error_id}, {"$set": update})
+
+    try:
+        await log_admin_action(
+            admin,
+            f"error_log_{status}",
+            "error_log",
+            error_id,
+            {"from": existing.get("status"), "to": status},
+        )
+    except Exception:
+        pass
+
+    item = await db.error_logs.find_one({"error_id": error_id}, {"_id": 0})
+    return {"ok": True, "item": public_error_log(item)}
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2
+def _admin_tenant_view_int(value, default=0):
+    try:
+        return int(value or default)
+    except Exception:
+        return default
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2
+def _admin_tenant_view_price(value):
+    try:
+        return int(float(value or 0))
+    except Exception:
+        return 0
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2
+async def _admin_tenant_view_count(collection, query):
+    try:
+        return await collection.count_documents(query)
+    except Exception:
+        return 0
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2
+async def _admin_tenant_view_find_many(collection, query, projection=None, limit=20, sort_field="created_at"):
+    try:
+        cursor = collection.find(query, projection or {"_id": 0})
+        if sort_field:
+            cursor = cursor.sort(sort_field, -1)
+        return await cursor.limit(limit).to_list(limit)
+    except Exception:
+        return []
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2
+def _admin_tenant_view_clean_doc(doc):
+    doc = dict(doc or {})
+    doc.pop("_id", None)
+    for key in list(doc.keys()):
+        lower = str(key).lower()
+        if any(secret in lower for secret in ["password", "token", "secret", "api_key", "apikey", "credential", "authorization", "cookie"]):
+            doc[key] = "[redacted]"
+    return doc
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1B_READONLY_V2
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_ANALYTICS_ROBUST_V1
+def _admin_tenant_view_parse_datetime(value):
+    from datetime import datetime, timezone
+
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+
+        # YYYY-MM-DD
+        if len(text) == 10 and text[4] == "-" and text[7] == "-":
+            return datetime.fromisoformat(text + "T00:00:00+00:00")
+
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_ANALYTICS_ROBUST_V1
+def _admin_tenant_view_doc_datetime(doc: dict):
+    for key in ["created_at", "timestamp", "ts", "date", "day", "updated_at"]:
+        dt = _admin_tenant_view_parse_datetime((doc or {}).get(key))
+        if dt:
+            return dt
+    return None
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_ANALYTICS_ROBUST_V1
+def _admin_tenant_view_doc_event_name(doc: dict) -> str:
+    doc = doc or {}
+    for key in ["event", "event_type", "type", "action", "name"]:
+        value = str(doc.get(key) or "").strip()
+        if value:
+            return value
+
+    # Dokumen agregat biasanya tidak punya event name tapi punya visits/count.
+    if doc.get("visits") is not None or doc.get("count") is not None:
+        return "storefront_view"
+
+    return ""
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_ANALYTICS_ROBUST_V1
+def _admin_tenant_view_doc_amount(doc: dict) -> int:
+    doc = doc or {}
+    for key in ["visits", "count", "total", "value"]:
+        try:
+            if doc.get(key) is not None:
+                return max(0, int(float(doc.get(key) or 0)))
+        except Exception:
+            pass
+    return 1
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_ANALYTICS_ROBUST_V1
+def _admin_tenant_view_doc_matches_shop(doc: dict, shop_id: str, slug: str) -> bool:
+    doc = doc or {}
+    shop_id = str(shop_id or "")
+    slug = str(slug or "")
+
+    shop_candidates = [
+        doc.get("shop_id"),
+        doc.get("target_shop_id"),
+        doc.get("store_id"),
+        doc.get("tenant_shop_id"),
+    ]
+
+    slug_candidates = [
+        doc.get("slug"),
+        doc.get("shop_slug"),
+        doc.get("store_slug"),
+        doc.get("tenant_slug"),
+    ]
+
+    if shop_id and any(str(value or "") == shop_id for value in shop_candidates):
+        return True
+
+    if slug and any(str(value or "") == slug for value in slug_candidates):
+        return True
+
+    metadata = doc.get("metadata") or {}
+    if isinstance(metadata, dict):
+        if shop_id and str(metadata.get("shop_id") or "") == shop_id:
+            return True
+        if slug and str(metadata.get("slug") or metadata.get("shop_slug") or "") == slug:
+            return True
+
+    return False
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_ANALYTICS_ROBUST_V1
+async def _admin_tenant_view_load_analytics_docs(shop_id: str, slug: str, start_dt, limit_per_collection: int = 5000):
+    """Load analytics docs robustly across old/new collection shapes."""
+    collection_names = [
+        "analytics_events",
+        "storefront_events",
+        "storefront_analytics",
+        "storefront_daily_analytics",
+        "storefront_visits",
+        "shop_analytics",
+        "analytics",
+    ]
+
+    query = {
+        "$or": [
+            {"shop_id": shop_id},
+            {"target_shop_id": shop_id},
+            {"store_id": shop_id},
+            {"tenant_shop_id": shop_id},
+            {"slug": slug},
+            {"shop_slug": slug},
+            {"store_slug": slug},
+            {"tenant_slug": slug},
+            {"metadata.shop_id": shop_id},
+            {"metadata.slug": slug},
+            {"metadata.shop_slug": slug},
+        ]
+    }
+
+    docs = []
+    seen = set()
+
+    for collection_name in collection_names:
+        try:
+            collection = db[collection_name]
+            rows = await collection.find(query, {"_id": 0}).sort("created_at", -1).limit(limit_per_collection).to_list(limit_per_collection)
+        except Exception:
+            rows = []
+
+        for row in rows:
+            if not _admin_tenant_view_doc_matches_shop(row, shop_id, slug):
+                continue
+
+            dt = _admin_tenant_view_doc_datetime(row)
+            if dt and start_dt and dt < start_dt:
+                continue
+
+            fingerprint = (
+                collection_name,
+                str(row.get("created_at") or row.get("timestamp") or row.get("date") or ""),
+                str(row.get("event") or row.get("event_type") or row.get("type") or row.get("action") or ""),
+                str(row.get("product_id") or ""),
+                str(row.get("lead_id") or ""),
+                str(row.get("visits") or row.get("count") or ""),
+            )
+
+            if fingerprint in seen:
+                continue
+
+            seen.add(fingerprint)
+            row["_source_collection"] = collection_name
+            docs.append(row)
+
+    return docs
+
+@router.get("/admin/tenant-view/{shop_id}")
+async def admin_tenant_view_readonly(shop_id: str, request: Request, days: int = 30):
+    """Admin-only read-only tenant dashboard.
+
+    Tidak memakai endpoint tenant owner seperti /shops/me atau /products,
+    supaya admin tidak mendapat akses write/impersonation.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    admin = await require_admin(request)
+
+    shop = await db.shops.find_one(
+        {
+            "shop_id": shop_id,
+            "$and": [
+                {"$or": [{"status": {"$ne": "deleted"}}, {"status": {"$exists": False}}]},
+                {"$or": [{"deleted_at": {"$exists": False}}, {"deleted_at": None}]},
+            ],
+        },
+        {"_id": 0},
+    )
+
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    slug = shop.get("slug") or ""
+    owner_user_id = shop.get("owner_user_id") or shop.get("user_id") or ""
+
+    owner = {}
+    if owner_user_id:
+        owner = await db.users.find_one(
+            {"user_id": owner_user_id},
+            {
+                "_id": 0,
+                "password_hash": 0,
+                "password": 0,
+                "reset_token": 0,
+                "refresh_token": 0,
+            },
+        ) or {}
+
+    products = await db.products.find({"shop_id": shop_id}, {"_id": 0}).sort("created_at", -1).limit(200).to_list(200)
+
+    total_products = len(products)
+    active_products = 0
+    hidden_products = 0
+    out_of_stock_products = 0
+    inventory_value = 0
+
+    for product in products:
+        availability = str(product.get("availability_status") or "").lower()
+        is_active = product.get("is_active", True)
+
+        if availability == "hidden" or is_active is False:
+            hidden_products += 1
+        else:
+            active_products += 1
+
+        if availability == "out_of_stock":
+            out_of_stock_products += 1
+
+        inventory_value += _admin_tenant_view_price(product.get("price")) * max(0, _admin_tenant_view_int(product.get("stock"), 0))
+
+    now = datetime.now(timezone.utc)
+    days = max(1, min(int(days or 30), 365))
+    start_iso = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    base_event_query = {
+        "$or": [
+            {"shop_id": shop_id},
+            {"slug": slug},
+            {"shop_slug": slug},
+        ],
+        "created_at": {"$gte": start_iso},
+    }
+
+    start_dt = now - timedelta(days=days - 1)
+    analytics_docs = await _admin_tenant_view_load_analytics_docs(shop_id, slug, start_dt)
+
+    analytics_totals = {
+        "view_shop": 0,
+        "view_product": 0,
+        "click_order": 0,
+        "share_wa": 0,
+        "storefront_view": 0,
+        "whatsapp_checkout_click": 0,
+        "product_click": 0,
+        "product_share_click": 0,
+        "lead_created": 0,
+    }
+
+    daily = {}
+    for i in range(days):
+        date_key = (now - timedelta(days=days - 1 - i)).strftime("%Y-%m-%d")
+        daily[date_key] = {"date": date_key, "visits": 0, "orders": 0, "leads": 0}
+
+    view_events = {
+        "view_shop",
+        "page_view",
+        "storefront_view",
+        "visit",
+        "store_visit",
+        "storefront_visit",
+        "view_store",
+    }
+    product_events = {"view_product", "product_click", "product_view"}
+    order_events = {
+        "click_order",
+        "whatsapp_checkout_click",
+        "cart_checkout",
+        "order_click",
+        "checkout_click",
+        "whatsapp_click",
+        "wa_click",
+    }
+    share_events = {"share_wa", "product_share_click", "share_product", "share"}
+    lead_events = {"lead_created", "lead", "order_lead"}
+
+    def add_daily_by_dt(dt, key, amount=1):
+        try:
+            date_key = dt.strftime("%Y-%m-%d") if dt else ""
+        except Exception:
+            date_key = ""
+
+        if date_key in daily:
+            daily[date_key][key] += amount
+
+    analytics_sources = {}
+
+    for doc in analytics_docs:
+        event_name = _admin_tenant_view_doc_event_name(doc)
+        amount = _admin_tenant_view_doc_amount(doc)
+        dt = _admin_tenant_view_doc_datetime(doc)
+        source_collection = doc.get("_source_collection") or "unknown"
+        analytics_sources[source_collection] = analytics_sources.get(source_collection, 0) + amount
+
+        if event_name in analytics_totals:
+            analytics_totals[event_name] += amount
+
+        if event_name in view_events:
+            # Simpan ke storefront_view supaya UI tenant-view konsisten.
+            if event_name != "view_shop":
+                analytics_totals["storefront_view"] += amount
+            else:
+                analytics_totals["view_shop"] += 0
+            add_daily_by_dt(dt, "visits", amount)
+
+        elif event_name in product_events:
+            if event_name != "view_product":
+                analytics_totals["product_click"] += amount
+
+        elif event_name in order_events:
+            if event_name != "click_order" and event_name != "whatsapp_checkout_click":
+                analytics_totals["whatsapp_checkout_click"] += amount
+            add_daily_by_dt(dt, "orders", amount)
+
+        elif event_name in share_events:
+            if event_name != "share_wa" and event_name != "product_share_click":
+                analytics_totals["share_wa"] += amount
+
+        elif event_name in lead_events:
+            if event_name != "lead_created":
+                analytics_totals["lead_created"] += amount
+            add_daily_by_dt(dt, "leads", amount)
+
+    leads_query = {
+        "$or": [
+            {"shop_id": shop_id},
+            {"slug": slug},
+            {"shop_slug": slug},
+        ],
+    }
+
+    leads = await _admin_tenant_view_find_many(db.storefront_leads, leads_query, {"_id": 0}, limit=50, sort_field="created_at")
+    total_leads = await _admin_tenant_view_count(db.storefront_leads, leads_query)
+
+    try:
+        await log_admin_action(
+            admin,
+            "tenant_view_readonly_open",
+            "shop",
+            shop_id,
+            {"shop_name": shop.get("name"), "slug": slug, "mode": "read_only"},
+        )
+    except Exception:
+        pass
+
+    return {
+        "mode": "admin_readonly",
+        "readonly": True,
+        "shop": _admin_tenant_view_clean_doc(shop),
+        "owner": _admin_tenant_view_clean_doc(owner),
+        "summary": {
+            "products_total": total_products,
+            "products_active": active_products,
+            "products_hidden": hidden_products,
+            "products_out_of_stock": out_of_stock_products,
+            "inventory_value": inventory_value,
+            "leads_total": total_leads,
+            "days": days,
+        },
+        "analytics": {
+            "totals": analytics_totals,
+            "daily": list(daily.values()),
+            "legacy_events_sample": 0,
+            "storefront_events_sample": len(analytics_docs),
+            "sources": analytics_sources,
+        },
+        "products": products,
+        "leads": leads,
+        "links": {
+            "storefront": f"/toko/{slug}" if slug else "",
+            "public_storefront": f"/toko/{slug}" if slug else "",
+        },
+    }
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_SUPPORT_NOTES_V1
+class AdminTenantSupportNoteIn(BaseModel):
+    note: str
+    category: Optional[str] = "general"
+    priority: Optional[str] = "normal"
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_SUPPORT_NOTES_V1
+def _admin_tenant_support_note_clean(value, limit=2000):
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_SUPPORT_NOTES_V1
+async def _admin_tenant_support_note_shop(shop_id: str):
+    return await db.shops.find_one(
+        {
+            "shop_id": shop_id,
+            "$and": [
+                {"$or": [{"status": {"$ne": "deleted"}}, {"status": {"$exists": False}}]},
+                {"$or": [{"deleted_at": {"$exists": False}}, {"deleted_at": None}]},
+            ],
+        },
+        {"_id": 0, "shop_id": 1, "name": 1, "slug": 1},
+    )
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_SUPPORT_NOTES_V1
+@router.get("/admin/tenant-view/{shop_id}/notes")
+async def admin_tenant_support_notes(shop_id: str, request: Request, include_archived: bool = False, limit: int = 50):
+    await require_admin(request)
+
+    shop = await _admin_tenant_support_note_shop(shop_id)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    query = {"shop_id": shop_id}
+    if not include_archived:
+        query["archived_at"] = {"$exists": False}
+
+    limit = max(1, min(int(limit or 50), 200))
+
+    items = await db.admin_support_notes.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+
+    return {
+        "items": items,
+        "summary": {
+            "total_visible": await db.admin_support_notes.count_documents({"shop_id": shop_id, "archived_at": {"$exists": False}}),
+            "total_archived": await db.admin_support_notes.count_documents({"shop_id": shop_id, "archived_at": {"$exists": True}}),
+        },
+    }
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_SUPPORT_NOTES_V1
+@router.post("/admin/tenant-view/{shop_id}/notes")
+async def admin_tenant_support_note_create(shop_id: str, data: AdminTenantSupportNoteIn, request: Request):
+    import uuid
+    from datetime import datetime, timezone
+
+    admin = await require_admin(request)
+
+    shop = await _admin_tenant_support_note_shop(shop_id)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    note = _admin_tenant_support_note_clean(data.note, 2000)
+    if not note:
+        raise HTTPException(status_code=400, detail="Catatan tidak boleh kosong")
+
+    priority = str(data.priority or "normal").strip().lower()
+    if priority not in {"low", "normal", "high", "urgent"}:
+        priority = "normal"
+
+    category = _admin_tenant_support_note_clean(data.category or "general", 60) or "general"
+
+    now = datetime.now(timezone.utc).isoformat()
+    item = {
+        "note_id": f"note_{uuid.uuid4().hex[:16]}",
+        "shop_id": shop_id,
+        "shop_name": shop.get("name"),
+        "shop_slug": shop.get("slug"),
+        "note": note,
+        "category": category,
+        "priority": priority,
+        "created_at": now,
+        "updated_at": now,
+        "created_by_user_id": (admin or {}).get("user_id"),
+        "created_by_email": (admin or {}).get("email"),
+    }
+
+    await db.admin_support_notes.insert_one(dict(item))
+
+    try:
+        await log_admin_action(
+            admin,
+            "tenant_support_note_create",
+            "shop",
+            shop_id,
+            {
+                "note_id": item["note_id"],
+                "shop_name": shop.get("name"),
+                "category": category,
+                "priority": priority,
+            },
+        )
+    except Exception:
+        pass
+
+    return {"ok": True, "item": item}
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE1E_SUPPORT_NOTES_V1
+@router.patch("/admin/tenant-view/{shop_id}/notes/{note_id}/archive")
+async def admin_tenant_support_note_archive(shop_id: str, note_id: str, request: Request):
+    from datetime import datetime, timezone
+
+    admin = await require_admin(request)
+
+    shop = await _admin_tenant_support_note_shop(shop_id)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    existing = await db.admin_support_notes.find_one({"shop_id": shop_id, "note_id": note_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Catatan tidak ditemukan")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.admin_support_notes.update_one(
+        {"shop_id": shop_id, "note_id": note_id},
+        {
+            "$set": {
+                "archived_at": now,
+                "archived_by_user_id": (admin or {}).get("user_id"),
+                "archived_by_email": (admin or {}).get("email"),
+                "updated_at": now,
+            }
+        },
+    )
+
+    try:
+        await log_admin_action(
+            admin,
+            "tenant_support_note_archive",
+            "shop",
+            shop_id,
+            {
+                "note_id": note_id,
+                "shop_name": shop.get("name"),
+            },
+        )
+    except Exception:
+        pass
+
+    item = await db.admin_support_notes.find_one({"shop_id": shop_id, "note_id": note_id}, {"_id": 0})
+    return {"ok": True, "item": item}
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2A_ASSISTED_ACTIONS_V1
+class AdminTenantAssistActionIn(BaseModel):
+    action: str
+    note: Optional[str] = ""
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2A_ASSISTED_ACTIONS_V1
+def _admin_tenant_assist_public_base_url(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto") or "https"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    if not host:
+        return ""
+    return f"{proto}://{host}".rstrip("/")
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2A_ASSISTED_ACTIONS_V1
+def _admin_tenant_assist_pick_first(doc: dict, keys: list[str]) -> str:
+    for key in keys:
+        value = str((doc or {}).get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2A_ASSISTED_ACTIONS_V1
+def _admin_tenant_assist_normalize_wa(raw: str) -> str:
+    import re
+
+    digits = re.sub(r"\D+", "", str(raw or ""))
+    if not digits:
+        return ""
+
+    if digits.startswith("00"):
+        digits = digits[2:]
+
+    if digits.startswith("0"):
+        digits = "62" + digits[1:]
+
+    if digits.startswith("8"):
+        digits = "62" + digits
+
+    return digits
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2A_ASSISTED_ACTIONS_V1
+async def _admin_tenant_assist_shop(shop_id: str):
+    return await db.shops.find_one(
+        {
+            "shop_id": shop_id,
+            "$and": [
+                {"$or": [{"status": {"$ne": "deleted"}}, {"status": {"$exists": False}}]},
+                {"$or": [{"deleted_at": {"$exists": False}}, {"deleted_at": None}]},
+            ],
+        },
+        {"_id": 0},
+    )
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2A_ASSISTED_ACTIONS_V1
+async def _admin_tenant_assist_counts(shop_id: str, slug: str):
+    products_total = await db.products.count_documents({"shop_id": shop_id})
+
+    active_products = await db.products.count_documents({
+        "shop_id": shop_id,
+        "$and": [
+            {"$or": [{"is_active": {"$ne": False}}, {"is_active": {"$exists": False}}]},
+            {"$or": [{"availability_status": {"$nin": ["hidden", "out_of_stock"]}}, {"availability_status": {"$exists": False}}]},
+        ],
+    })
+
+    lead_query = {
+        "$or": [
+            {"shop_id": shop_id},
+            {"slug": slug},
+            {"shop_slug": slug},
+        ]
+    }
+
+    leads_total = await db.storefront_leads.count_documents(lead_query)
+    notes_total = await db.admin_support_notes.count_documents({"shop_id": shop_id, "archived_at": {"$exists": False}})
+
+    return {
+        "products_total": products_total,
+        "active_products": active_products,
+        "leads_total": leads_total,
+        "support_notes_active": notes_total,
+    }
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2A_ASSISTED_ACTIONS_V1
+async def _admin_tenant_assist_tracking_probe(shop_id: str, slug: str):
+    from datetime import datetime, timezone, timedelta
+
+    start_dt = datetime.now(timezone.utc) - timedelta(days=30)
+    docs = []
+
+    try:
+        loader = globals().get("_admin_tenant_view_load_analytics_docs")
+        if loader:
+            docs = await loader(shop_id, slug, start_dt)
+    except Exception:
+        docs = []
+
+    sources = {}
+    last_seen = ""
+
+    for doc in docs:
+        source = doc.get("_source_collection") or "unknown"
+        sources[source] = sources.get(source, 0) + 1
+
+        value = str(doc.get("created_at") or doc.get("timestamp") or doc.get("date") or "")
+        if value and value > last_seen:
+            last_seen = value
+
+    return {
+        "ok": len(docs) > 0,
+        "events_30d_sample": len(docs),
+        "sources": sources,
+        "last_seen": last_seen,
+    }
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2A_ASSISTED_ACTIONS_V1
+@router.post("/admin/tenant-view/{shop_id}/assist-action")
+async def admin_tenant_assist_action(shop_id: str, data: AdminTenantAssistActionIn, request: Request):
+    import urllib.parse
+    from datetime import datetime, timezone
+
+    admin = await require_admin(request)
+
+    shop = await _admin_tenant_assist_shop(shop_id)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    action = str(data.action or "").strip().lower()
+    allowed = {"copy_debug_bundle", "test_whatsapp_cta", "og_debug", "tracking_probe"}
+    if action not in allowed:
+        raise HTTPException(status_code=400, detail="Action tidak valid")
+
+    slug = shop.get("slug") or ""
+    base_url = _admin_tenant_assist_public_base_url(request)
+    public_storefront = f"{base_url}/toko/{slug}" if base_url and slug else f"/toko/{slug}" if slug else ""
+    counts = await _admin_tenant_assist_counts(shop_id, slug)
+
+    owner = {}
+    owner_user_id = shop.get("owner_user_id") or shop.get("user_id") or ""
+    if owner_user_id:
+        owner = await db.users.find_one(
+            {"user_id": owner_user_id},
+            {"_id": 0, "password": 0, "password_hash": 0, "refresh_token": 0, "reset_token": 0},
+        ) or {}
+
+    response = {
+        "ok": True,
+        "action": action,
+        "mode": "admin_assisted_readonly",
+        "shop_id": shop_id,
+        "shop_name": shop.get("name"),
+        "slug": slug,
+        "message": "",
+        "debug_text": "",
+    }
+
+    if action == "test_whatsapp_cta":
+        raw_phone = _admin_tenant_assist_pick_first(shop, [
+            "whatsapp",
+            "whatsapp_number",
+            "wa_number",
+            "phone",
+            "phone_number",
+            "contact_phone",
+            "order_phone",
+            "order_whatsapp",
+            "contact_whatsapp",
+        ])
+
+        phone = _admin_tenant_assist_normalize_wa(raw_phone)
+        message = f"Halo, saya mau cek toko {shop.get('name') or ''} di Lapakin"
+        wa_url = f"https://wa.me/{phone}?text={urllib.parse.quote(message)}" if phone else ""
+
+        response.update({
+            "message": "Nomor WhatsApp/order terdeteksi." if phone else "Nomor WhatsApp/order belum terdeteksi.",
+            "phone_raw": raw_phone,
+            "phone_normalized": phone,
+            "wa_url": wa_url,
+            "debug_text": "\n".join([
+                "WhatsApp CTA Test",
+                f"Shop: {shop.get('name') or '-'}",
+                f"Shop ID: {shop_id}",
+                f"Slug: {slug or '-'}",
+                f"Phone raw: {raw_phone or '-'}",
+                f"Phone normalized: {phone or '-'}",
+                f"WA URL: {wa_url or '-'}",
+            ]),
+        })
+
+    elif action == "og_debug":
+        version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        storefront_cache_busted = f"{public_storefront}?v=admin-og-{version}" if public_storefront else ""
+        og_image = f"{base_url}/api/og/shop/{slug}.png?v=admin-og-{version}" if base_url and slug else ""
+        og_html = f"{base_url}/api/og/shop/{slug}?v=admin-og-{version}" if base_url and slug else ""
+
+        response.update({
+            "message": "OG debug links dibuat. Gunakan cache-busted URL untuk test preview WA/FB.",
+            "storefront_cache_busted_url": storefront_cache_busted,
+            "og_image_url": og_image,
+            "og_html_url": og_html,
+            "debug_text": "\n".join([
+                "OG Debug Links",
+                f"Shop: {shop.get('name') or '-'}",
+                f"Shop ID: {shop_id}",
+                f"Slug: {slug or '-'}",
+                f"Storefront: {public_storefront or '-'}",
+                f"Cache-busted share URL: {storefront_cache_busted or '-'}",
+                f"OG image: {og_image or '-'}",
+                f"OG HTML endpoint: {og_html or '-'}",
+            ]),
+        })
+
+    elif action == "tracking_probe":
+        probe = await _admin_tenant_assist_tracking_probe(shop_id, slug)
+
+        response.update({
+            "message": "Tracking probe menemukan event 30 hari." if probe.get("ok") else "Tracking probe belum menemukan event 30 hari.",
+            "tracking": probe,
+            "debug_text": "\n".join([
+                "Tracking Probe",
+                f"Shop: {shop.get('name') or '-'}",
+                f"Shop ID: {shop_id}",
+                f"Slug: {slug or '-'}",
+                f"Events sample 30d: {probe.get('events_30d_sample', 0)}",
+                f"Sources: {probe.get('sources') or {}}",
+                f"Last seen: {probe.get('last_seen') or '-'}",
+            ]),
+        })
+
+    elif action == "copy_debug_bundle":
+        tracking = await _admin_tenant_assist_tracking_probe(shop_id, slug)
+        debug_lines = [
+            "Lapakin Tenant Debug Bundle",
+            f"Generated: {datetime.now(timezone.utc).isoformat()}",
+            f"Shop: {shop.get('name') or '-'}",
+            f"Shop ID: {shop_id}",
+            f"Slug: {slug or '-'}",
+            f"Storefront: {public_storefront or '-'}",
+            f"Owner: {owner.get('email') or owner.get('name') or '-'}",
+            f"Status: {shop.get('status') or 'active'}",
+            f"Products: {counts.get('products_total', 0)} total / {counts.get('active_products', 0)} active",
+            f"Leads: {counts.get('leads_total', 0)}",
+            f"Active support notes: {counts.get('support_notes_active', 0)}",
+            f"Tracking events 30d sample: {tracking.get('events_30d_sample', 0)}",
+            f"Tracking sources: {tracking.get('sources') or {}}",
+            f"Last tracking seen: {tracking.get('last_seen') or '-'}",
+        ]
+
+        response.update({
+            "message": "Debug bundle dibuat.",
+            "counts": counts,
+            "tracking": tracking,
+            "debug_text": "\n".join(debug_lines),
+        })
+
+    try:
+        await log_admin_action(
+            admin,
+            f"tenant_assist_{action}",
+            "shop",
+            shop_id,
+            {
+                "shop_name": shop.get("name"),
+                "slug": slug,
+                "mode": "admin_assisted_readonly",
+            },
+        )
+    except Exception:
+        pass
+
+    return response
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2B_OG_TIMELINE_V1
+def _admin_tenant_timeline_public_base_url(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto") or "https"
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    if not host:
+        return ""
+    return f"{proto}://{host}".rstrip("/")
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2B_OG_TIMELINE_V1
+async def _admin_tenant_timeline_shop(shop_id: str):
+    return await db.shops.find_one(
+        {
+            "shop_id": shop_id,
+            "$and": [
+                {"$or": [{"status": {"$ne": "deleted"}}, {"status": {"$exists": False}}]},
+                {"$or": [{"deleted_at": {"$exists": False}}, {"deleted_at": None}]},
+            ],
+        },
+        {"_id": 0, "shop_id": 1, "name": 1, "slug": 1},
+    )
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2B_OG_TIMELINE_V1
+async def _admin_tenant_timeline_record(shop_id: str, shop: dict, kind: str, title: str, description: str, admin: dict, metadata: dict | None = None):
+    import uuid
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    item = {
+        "event_id": f"evt_{uuid.uuid4().hex[:16]}",
+        "shop_id": shop_id,
+        "shop_name": (shop or {}).get("name"),
+        "shop_slug": (shop or {}).get("slug"),
+        "kind": kind,
+        "title": str(title or "")[:200],
+        "description": str(description or "")[:1000],
+        "metadata": metadata or {},
+        "created_at": now,
+        "created_by_user_id": (admin or {}).get("user_id"),
+        "created_by_email": (admin or {}).get("email"),
+    }
+
+    await db.admin_tenant_timeline.insert_one(dict(item))
+    return item
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2B_OG_TIMELINE_V1
+@router.post("/admin/tenant-view/{shop_id}/refresh-og-cache")
+async def admin_tenant_refresh_og_cache(shop_id: str, request: Request):
+    from datetime import datetime, timezone
+
+    admin = await require_admin(request)
+
+    shop = await _admin_tenant_timeline_shop(shop_id)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    slug = shop.get("slug") or ""
+    if not slug:
+        raise HTTPException(status_code=400, detail="Slug toko belum tersedia")
+
+    base_url = _admin_tenant_timeline_public_base_url(request)
+    token = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    cache_bust = f"admin-og-{token}"
+
+    storefront_url = f"{base_url}/toko/{slug}" if base_url else f"/toko/{slug}"
+    share_url = f"{storefront_url}?v={cache_bust}"
+    og_image_url = f"{base_url}/api/og/shop/{slug}.png?v={cache_bust}" if base_url else f"/api/og/shop/{slug}.png?v={cache_bust}"
+    og_html_url = f"{base_url}/api/og/shop/{slug}?v={cache_bust}" if base_url else f"/api/og/shop/{slug}?v={cache_bust}"
+
+    debug_text = "\n".join([
+        "Lapakin OG Refresh / Cache-busted Links",
+        f"Shop: {shop.get('name') or '-'}",
+        f"Shop ID: {shop_id}",
+        f"Slug: {slug}",
+        f"Generated: {datetime.now(timezone.utc).isoformat()}",
+        "",
+        "Use this URL to force WA/FB to fetch a fresh preview:",
+        share_url,
+        "",
+        "Direct OG image:",
+        og_image_url,
+        "",
+        "OG HTML endpoint:",
+        og_html_url,
+        "",
+        "Note: this does not purge WhatsApp/Meta cache globally; it provides a fresh cache-busted URL for support/testing.",
+    ])
+
+    item = await _admin_tenant_timeline_record(
+        shop_id,
+        shop,
+        "og_refresh",
+        "Refresh OG cache-busted URL",
+        "Admin generated fresh OG/cache-busted share links.",
+        admin,
+        {
+            "share_url": share_url,
+            "og_image_url": og_image_url,
+            "og_html_url": og_html_url,
+            "cache_bust": cache_bust,
+        },
+    )
+
+    try:
+        await log_admin_action(
+            admin,
+            "tenant_refresh_og_cache",
+            "shop",
+            shop_id,
+            {
+                "shop_name": shop.get("name"),
+                "slug": slug,
+                "share_url": share_url,
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "message": "OG cache-busted links dibuat dan dicatat di timeline.",
+        "event": item,
+        "share_url": share_url,
+        "og_image_url": og_image_url,
+        "og_html_url": og_html_url,
+        "debug_text": debug_text,
+    }
+
+
+# LAPAKIN_ADMIN_TENANT_VIEW_PHASE2B_OG_TIMELINE_V1
+@router.get("/admin/tenant-view/{shop_id}/timeline")
+async def admin_tenant_timeline(shop_id: str, request: Request, limit: int = 60):
+    await require_admin(request)
+
+    shop = await _admin_tenant_timeline_shop(shop_id)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    limit = max(10, min(int(limit or 60), 200))
+    items = []
+
+    # Internal support timeline events.
+    try:
+        events = await db.admin_tenant_timeline.find({"shop_id": shop_id}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    except Exception:
+        events = []
+
+    for event in events:
+        items.append({
+            "id": event.get("event_id"),
+            "kind": event.get("kind") or "event",
+            "title": event.get("title") or "Admin event",
+            "description": event.get("description") or "",
+            "created_at": event.get("created_at"),
+            "actor": event.get("created_by_email") or "admin",
+            "metadata": event.get("metadata") or {},
+            "source": "timeline",
+        })
+
+    # Support notes.
+    try:
+        notes = await db.admin_support_notes.find({"shop_id": shop_id}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    except Exception:
+        notes = []
+
+    for note in notes:
+        archived = bool(note.get("archived_at"))
+        items.append({
+            "id": note.get("note_id"),
+            "kind": "note_archived" if archived else "note",
+            "title": "Support note archived" if archived else "Support note added",
+            "description": note.get("note") or "",
+            "created_at": note.get("archived_at") or note.get("created_at"),
+            "actor": note.get("archived_by_email") or note.get("created_by_email") or "admin",
+            "metadata": {
+                "priority": note.get("priority"),
+                "category": note.get("category"),
+            },
+            "source": "support_notes",
+        })
+
+    # Audit logs related to this shop, best-effort across old schemas.
+    audit_query = {
+        "$or": [
+            {"target_id": shop_id},
+            {"target": shop_id},
+            {"resource_id": shop_id},
+            {"entity_id": shop_id},
+            {"details.shop_id": shop_id},
+            {"metadata.shop_id": shop_id},
+        ]
+    }
+
+    try:
+        audits = await db.audit_logs.find(audit_query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    except Exception:
+        audits = []
+
+    for audit in audits:
+        action = audit.get("action") or audit.get("event") or "audit"
+        items.append({
+            "id": audit.get("audit_id") or audit.get("log_id") or f"audit_{str(audit.get('created_at') or '')}",
+            "kind": "audit",
+            "title": str(action).replace("_", " ").title(),
+            "description": str(audit.get("description") or audit.get("detail") or "")[:1000],
+            "created_at": audit.get("created_at") or audit.get("timestamp"),
+            "actor": audit.get("admin_email") or audit.get("email") or audit.get("user_email") or "admin",
+            "metadata": audit.get("details") or audit.get("metadata") or {},
+            "source": "audit_logs",
+        })
+
+    def sort_key(item):
+        return str(item.get("created_at") or "")
+
+    items.sort(key=sort_key, reverse=True)
+
+    return {
+        "items": items[:limit],
+        "summary": {
+            "total": len(items[:limit]),
+            "timeline_events": len(events),
+            "notes": len(notes),
+            "audits": len(audits),
+        },
     }
 
