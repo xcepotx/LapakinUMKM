@@ -5,7 +5,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Store, Zap, Rocket, Check, Loader2, ArrowRight, Upload, X, Copy, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-
+import TierSuspendedRestoreCard from "@/components/TierSuspendedRestoreCard";
 const TIER_ICON = { free: Sparkles, starter: Store, pro: Zap, business: Rocket };
 const TIER_COLOR = {
   free: "bg-brand-off text-brand-ink border-brand-line",
@@ -72,7 +72,9 @@ function ManualPaymentPanel({ manualPayment, onClose, onUploadProof, uploading }
     <div
       className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/70 p-5 text-blue-950 shadow-card"
       data-testid="manual-tier-payment-card"
+      style={{ display: localStorage.getItem("lapakin.manualUpgradeNoticeDismissed") === "1" ? "none" : undefined }}
     >
+      <button type="button" aria-label="Tutup notifikasi pembayaran" onClick={(event) => { localStorage.setItem("lapakin.manualUpgradeNoticeDismissed", "1"); event.currentTarget.closest('[data-testid="manual-tier-payment-card"]')?.remove(); }} className="absolute right-4 top-4 text-sm font-black text-amber-900 hover:opacity-70">×</button>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-extrabold uppercase tracking-wide bg-white border-blue-200">
@@ -455,28 +457,13 @@ const canUseTrialForPlan = (plan_id) => {
 
   return (
     <DashboardLayout>
-      <div className="max-w-3xl">
+      <div className="max-w-7xl">
         <h1 className="font-heading font-extrabold text-3xl">Akun & Tier</h1>
         <p className="text-brand-mute mt-1">
           Lihat tier kamu sekarang & penggunaan kuota bulan ini.
         </p>
-
-        {me?.subscription_status === "suspended" && (
-          <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-red-900" data-testid="subscription-suspended-card">
-            <div className="font-heading font-extrabold text-xl">Paket kamu sudah berakhir</div>
-            <p className="text-sm mt-2 leading-relaxed">
-              Akun toko sementara ditangguhkan. Data toko, produk, penjualan, cabang, dan anggota tim tetap aman.
-              Hubungi admin Lapakin untuk aktivasi ulang.
-            </p>
-            {me?.subscription_suspended_at && (
-              <p className="text-xs mt-2">
-                Ditangguhkan sejak {new Date(me.subscription_suspended_at).toLocaleString("id-ID")}
-              </p>
-            )}
-          </div>
-        )}
-
-        {(manualPaymentNotice || manualConfig?.enabled === false) && !manualPayment?.payment ? (
+          <TierSuspendedRestoreCard />
+{(manualPaymentNotice || manualConfig?.enabled === false) && !manualPayment?.payment ? (
           <ManualPaymentDisabledPanel
             config={manualConfig}
             notice={manualPaymentNotice}
@@ -708,3 +695,23 @@ const canUseTrialForPlan = (plan_id) => {
     </DashboardLayout>
   );
 }
+
+/* LAPAKIN_EXPIRED_BANNER_COPY_DEV_V1 */
+
+/* LAPAKIN_EXPIRED_BANNER_COPY_DEDUP_DEV_V1 */
+
+/* LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D2_BILLING_UI_V1 */
+
+/* LAPAKIN_REPAIR_TIER_SUSPENDED_RESTORE_BILLING_UI_V1 */
+
+/* LAPAKIN_REPAIR_BILLING_RESTORE_CARD_INSERT_V2 */
+
+/* LAPAKIN_MOVE_RESTORE_CARD_TO_BILLING_V1 */
+
+/* LAPAKIN_RESTORE_CARD_LAYOUT_ONLY_V1 billing cleaned */
+
+/* LAPAKIN_FIX_BILLING_RESTORE_CARD_PLACEMENT_UI_V1 */
+
+/* LAPAKIN_FORCE_BILLING_WIDE_CONTAINER_V1 */
+
+/* LAPAKIN_POLISH_BILLING_NOTIFICATION_STACK_V1 */
