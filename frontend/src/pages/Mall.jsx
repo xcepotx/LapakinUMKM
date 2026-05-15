@@ -55,13 +55,17 @@ function ProductImage({ item }) {
         alt={item?.name || "Produk Lapakin Mall"}
         className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
         loading="lazy"
+        decoding="async"
       />
     );
   }
 
   return (
-    <div className="grid h-full w-full place-items-center bg-gradient-to-br from-brand-off via-white to-brand-soft/50 text-brand">
+    <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-brand-off via-white to-[#F3D7C7] px-6 text-center text-brand">
       <ShoppingBag className="h-12 w-12" />
+      <div className="mt-3 text-xs font-black uppercase tracking-[0.18em] text-brand-mute">
+        Foto produk
+      </div>
     </div>
   );
 }
@@ -231,7 +235,7 @@ export default function Mall() {
     const params = {
       q,
       category,
-      limit: 100,
+      limit: 32, // LAPAKIN_MALL_PERFORMANCE_DEV_V1
       ...next,
     };
 
@@ -520,3 +524,5 @@ export default function Mall() {
     </div>
   );
 }
+
+/* LAPAKIN_MALL_REMOVE_OG_POSTER_CARD_DEV_V1 */

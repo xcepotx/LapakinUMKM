@@ -1,9 +1,10 @@
+from fastapi.responses import RedirectResponse
 """Public utility routes: health, featured shops, broadcasts (user side), billing, analytics."""
 from datetime import datetime, timezone, timedelta
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from deps import db, require_user
@@ -694,7 +695,7 @@ def _mall_normalize_wa(raw):
 
 
 # LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
-def _mall_product_image(product):
+def _mall_listing_image_for_card_v3(product):
     product = product or {}
 
     for key in ["image_url", "thumbnail_url", "photo_url", "image_data"]:
@@ -705,6 +706,19 @@ def _mall_product_image(product):
     images = product.get("images")
     if isinstance(images, list) and images:
         return images[0]
+
+    return ""
+
+
+# LAPAKIN_MALL_IMAGE_FALLBACK_OG_DEV_V1
+def _mall_listing_image_for_card_v3(product):
+    image = _mall_listing_image_for_card_v3(product)
+    if image:
+        return image
+
+    product_id = str((product or {}).get("product_id") or "").strip()
+    if product_id:
+        return ""
 
     return ""
 
@@ -790,6 +804,24 @@ def _mall_build_order_url(shop, product):
 
 
 # LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
+
+
+
+# LAPAKIN_MALL_RAW_IMAGE_ENDPOINT_SAFE_DEV_V3
+def _mall_listing_image_for_card_v3(product):
+    product = product or {}
+
+    for key in ["image_url", "thumbnail_url", "photo_url"]:
+        value = str(product.get(key) or "").strip()
+        if value:
+            return value
+
+    product_id = str(product.get("product_id") or "").strip()
+    if product_id:
+        return f"/api/mall/raw-product-image/{product_id}"
+
+    return ""
+
 def _mall_make_listing_response(listing, product, shop, request: Request):
     product = product or {}
     shop = shop or {}
@@ -829,7 +861,7 @@ def _mall_make_listing_response(listing, product, shop, request: Request):
         ),
         "price": product.get("price") or 0,
         "stock": product.get("stock"),
-        "image": _mall_product_image(product),
+        "image": _mall_listing_image_for_card_v3(product),  # LAPAKIN_MALL_IMAGE_FALLBACK_OG_DEV_V1
         "category": category,
         "badge": listing.get("mall_badge") or ("Unggulan" if listing.get("featured") else ""),
         "featured": bool(listing.get("featured")),
@@ -865,13 +897,13 @@ async def _mall_load_approved_listings():
             ],
         },
         {"_id": 0},
-    ).sort([("featured", -1), ("mall_rank", 1), ("created_at", -1)]).limit(300).to_list(300)
+    ).sort([("featured", -1), ("mall_rank", 1), ("created_at", -1)]).limit(120).to_list(120)  # LAPAKIN_MALL_PERFORMANCE_DEV_V1
 
 
 # LAPAKIN_MALL_PHASE1A_PUBLIC_MVP_V1
 @router.get("/mall/listings")
-async def public_mall_listings(request: Request, q: str = "", category: str = "all", limit: int = 60):
-    limit = max(1, min(int(limit or 60), 120))
+async def public_mall_listings(request: Request, q: str = "", category: str = "all", limit: int = 32):  # LAPAKIN_MALL_PERFORMANCE_DEV_V1
+    limit = max(1, min(int(limit or 32), 64))  # LAPAKIN_MALL_PERFORMANCE_DEV_V1
     q_norm = str(q or "").strip().lower()
     category_norm = str(category or "all").strip().lower()
 
@@ -884,7 +916,10 @@ async def public_mall_listings(request: Request, q: str = "", category: str = "a
     shops_by_id = {}
 
     if product_ids:
-        products = await db.products.find({"product_id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+        products = await db.products.find(
+            {"product_id": {"$in": product_ids}},
+            {"_id": 0, "image_data": 0, "images": 0},
+        ).to_list(len(product_ids))  # LAPAKIN_MALL_PERFORMANCE_DEV_V1
         products_by_id = {item.get("product_id"): item for item in products}
 
     if shop_ids:
@@ -1031,7 +1066,10 @@ async def public_mall_listing_detail(listing_id: str, request: Request):
     shops_by_id = {}
 
     if product_ids:
-        products = await db.products.find({"product_id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+        products = await db.products.find(
+            {"product_id": {"$in": product_ids}},
+            {"_id": 0, "image_data": 0, "images": 0},
+        ).to_list(len(product_ids))  # LAPAKIN_MALL_PERFORMANCE_DEV_V1
         products_by_id = {row.get("product_id"): row for row in products}
 
     if shop_ids:
@@ -1085,4 +1123,168 @@ async def public_mall_listing_detail(listing_id: str, request: Request):
         "item": item,
         "related": related,
     }
+
+
+# LAPAKIN_MALL_CARD_RAW_PRODUCT_IMAGE_DEV_V1
+def _mall_parse_image_data(value):
+    import base64
+    import re
+
+    raw = str(value or "").strip()
+    if not raw:
+        return None, None
+
+    if raw.startswith("http://") or raw.startswith("https://") or raw.startswith("/"):
+        return "redirect", raw
+
+    media_type = "image/jpeg"
+    payload = raw
+
+    if raw.startswith("data:"):
+        match = re.match(r"^data:([^;]+);base64,(.*)$", raw, flags=re.S)
+        if not match:
+            return None, None
+        media_type = match.group(1) or "image/jpeg"
+        payload = match.group(2)
+
+    try:
+        return media_type, base64.b64decode(payload)
+    except Exception:
+        return None, None
+
+
+# LAPAKIN_MALL_CARD_RAW_PRODUCT_IMAGE_DEV_V1
+def _mall_find_raw_product_image(product):
+    product = product or {}
+
+    # Prefer real product photo fields. Do not use generated OG poster.
+    for key in ["image_url", "thumbnail_url", "photo_url", "image_data"]:
+        value = product.get(key)
+        media_type, payload = _mall_parse_image_data(value)
+        if media_type and payload:
+            return media_type, payload
+
+    images = product.get("images")
+    if isinstance(images, list):
+        for value in images:
+            media_type, payload = _mall_parse_image_data(value)
+            if media_type and payload:
+                return media_type, payload
+
+    return None, None
+
+
+# LAPAKIN_MALL_CARD_RAW_PRODUCT_IMAGE_DEV_V1
+@router.get("/mall/product-image/{product_id}")
+async def public_mall_product_image(product_id: str):
+    product_id = _mall_clean_text(product_id, 140)
+    product = await db.products.find_one({"product_id": product_id}, {"_id": 0})
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Gambar produk tidak ditemukan")
+
+    media_type, payload = _mall_find_raw_product_image(product)
+
+    if media_type == "redirect" and payload:
+        return RedirectResponse(url=payload)
+
+    if media_type and payload:
+        return Response(
+            content=payload,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "public, max-age=86400",
+            },
+        )
+
+    raise HTTPException(status_code=404, detail="Gambar produk tidak tersedia")
+
+
+# LAPAKIN_MALL_REMOVE_OG_POSTER_CARD_DEV_V1
+
+
+# LAPAKIN_MALL_RAW_IMAGE_ENDPOINT_SAFE_DEV_V3
+def _mall_raw_image_candidate(value):
+    if value is None:
+        return ""
+
+    if isinstance(value, dict):
+        for key in ["url", "image_url", "thumbnail_url", "src", "data", "image_data"]:
+            candidate = value.get(key)
+            if candidate:
+                return str(candidate)
+        return ""
+
+    return str(value)
+
+
+# LAPAKIN_MALL_RAW_IMAGE_ENDPOINT_SAFE_DEV_V3
+def _mall_parse_raw_product_image(value):
+    import base64
+    import re
+
+    raw = _mall_raw_image_candidate(value).strip()
+    if not raw:
+        return None, None
+
+    if raw.startswith("http://") or raw.startswith("https://") or raw.startswith("/"):
+        return "redirect", raw
+
+    media_type = "image/jpeg"
+    payload = raw
+
+    if raw.startswith("data:"):
+        match = re.match(r"^data:([^;]+);base64,(.*)$", raw, flags=re.S)
+        if not match:
+            return None, None
+        media_type = match.group(1) or "image/jpeg"
+        payload = match.group(2)
+
+    try:
+        return media_type, base64.b64decode(payload)
+    except Exception:
+        return None, None
+
+
+# LAPAKIN_MALL_RAW_IMAGE_ENDPOINT_SAFE_DEV_V3
+def _mall_find_raw_product_image_v3(product):
+    product = product or {}
+
+    for key in ["image_url", "thumbnail_url", "photo_url", "image_data"]:
+        media_type, payload = _mall_parse_raw_product_image(product.get(key))
+        if media_type and payload:
+            return media_type, payload
+
+    images = product.get("images")
+    if isinstance(images, list):
+        for item in images:
+            media_type, payload = _mall_parse_raw_product_image(item)
+            if media_type and payload:
+                return media_type, payload
+
+    return None, None
+
+
+# LAPAKIN_MALL_RAW_IMAGE_ENDPOINT_SAFE_DEV_V3
+@router.get("/mall/raw-product-image/{product_id}")
+async def public_mall_raw_product_image_v3(product_id: str):
+    product_id = _mall_clean_text(product_id, 140)
+    product = await db.products.find_one({"product_id": product_id}, {"_id": 0})
+
+    if not product:
+        raise HTTPException(status_code=404, detail="Gambar produk tidak ditemukan")
+
+    media_type, payload = _mall_find_raw_product_image_v3(product)
+
+    if media_type == "redirect" and payload:
+        return RedirectResponse(url=payload)
+
+    if media_type and payload:
+        return Response(
+            content=payload,
+            media_type=media_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    raise HTTPException(status_code=404, detail="Gambar produk tidak tersedia")
 

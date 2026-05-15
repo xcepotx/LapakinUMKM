@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { toast as downgradeToast } from "sonner";
+import apiDowngradeResolution from "@/lib/api";
+import {useEffect, useState} from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import api from "@/lib/api";
@@ -17,7 +19,6 @@ import {
   MessageSquare,
   CreditCard,
   BarChart3, ShoppingBag} from "lucide-react";
-
 const TIER_BADGE = {
   free: {
     label: "Gratis",
@@ -37,10 +38,266 @@ const TIER_BADGE = {
   },
 };
 
+
+/* LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_B_OVERLAY_V3 */
+function DowngradeShopResolutionPanel({ resolution, onSelect, selectingShopId }) {
+  const shops = resolution?.shops || [];
+  const tier = resolution?.tier || {};
+  const summary = resolution?.summary || {};
+
+  return (
+    <div className="min-h-[70vh] bg-[#FBF7F1] px-4 py-8 text-brand-ink sm:px-6">
+      <div className="mx-auto max-w-5xl">
+        <div className="rounded-[2rem] border border-brand-line bg-white p-6 shadow-card sm:p-8">
+          <div className="inline-flex rounded-full bg-amber-50 px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-700">
+            Paket berubah
+          </div>
+
+          <h1 className="mt-4 font-heading text-3xl font-black leading-tight text-brand-ink sm:text-4xl">
+            Pilih 1 toko yang ingin kamu kelola
+          </h1>
+
+          <p className="mt-3 max-w-3xl text-sm font-semibold leading-relaxed text-brand-mute sm:text-base">
+            Paket kamu saat ini hanya mendukung {summary.shop_limit || 1} toko aktif.
+            Pilih satu toko utama untuk tetap dikelola. Toko lain tidak dihapus,
+            hanya ditangguhkan karena batas paket dan bisa diaktifkan kembali saat upgrade.
+          </p>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-brand-line bg-brand-off/60 p-4">
+              <div className="text-xs font-black uppercase text-brand-mute">Plan</div>
+              <div className="mt-1 text-xl font-black text-brand-ink">{tier.plan || "free"}</div>
+            </div>
+            <div className="rounded-2xl border border-brand-line bg-brand-off/60 p-4">
+              <div className="text-xs font-black uppercase text-brand-mute">Status</div>
+              <div className="mt-1 text-xl font-black text-brand-ink">{tier.status || "unknown"}</div>
+            </div>
+            <div className="rounded-2xl border border-brand-line bg-brand-off/60 p-4">
+              <div className="text-xs font-black uppercase text-brand-mute">Total toko</div>
+              <div className="mt-1 text-xl font-black text-brand-ink">{summary.total || shops.length}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          {shops.map((shop) => {
+            const busy = selectingShopId === shop.shop_id;
+            const disabled = busy || shop.status === "deleted";
+
+            return (
+              <article
+                key={shop.shop_id}
+                className="rounded-[1.5rem] border border-brand-line bg-white p-5 shadow-card"
+                data-testid={`downgrade-shop-option-${shop.shop_id}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="font-heading text-xl font-black text-brand-ink">
+                      {shop.name || "Toko"}
+                    </h2>
+                    <p className="mt-1 text-sm font-semibold text-brand-mute">
+                      /toko/{shop.slug || "-"}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-black uppercase ${
+                      shop.tier_suspended
+                        ? "bg-slate-100 text-slate-600"
+                        : shop.manageable
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {shop.tier_suspended ? "tertangguhkan" : shop.manageable ? "aktif" : shop.status || "status"}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-brand-off p-3">
+                    <div className="text-xs font-black uppercase text-brand-mute">Produk</div>
+                    <div className="mt-1 text-lg font-black text-brand-ink">{shop.product_count || 0}</div>
+                  </div>
+                  <div className="rounded-2xl bg-brand-off p-3">
+                    <div className="text-xs font-black uppercase text-brand-mute">Kategori</div>
+                    <div className="mt-1 truncate text-sm font-black text-brand-ink">
+                      {shop.business_type || "-"}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSelect(shop.shop_id)}
+                  className="mt-5 inline-flex h-12 w-full items-center justify-center rounded-2xl bg-brand px-4 text-sm font-black text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+                  data-testid={`select-downgrade-shop-${shop.shop_id}`}
+                >
+                  {busy ? "Memproses..." : "Pilih toko ini"}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-relaxed text-amber-900">
+          Catatan: toko yang tidak dipilih tetap tersimpan. Statusnya menjadi <b>tier_suspended</b>,
+          bukan dihapus. Saat paket di-upgrade lagi, toko tersebut bisa diaktifkan kembali.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+// LAPAKIN_SHOP_SWITCHER_DATA_FILTER_V1
+function filterManageableSwitcherShops(payload) {
+  const rows = Array.isArray(payload?.shops) ? payload.shops : [];
+
+  return {
+    ...payload,
+    shops: rows.filter((shop) => {
+      const status = String(shop?.status || "active").toLowerCase();
+
+      if (!shop?.shop_id) return false;
+      if (shop?.tier_suspended === true) return false;
+
+      return ![
+        "deleted",
+        "removed",
+        "inactive",
+        "suspended",
+        "tier_suspended",
+        "admin_suspended",
+        "banned",
+        "disabled",
+      ].includes(status);
+    }),
+  };
+}
+
 export default function DashboardLayout({ children, shop, title, subtitle, actions }) {
+
+  // LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_B_OVERLAY_V3
+  const [downgradeResolution, setDowngradeResolution] = useState(null);
+  const [downgradeResolutionLoading, setDowngradeResolutionLoading] = useState(true);
+  const [downgradeSelectingShopId, setDowngradeSelectingShopId] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+
+    apiDowngradeResolution.get("/shops/downgrade-resolution")
+      .then((response) => {
+        if (!alive) 
+return;
+        setDowngradeResolution(response.data || null);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setDowngradeResolution(null);
+      })
+      .finally(() => {
+        if (!alive) return;
+        setDowngradeResolutionLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleDowngradeShopSelect = async (shopId) => {
+    if (!shopId) return;
+
+    setDowngradeSelectingShopId(shopId);
+
+    try {
+      await apiDowngradeResolution.post("/shops/downgrade-resolution/select", { shop_id: shopId });
+      downgradeToast.success("Toko utama berhasil dipilih");
+      window.location.reload();
+    } catch (error) {
+      downgradeToast.error(error?.response?.data?.detail || "Gagal memilih toko");
+    } finally {
+      setDowngradeSelectingShopId("");
+    }
+  };
+
+
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const isBillingPage = location.pathname === "/dashboard/billing";
+
+  // LAPAKIN_ENFORCE_BILLING_NOTIFICATION_UX_V1
+  useEffect(() => {
+    if (!isBillingPage) return undefined;
+
+    const applyBillingNotificationUx = () => {
+      // Hide duplicate expired-package card inside Billing content.
+      // Global red banner already explains the suspended package state.
+      const main = document.querySelector("main");
+
+      if (main) {
+        const expiredCards = Array.from(
+          main.querySelectorAll('[class*="border-red"], [class*="bg-red"], [class*="red-"]')
+        );
+
+        expiredCards.forEach((node) => {
+          const text = node.textContent || "";
+          const isGlobalBanner = Boolean(node.closest('[data-testid="subscription-suspended-banner"]'));
+
+          if (!isGlobalBanner && text.includes("Paket kamu sudah berakhir")) {
+            node.style.display = "none";
+            node.setAttribute("data-auto-hidden", "duplicate-expired-billing-card");
+          }
+        });
+      }
+
+      // Make manual upgrade notice close button actually work.
+      const manualNotice = document.querySelector('[data-testid="manual-tier-payment-card"]');
+
+      if (manualNotice) {
+        const dismissed = localStorage.getItem("lapakin.manualUpgradeNoticeDismissed") === "1";
+
+        if (dismissed) {
+          manualNotice.style.display = "none";
+          return;
+        }
+
+        manualNotice.classList.add("relative");
+
+        let closeButton = Array.from(manualNotice.querySelectorAll("button")).find(
+          (button) => (button.textContent || "").trim() === "×"
+        );
+
+        if (!closeButton) {
+          closeButton = document.createElement("button");
+          closeButton.type = "button";
+          closeButton.textContent = "×";
+          closeButton.setAttribute("aria-label", "Tutup notifikasi pembayaran");
+          closeButton.className =
+            "absolute right-4 top-4 text-sm font-black text-amber-900 hover:opacity-70";
+          manualNotice.appendChild(closeButton);
+        }
+
+        closeButton.onclick = () => {
+          localStorage.setItem("lapakin.manualUpgradeNoticeDismissed", "1");
+          manualNotice.style.display = "none";
+        };
+      }
+    };
+
+    applyBillingNotificationUx();
+    const t1 = window.setTimeout(applyBillingNotificationUx, 250);
+    const t2 = window.setTimeout(applyBillingNotificationUx, 1000);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [isBillingPage]);
+
   const isStaff = user?.shop_role === "staff";
   const [shopSwitcher, setShopSwitcher] = useState(null);
   const [switchingShop, setSwitchingShop] = useState(false);
@@ -88,10 +345,34 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
       ? "bg-yellow-50 text-yellow-900 border-yellow-300"
       : badge.cls;
 
+  // LAPAKIN_HIDE_SHOP_SWITCHER_SINGLE_MANAGEABLE_V5
+  const shopSwitcherShops = Array.isArray(shopSwitcher?.shops) ? shopSwitcher.shops : [];
+
+  const manageableShopSwitcherShops = shopSwitcherShops.filter((candidateShop) => {
+    const status = String(candidateShop?.status || "active").toLowerCase();
+
+    if (!candidateShop?.shop_id) return false;
+    if (candidateShop?.tier_suspended === true) return false;
+
+    return ![
+      "deleted",
+      "removed",
+      "inactive",
+      "suspended",
+      "tier_suspended",
+      "admin_suspended",
+      "banned",
+      "disabled",
+    ].includes(status);
+  });
+
+  const shouldShowShopSwitcher = manageableShopSwitcherShops.length > 1;
+
+
   useEffect(() => {
     if (!user?.shop_id) return;
     api.get("/shops/mine")
-      .then((r) => setShopSwitcher(r.data))
+      .then((r) => setShopSwitcher(filterManageableSwitcherShops(r.data))) // LAPAKIN_SHOP_SWITCHER_DATA_FILTER_V1
       .catch(() => {});
   }, [user?.shop_id]);
 
@@ -251,8 +532,8 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
             </nav>
           </div>
           <div className="flex items-center gap-2">
-            {!isStaff && (shopSwitcher?.shops || []).length > 1 && (
-              <select
+            {!isStaff && manageableShopSwitcherShops.length > 1 && (
+<select
                 value={shopSwitcher?.active_shop_id || shop?.shop_id || ""}
                 disabled={switchingShop}
                 onChange={(e) => handleSwitchShop(e.target.value)}
@@ -260,14 +541,13 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
                 data-testid="shop-switcher"
                 title="Pilih cabang aktif"
               >
-                {(shopSwitcher?.shops || []).map((s) => (
+                {manageableShopSwitcherShops.map((s) => (
                   <option key={s.shop_id} value={s.shop_id}>
                     {s.name}
                   </option>
                 ))}
               </select>
-            )}
-
+)}
             {shop?.slug && (
               <Button
                 variant="outline"
@@ -358,8 +638,7 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
           <div className="bg-red-700 text-white text-sm" data-testid="subscription-suspended-banner">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
-                <b>Akun toko sementara ditangguhkan.</b>{" "}
-                Paket kamu sudah berakhir. Data toko tetap aman, hubungi admin Lapakin untuk aktivasi ulang.
+                <b>Paket kamu sudah berakhir. Kamu tetap bisa mengelola 1 toko aktif sesuai batas paket saat ini. Toko lain tetap aman dan ditangguhkan sementara sampai kamu upgrade.</b>
               </div>
               <a href="/dashboard/billing" className="font-extrabold underline">
                 Lihat status paket
@@ -407,8 +686,44 @@ export default function DashboardLayout({ children, shop, title, subtitle, actio
             {actions}
           </div>
         )}
-        {children}
+        {!downgradeResolutionLoading && downgradeResolution?.needs_resolution ? (
+            <DowngradeShopResolutionPanel
+              resolution={downgradeResolution}
+              onSelect={handleDowngradeShopSelect}
+              selectingShopId={downgradeSelectingShopId}
+            />
+          ) : (
+            children
+          )}
       </main>
     </div>
   );
 }
+
+/* LAPAKIN_EXPIRED_BANNER_COPY_DEV_V1 */
+
+/* LAPAKIN_EXPIRED_BANNER_COPY_DEDUP_DEV_V1 */
+
+/* LAPAKIN_DASHBOARD_EXPIRED_BANNER_ONE_LINE_V1 */
+
+/* LAPAKIN_REPAIR_BROKEN_SELECTOR_PATCH_V1 */
+
+/* LAPAKIN_FIX_ORPHAN_SHOP_SWITCHER_JSX_V1 */
+
+/* LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D2_LAYOUT_SAFE_V1 */
+
+/* LAPAKIN_REPAIR_TIER_RESTORE_IMPORT_V1 */
+
+/* LAPAKIN_MOVE_RESTORE_CARD_TO_BILLING_V1 */
+
+/* LAPAKIN_RESTORE_CARD_LAYOUT_ONLY_V1 */
+
+/* LAPAKIN_CENTER_RESTORE_CARD_BILLING_V1 */
+
+/* LAPAKIN_FIX_BILLING_RESTORE_CARD_PLACEMENT_UI_V1 layout cleaned */
+
+/* LAPAKIN_FIX_BILLING_PAGE_CONTAINER_UX_V1 */
+
+/* LAPAKIN_WIDEN_BILLING_PAGE_CONTAINER_V1 */
+
+/* LAPAKIN_FORCE_BILLING_WIDE_CONTAINER_V1 */

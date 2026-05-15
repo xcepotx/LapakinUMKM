@@ -1,3 +1,4 @@
+from typing import Optional
 import re
 import json
 """Shops routes: CRUD, public fetch, toggle-open, custom domain."""
@@ -254,20 +255,94 @@ def _is_staff(user: dict) -> bool:
     return user.get("shop_role") == "staff"
 
 
-async def _owner_shop_limit(user: dict) -> dict:
-    tier = get_tier(user)
-    limit = get_limits(tier).get("max_shops_per_user", 1)
-    used = await db.shops.count_documents({"owner_user_id": user["user_id"]})
+PHASE_E_NON_MANAGEABLE_SHOP_STATUSES = {
+    "tier_suspended",
+    "deleted",
+    "admin_deleted",
+    "admin_suspended",
+    "banned",
+    "disabled",
+    "inactive",
+    "suspended",
+}
+
+
+def _phase_e_manageable_shop_count_query(user_id: str) -> dict:
     return {
-        "tier": tier,
-        "limit_raw": limit,
-        "limit": "unlimited" if is_unlimited(limit) else limit,
-        "used": used,
-        "remaining": "unlimited" if is_unlimited(limit) else max(0, limit - used),
-        "can_create": is_unlimited(limit) or used < limit,
+        "owner_user_id": user_id,
+        "status": {"$nin": list(PHASE_E_NON_MANAGEABLE_SHOP_STATUSES)},
+        "tier_suspended": {"$ne": True},
+        "deleted": {"$ne": True},
+        "is_deleted": {"$ne": True},
+        "admin_deleted": {"$ne": True},
+        "deleted_at": {"$in": [None, ""]},
     }
 
 
+async def _owner_shop_limit(user: dict) -> dict:
+    user_id = (user or {}).get("user_id")
+    tier = get_tier(user)
+    limit = get_limits(tier).get("max_shops_per_user", 1)
+    effective_status = (user or {}).get("subscription_status") or ""
+
+    # Reuse downgrade tier logic when Phase A/D helper exists.
+    # Important: subscription_status=suspended / expired must behave as limit 1
+    # even when user.tier still says pro/business.
+    try:
+        if "_downgrade_effective_tier" in globals():
+            effective_tier = await _downgrade_effective_tier(user)
+            if effective_tier:
+                tier = effective_tier.get("plan") or tier
+                effective_status = effective_tier.get("status") or effective_status
+                limit = effective_tier.get("shop_limit", limit)
+    except Exception as exc:
+        try:
+            logger.warning(f"phase_e_owner_shop_limit_effective_tier_failed: {exc}")
+        except Exception:
+            pass
+
+    used = 0
+    if user_id:
+        used = await db.shops.count_documents(_phase_e_manageable_shop_count_query(user_id))
+
+    unlimited = is_unlimited(limit)
+    numeric_limit = None
+
+    if not unlimited:
+        try:
+            numeric_limit = int(limit)
+        except Exception:
+            numeric_limit = 1
+
+    return {
+        "tier": tier,
+        "status": effective_status,
+        "limit_raw": limit,
+        "limit": "unlimited" if unlimited else numeric_limit,
+        "used": used,
+        "remaining": "unlimited" if unlimited else max(0, numeric_limit - used),
+        "can_create": unlimited or used < numeric_limit,
+    }
+
+
+async def _enforce_owner_shop_create_limit(user: dict):
+    limit_state = await _owner_shop_limit(user)
+
+    if limit_state.get("can_create"):
+        return limit_state
+
+    limit_display = limit_state.get("limit")
+    used_display = limit_state.get("used", 0)
+    tier_display = limit_state.get("tier") or "free"
+
+    raise HTTPException(
+        status_code=402,
+        detail=(
+            f"SHOP_LIMIT_REACHED: Batas toko paket {tier_display} sudah penuh "
+            f"({used_display}/{limit_display}). Upgrade untuk tambah toko."
+        ),
+        headers={"X-Lapakin-Error-Code": "SHOP_LIMIT_REACHED"},
+    )
 
 class StorefrontCopyAIIn(BaseModel):
     shop_name: str = ""
@@ -1946,6 +2021,7 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_google_maps_url", "")
     doc.setdefault("storefront_location_embed_url", "")
     doc.setdefault("storefront_renderer", "legacy")
+    await _enforce_owner_shop_create_limit(user)
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})
     return {k: v for k, v in doc.items() if k != "_id"}
@@ -2075,32 +2151,7 @@ async def switch_active_shop(shop_id: str, request: Request):
 async def create_branch_shop(data: ShopIn, request: Request):
     """Create a new shop/cabang for the current owner and switch to it."""
     user = await require_user(request)
-    # grandfather_existing_shops_branch_create_guard
-    # Existing shops stay accessible after downgrade. Only creating a new branch follows the active tier limit.
-    owner_user_id = user.get("user_id")
-    current_tier = user.get("tier") or "free"
-    max_shops_allowed = int(get_limits(current_tier).get("max_shops_per_user", 1) or 1)
-    owned_shops_count = await db.shops.count_documents({"owner_user_id": owner_user_id})
 
-    if owned_shops_count >= max_shops_allowed:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Batas cabang paket kamu sudah tercapai. "
-                "Toko yang sudah ada tetap bisa diakses, tapi tambah cabang baru perlu upgrade."
-            ),
-        )
-
-
-    if _is_staff(user):
-        raise HTTPException(status_code=403, detail="Staff tidak bisa membuat cabang")
-
-    limit_state = await _owner_shop_limit(user)
-    if not limit_state["can_create"]:
-        raise HTTPException(
-            status_code=402,
-            detail=f"Limit cabang paket {limit_state['tier']} sudah penuh ({limit_state['used']}/{limit_state['limit_raw']}). Upgrade untuk menambah cabang.",
-        )
 
     now = datetime.now(timezone.utc).isoformat()
     payload = data.model_dump()
@@ -2146,6 +2197,7 @@ async def create_branch_shop(data: ShopIn, request: Request):
         "updated_at": now,
     }
 
+    await _enforce_owner_shop_create_limit(user)
     await db.shops.insert_one(doc)
     await db.users.update_one(
         {"user_id": user["user_id"]},
@@ -2415,3 +2467,710 @@ async def share_health(request: Request):
             logger.info(f"subdomain_live email failed: {e}")
 
     return result
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+class DowngradeShopSelectIn(BaseModel):
+    shop_id: str
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_norm(value):
+    return str(value or "").strip()
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_lower(value):
+    return _downgrade_norm(value).lower()
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_user_id(user):
+    user = user or {}
+    for key in ["user_id", "id", "uid", "sub"]:
+        if user.get(key):
+            return str(user.get(key))
+    return ""
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_user_email(user):
+    user = user or {}
+    for key in ["email", "email_lower", "user_email"]:
+        if user.get(key):
+            return _downgrade_lower(user.get(key))
+    return ""
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+async def _downgrade_require_user(request: Request):
+    import inspect
+
+    result = require_user(request)
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_owned_shop_query(user):
+    user_id = _downgrade_user_id(user)
+    email = _downgrade_user_email(user)
+
+    ors = []
+
+    if user_id:
+        ors.extend([
+            {"owner_user_id": user_id},
+            {"user_id": user_id},
+            {"created_by_user_id": user_id},
+        ])
+
+    if email:
+        ors.extend([
+            {"owner_email": email},
+            {"email": email},
+            {"user_email": email},
+            {"created_by_email": email},
+            {"owner.email": email},
+        ])
+
+    if not ors:
+        ors.append({"__never_match__": True})
+
+    return {"$or": ors}
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_is_deleted_shop(shop):
+    shop = shop or {}
+    status = _downgrade_lower(shop.get("status"))
+    return bool(shop.get("deleted_at")) or status in {"deleted", "removed"}
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_is_tier_suspended(shop):
+    shop = shop or {}
+    return shop.get("tier_suspended") is True or _downgrade_lower(shop.get("status")) == "tier_suspended"
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_is_manageable_shop(shop):
+    shop = shop or {}
+
+    if _downgrade_is_deleted_shop(shop):
+        return False
+
+    if _downgrade_is_tier_suspended(shop):
+        return False
+
+    status = _downgrade_lower(shop.get("status") or "active")
+    if status in {"inactive", "suspended", "admin_suspended", "banned", "disabled"}:
+        return False
+
+    return True
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_plan_from_doc(doc):
+    doc = doc or {}
+
+    for key in [
+        "tier",
+        "plan",
+        "plan_code",
+        "membership_tier",
+        "current_tier",
+        "subscription_tier",
+        "package",
+        "package_code",
+    ]:
+        value = _downgrade_lower(doc.get(key))
+        if value:
+            return value
+
+    return ""
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_status_from_doc(doc):
+    doc = doc or {}
+
+    for key in ["subscription_status", "subscription_suspend_reason", "billing_status", "membership_status", "status"]:  # LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V11
+        value = _downgrade_lower(doc.get(key))
+        if value:
+            return value
+
+    return ""
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+def _downgrade_limit_from_plan(plan, status=""):
+    plan = _downgrade_lower(plan)
+    status = _downgrade_lower(status)
+
+    if status in {"expired", "canceled", "cancelled", "past_due", "unpaid", "inactive", "suspended", "subscription_expired"}:  # LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V11
+        return 1
+
+    if plan in {"business", "biz", "enterprise"}:
+        return 999
+
+    if plan in {"pro", "trial_pro", "trial-pro"}:
+        return 3
+
+    # Free/default: hanya 1 toko aktif.
+    return 1
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+async def _downgrade_effective_tier(user):
+    user_id = _downgrade_user_id(user)
+    email = _downgrade_user_email(user)
+
+    plan = _downgrade_plan_from_doc(user)
+    status = _downgrade_status_from_doc(user)
+
+    query_ors = []
+    if user_id:
+        query_ors.extend([{"user_id": user_id}, {"owner_user_id": user_id}])
+    if email:
+        query_ors.extend([{"email": email}, {"user_email": email}, {"owner_email": email}])
+
+    # Coba baca subscription/membership terbaru kalau ada.
+    if query_ors:
+        for col_name in ["subscriptions", "memberships", "billing_accounts", "user_subscriptions"]:
+            try:
+                docs = await db[col_name].find({"$or": query_ors}, {"_id": 0}).sort("updated_at", -1).limit(3).to_list(3)
+            except Exception:
+                docs = []
+
+            for doc in docs:
+                doc_plan = _downgrade_plan_from_doc(doc)
+                doc_status = _downgrade_status_from_doc(doc)
+
+                if doc_plan:
+                    plan = doc_plan
+                if doc_status:
+                    status = doc_status
+
+                # Kalau ada doc active/trialing, pakai itu.
+                if doc_status in {"active", "trialing", "trial", "paid"}:
+                    return {
+                        "plan": plan or "free",
+                        "status": doc_status,
+                        "shop_limit": _downgrade_limit_from_plan(plan, doc_status),
+                    }
+
+    return {
+        "plan": plan or "free",
+        "status": status or "unknown",
+        "shop_limit": _downgrade_limit_from_plan(plan, status),
+    }
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+async def _downgrade_product_count(shop_id):
+    if not shop_id:
+        return 0
+
+    try:
+        return await db.products.count_documents({"shop_id": shop_id})
+    except Exception:
+        return 0
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+async def _downgrade_shop_payload(shop):
+    shop = dict(shop or {})
+    shop.pop("_id", None)
+
+    return {
+        "shop_id": shop.get("shop_id") or "",
+        "name": shop.get("name") or shop.get("shop_name") or "Toko",
+        "slug": shop.get("slug") or "",
+        "status": shop.get("status") or "active",
+        "business_type": shop.get("business_type") or shop.get("type") or "",
+        "owner_user_id": shop.get("owner_user_id") or "",
+        "owner_email": shop.get("owner_email") or shop.get("email") or "",
+        "tier_suspended": _downgrade_is_tier_suspended(shop),
+        "manageable": _downgrade_is_manageable_shop(shop),
+        "product_count": await _downgrade_product_count(shop.get("shop_id")),
+        "created_at": shop.get("created_at") or "",
+        "updated_at": shop.get("updated_at") or "",
+    }
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+async def _downgrade_get_owned_shops(user):
+    query = _downgrade_owned_shop_query(user)
+    shops = await db.shops.find(query, {"_id": 0}).sort("created_at", 1).limit(100).to_list(100)
+
+    # Deduplicate by shop_id.
+    seen = set()
+    rows = []
+    for shop in shops:
+        shop_id = shop.get("shop_id")
+        if not shop_id or shop_id in seen:
+            continue
+        seen.add(shop_id)
+        rows.append(shop)
+
+    return rows
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+async def _downgrade_resolution_payload(user):
+    tier = await _downgrade_effective_tier(user)
+    shops = await _downgrade_get_owned_shops(user)
+
+    non_deleted = [s for s in shops if not _downgrade_is_deleted_shop(s)]
+    manageable = [s for s in non_deleted if _downgrade_is_manageable_shop(s)]
+    tier_suspended = [s for s in non_deleted if _downgrade_is_tier_suspended(s)]
+
+    current_shop_id = (
+        user.get("current_shop_id")
+        or user.get("selected_shop_id")
+        or user.get("active_shop_id")
+        or user.get("shop_id")
+        or ""
+    )  # LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V11
+
+    current_valid = any(
+        s.get("shop_id") == current_shop_id and _downgrade_is_manageable_shop(s)
+        for s in non_deleted
+    )
+
+    shop_limit = int(tier.get("shop_limit") or 1)
+
+    needs_resolution = False
+    reason = ""
+
+    if shop_limit <= 1 and len(manageable) > 1:
+        needs_resolution = True
+        reason = "tier_limit_exceeded"
+    elif shop_limit <= 1 and len(non_deleted) > 1 and not current_valid and len(tier_suspended) == 0:
+        needs_resolution = True
+        reason = "current_shop_invalid_after_downgrade"
+    elif current_shop_id and not current_valid and non_deleted:
+        needs_resolution = True
+        reason = "current_shop_invalid"
+
+    selected_shop = None
+    for s in non_deleted:
+        if s.get("shop_id") == current_shop_id:
+            selected_shop = s
+            break
+
+    if not selected_shop and manageable:
+        selected_shop = manageable[0]
+    elif not selected_shop and non_deleted:
+        selected_shop = non_deleted[0]
+
+    return {
+        "needs_resolution": needs_resolution,
+        "reason": reason,
+        "tier": tier,
+        "current_shop_id": current_shop_id,
+        "current_shop_valid": current_valid,
+        "selected_shop": await _downgrade_shop_payload(selected_shop) if selected_shop else None,
+        "shops": [await _downgrade_shop_payload(s) for s in non_deleted],
+        "summary": {
+            "total": len(non_deleted),
+            "manageable": len(manageable),
+            "tier_suspended": len(tier_suspended),
+            "shop_limit": shop_limit,
+        },
+    }
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+@router.get("/shops/downgrade-resolution")
+async def get_downgrade_shop_resolution(request: Request):
+    user = await _downgrade_require_user(request)
+    return await _downgrade_resolution_payload(user)
+
+
+# LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V1
+@router.post("/shops/downgrade-resolution/select")
+async def select_downgrade_shop(data: DowngradeShopSelectIn, request: Request):
+    from datetime import datetime, timezone
+
+    user = await _downgrade_require_user(request)
+    user_id = _downgrade_user_id(user)
+    email = _downgrade_user_email(user)
+    shop_id = _downgrade_norm(data.shop_id)
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User tidak valid")
+
+    if not shop_id:
+        raise HTTPException(status_code=400, detail="shop_id wajib diisi")
+
+    tier = await _downgrade_effective_tier(user)
+    shops = await _downgrade_get_owned_shops(user)
+    non_deleted = [s for s in shops if not _downgrade_is_deleted_shop(s)]
+
+    selected = None
+    for shop in non_deleted:
+        if shop.get("shop_id") == shop_id:
+            selected = shop
+            break
+
+    if not selected:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan atau bukan milik user")
+
+    now = datetime.now(timezone.utc).isoformat()
+    shop_limit = int(tier.get("shop_limit") or 1)
+
+    # Selalu perbaiki owner link untuk semua toko milik user yang match.
+    all_shop_ids = [s.get("shop_id") for s in non_deleted if s.get("shop_id")]
+
+    if all_shop_ids:
+        await db.shops.update_many(
+            {"shop_id": {"$in": all_shop_ids}},
+            {
+                "$set": {
+                    "owner_user_id": user_id,
+                    "owner_email": email,
+                    "updated_at": now,
+                }
+            },
+        )
+
+    # Toko pilihan aktif kembali.
+    await db.shops.update_one(
+        {"shop_id": shop_id},
+        {
+            "$set": {
+                "status": "active",
+                "tier_suspended": False,
+                "owner_user_id": user_id,
+                "owner_email": email,
+                "updated_at": now,
+                "reactivated_reason": "selected_after_tier_downgrade",
+            },
+            "$unset": {
+                "suspended_by": "",
+                "suspended_reason": "",
+                "suspended_at": "",
+                "tier_suspended_at": "",
+                "tier_suspended_reason": "",
+            },
+        },
+    )
+
+    # Kalau limit 1, toko lain ditangguhkan karena tier.
+    suspended_ids = []
+    if shop_limit <= 1:
+        for shop in non_deleted:
+            sid = shop.get("shop_id")
+            if not sid or sid == shop_id:
+                continue
+
+            # Jangan override toko yang memang admin suspended/deleted.
+            if _downgrade_is_deleted_shop(shop):
+                continue
+
+            old_status = shop.get("status") or "active"
+
+            await db.shops.update_one(
+                {"shop_id": sid},
+                {
+                    "$set": {
+                        "status": "tier_suspended",
+                        "tier_suspended": True,
+                        "tier_suspended_at": now,
+                        "tier_suspended_reason": "tier_downgrade_limit",
+                        "suspended_by": "system",
+                        "suspended_reason": "tier_downgrade_limit",
+                        "status_before_tier_suspend": old_status,
+                        "owner_user_id": user_id,
+                        "owner_email": email,
+                        "updated_at": now,
+                    }
+                },
+            )
+            suspended_ids.append(sid)
+
+    selected_after = await db.shops.find_one({"shop_id": shop_id}, {"_id": 0}) or {}
+
+    # Update current shop user supaya dashboard tidak /toko/undefined.
+    user_filter = {"user_id": user_id}
+    matched = await db.users.count_documents(user_filter)
+    if not matched and email:
+        user_filter = {"email": email}
+
+    await db.users.update_one(
+        user_filter,
+        {
+            "$set": {
+                "shop_id": shop_id,
+                "current_shop_id": shop_id,
+                "selected_shop_id": shop_id,
+                "active_shop_id": shop_id,  # LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V11
+                "current_shop_slug": selected_after.get("slug") or "",
+                "updated_at": now,
+            }
+        },
+    )
+
+    # Optional membership owner record.
+    try:
+        await db.shop_members.update_one(
+            {"shop_id": shop_id, "user_id": user_id},
+            {
+                "$set": {
+                    "shop_id": shop_id,
+                    "user_id": user_id,
+                    "email": email,
+                    "role": "owner",
+                    "status": "active",
+                    "updated_at": now,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+        )
+    except Exception:
+        pass
+
+    try:
+        await db.shop_downgrade_events.insert_one({
+            "event_type": "select_shop_after_downgrade",
+            "user_id": user_id,
+            "email": email,
+            "selected_shop_id": shop_id,
+            "suspended_shop_ids": suspended_ids,
+            "tier": tier,
+            "created_at": now,
+        })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "selected_shop": await _downgrade_shop_payload(selected_after),
+        "suspended_shop_ids": suspended_ids,
+        "tier": tier,
+        "resolution": await _downgrade_resolution_payload({
+            **dict(user or {}),
+            "shop_id": shop_id,
+            "current_shop_id": shop_id,
+            "selected_shop_id": shop_id,
+            "active_shop_id": shop_id,  # LAPAKIN_DOWNGRADE_SHOP_RESOLUTION_PHASE_A_V11
+        }),
+    }
+
+
+# LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D1_V1
+class RestoreTierSuspendedShopsIn(BaseModel):
+    shop_ids: list[str] = []
+    restore_all: bool = False
+
+
+# LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D1_V1
+def _restore_tier_status_blocks_restore(tier):
+    status = _downgrade_lower((tier or {}).get("status"))
+
+    return status in {
+        "expired",
+        "suspended",
+        "subscription_expired",
+        "past_due",
+        "unpaid",
+        "inactive",
+        "canceled",
+        "cancelled",
+    }
+
+
+# LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D1_V1
+def _restore_is_restorable_tier_suspended_shop(shop):
+    shop = shop or {}
+
+    if not _downgrade_is_tier_suspended(shop):
+        return False
+
+    reason = _downgrade_lower(shop.get("tier_suspended_reason") or shop.get("suspended_reason"))
+    if reason != "tier_downgrade_limit":
+        return False
+
+    status = _downgrade_lower(shop.get("status"))
+    if status in {"deleted", "removed", "admin_suspended", "banned"}:
+        return False
+
+    return True
+
+
+# LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D1_V1
+async def _restore_payload(user):
+    tier = await _downgrade_effective_tier(user)
+    shops = await _downgrade_get_owned_shops(user)
+
+    non_deleted = [s for s in shops if not _downgrade_is_deleted_shop(s)]
+    active_manageable = [s for s in non_deleted if _downgrade_is_manageable_shop(s)]
+    restorable = [s for s in non_deleted if _restore_is_restorable_tier_suspended_shop(s)]
+
+    shop_limit = int((tier or {}).get("shop_limit") or 1)
+    plan_blocks_restore = _restore_tier_status_blocks_restore(tier)
+
+    if plan_blocks_restore:
+        remaining_slots = 0
+        can_restore = False
+        reason = "subscription_not_active"
+    elif shop_limit >= 999:
+        remaining_slots = len(restorable)
+        can_restore = len(restorable) > 0
+        reason = "" if can_restore else "no_restorable_shop"
+    else:
+        remaining_slots = max(0, shop_limit - len(active_manageable))
+        can_restore = remaining_slots > 0 and len(restorable) > 0
+        reason = "" if can_restore else ("shop_limit_reached" if restorable else "no_restorable_shop")
+
+    return {
+        "can_restore": can_restore,
+        "reason": reason,
+        "tier": tier,
+        "summary": {
+            "shop_limit": shop_limit,
+            "active_manageable": len(active_manageable),
+            "tier_suspended_restorable": len(restorable),
+            "remaining_slots": remaining_slots,
+        },
+        "active_shops": [await _downgrade_shop_payload(s) for s in active_manageable],
+        "restorable_shops": [await _downgrade_shop_payload(s) for s in restorable],
+    }
+
+
+# LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D1_V1
+@router.get("/shops/tier-suspended-restore")
+async def get_tier_suspended_restore(request: Request):
+    user = await _downgrade_require_user(request)
+    return await _restore_payload(user)
+
+
+# LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D1_V1
+@router.post("/shops/tier-suspended-restore")
+async def restore_tier_suspended_shops(data: RestoreTierSuspendedShopsIn, request: Request):
+    from datetime import datetime, timezone
+
+    user = await _downgrade_require_user(request)
+    user_id = _downgrade_user_id(user)
+    email = _downgrade_user_email(user)
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="User tidak valid")
+
+    payload = await _restore_payload(user)
+    tier = payload.get("tier") or {}
+    summary = payload.get("summary") or {}
+
+    if not payload.get("can_restore"):
+        raise HTTPException(
+            status_code=403,
+            detail="Paket saat ini belum bisa mengaktifkan toko tambahan.",
+        )
+
+    remaining_slots = int(summary.get("remaining_slots") or 0)
+    restorable = payload.get("restorable_shops") or []
+    restorable_ids = [s.get("shop_id") for s in restorable if s.get("shop_id")]
+
+    requested_ids = [str(x).strip() for x in (data.shop_ids or []) if str(x).strip()]
+
+    if data.restore_all:
+        selected_ids = restorable_ids[:remaining_slots]
+    else:
+        selected_ids = requested_ids
+
+    selected_ids = list(dict.fromkeys(selected_ids))
+
+    if not selected_ids:
+        raise HTTPException(status_code=400, detail="Pilih toko yang ingin diaktifkan.")
+
+    invalid_ids = [sid for sid in selected_ids if sid not in restorable_ids]
+    if invalid_ids:
+        raise HTTPException(status_code=404, detail="Ada toko yang tidak bisa direstore.")
+
+    if len(selected_ids) > remaining_slots:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Slot toko aktif tidak cukup. Maksimal restore {remaining_slots} toko.",
+        )
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    await db.shops.update_many(
+        {"shop_id": {"$in": selected_ids}, "owner_user_id": user_id},
+        {
+            "$set": {
+                "status": "active",
+                "tier_suspended": False,
+                "owner_user_id": user_id,
+                "owner_email": email,
+                "updated_at": now,
+                "reactivated_reason": "tier_upgrade_restore",
+                "reactivated_at": now,
+            },
+            "$unset": {
+                "suspended_by": "",
+                "suspended_reason": "",
+                "suspended_at": "",
+                "tier_suspended_at": "",
+                "tier_suspended_reason": "",
+            },
+        },
+    )
+
+    # Kalau current shop kosong atau mengarah ke toko suspended, pastikan user tetap punya current shop aktif.
+    current_shop_id = (
+        user.get("current_shop_id")
+        or user.get("selected_shop_id")
+        or user.get("active_shop_id")
+        or user.get("shop_id")
+        or ""
+    )
+
+    current = await db.shops.find_one({"shop_id": current_shop_id, "owner_user_id": user_id}, {"_id": 0}) if current_shop_id else None
+    current_ok = bool(current and _downgrade_is_manageable_shop(current))
+
+    if not current_ok and selected_ids:
+        selected = await db.shops.find_one({"shop_id": selected_ids[0]}, {"_id": 0}) or {}
+        await db.users.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "shop_id": selected_ids[0],
+                    "current_shop_id": selected_ids[0],
+                    "selected_shop_id": selected_ids[0],
+                    "active_shop_id": selected_ids[0],
+                    "current_shop_slug": selected.get("slug") or "",
+                    "updated_at": now,
+                }
+            },
+        )
+
+    try:
+        await db.shop_downgrade_events.insert_one({
+            "event_type": "restore_tier_suspended_after_upgrade",
+            "user_id": user_id,
+            "email": email,
+            "restored_shop_ids": selected_ids,
+            "tier": tier,
+            "created_at": now,
+        })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "restored_shop_ids": selected_ids,
+        "tier": tier,
+        "restore": await _restore_payload({
+            **dict(user or {}),
+            "user_id": user_id,
+            "email": email,
+        }),
+    }
+

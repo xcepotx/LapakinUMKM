@@ -19,6 +19,59 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from tiers import increment_usage
 
 
+# LAPAKIN_EXPIRED_SUBSCRIPTION_BASIC_ACCESS_DEV_V3
+def _lapakin_expired_subscription_allowed_path(request):
+    """
+    Expired/suspended subscription still gets basic read/manage access
+    for the selected allowed shop. Premium/AI endpoints remain blocked.
+    """
+    try:
+        path = getattr(getattr(request, "url", None), "path", "") or ""
+    except Exception:
+        path = ""
+
+    allowed_exact = {
+        "/api/auth/me",
+
+        # Core shop resolution/manage selected shop
+        "/api/shops/me",
+        "/api/shops/mine",
+        "/api/shops/downgrade-resolution",
+        "/api/shops/tier-suspended-restore",
+        "/api/shops/downgrade-resolution/select",
+        "/api/shops/tier-suspended-restore",
+
+        # Basic dashboard widgets
+        "/api/shops/storefront-leads",
+        "/api/shops/readiness",
+        "/api/shops/me/share-health",
+        "/api/sales/summary",
+        "/api/me/broadcast",
+        "/api/tips/today",
+    }
+
+    allowed_prefixes = (
+        "/api/products",
+        "/api/shops/me",
+        "/api/shops/mine",
+        "/api/shops/downgrade-resolution",
+        "/api/shops/storefront-leads",
+        "/api/shops/readiness",
+        "/api/sales/summary",
+    )
+
+    if path in allowed_exact:
+        return True
+
+    return any(path.startswith(prefix) for prefix in allowed_prefixes)
+
+
+# LAPAKIN_EXPIRED_SUBSCRIPTION_BASIC_ACCESS_DEV_V2
+def _lapakin_expired_subscription_basic_return_value():
+    current_locals = locals()
+    return current_locals.get("user") or True
+
+
 # ---------- Config ----------
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -181,9 +234,11 @@ async def require_user(request: Request) -> dict:
 
     user = await suspend_subscription_if_needed(user)
     if user.get("subscription_status") == "suspended" and not _is_suspended_request_allowed(request, user):
+        if _lapakin_expired_subscription_allowed_path(locals().get("request")):
+            return locals().get("user") or True  # LAPAKIN_EXPIRED_SUBSCRIPTION_BASIC_ACCESS_DEV_V2
         raise HTTPException(
             status_code=402,
-            detail="Paket kamu sudah berakhir. Akun toko sementara ditangguhkan. Hubungi admin Lapakin untuk aktivasi ulang.",
+            detail="Paket kamu sudah berakhir. Kamu tetap bisa mengelola 1 toko aktif sesuai batas paket saat ini. Toko lain tetap aman dan ditangguhkan sementara sampai kamu upgrade.",
         )
 
     # Auto-downgrade expired trial: pro + trial=true + trial_expires_at < now → free
@@ -264,3 +319,7 @@ async def track_ai_usage(user_id: str, kind: str):
 async def asyncio_gather_safe(coros):
     import asyncio
     return await asyncio.gather(*coros)
+
+# LAPAKIN_EXPIRED_BANNER_COPY_DEV_V1
+
+# LAPAKIN_TIER_SUSPENDED_RESTORE_PHASE_D1_V1 deps allowlist

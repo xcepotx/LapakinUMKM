@@ -41,6 +41,48 @@ api.interceptors.response.use(
   }
 );
 
+
+// Phase E: normalize shop limit errors so every page shows a clean user message.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const headers = error?.response?.headers || {};
+    const rawCode =
+      headers["x-lapakin-error-code"] ||
+      headers["X-Lapakin-Error-Code"] ||
+      "";
+
+    const rawDetail = error?.response?.data?.detail;
+    const detailText =
+      typeof rawDetail === "string"
+        ? rawDetail
+        : rawDetail?.message || rawDetail?.detail || "";
+
+    const isShopLimitReached =
+      rawCode === "SHOP_LIMIT_REACHED" ||
+      detailText.startsWith("SHOP_LIMIT_REACHED");
+
+    if (isShopLimitReached) {
+      const cleanMessage = detailText.replace(/^SHOP_LIMIT_REACHED:\s*/i, "").trim() ||
+        "Batas toko paket kamu sudah penuh. Upgrade untuk tambah toko.";
+
+      error.lapakinErrorCode = "SHOP_LIMIT_REACHED";
+      error.lapakinUserMessage = cleanMessage;
+
+      if (error.response) {
+        error.response.data = {
+          ...(error.response.data || {}),
+          detail: cleanMessage,
+          code: "SHOP_LIMIT_REACHED",
+        };
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+
 export default api;
 
 export function formatApiError(detail) {
