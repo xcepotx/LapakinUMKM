@@ -11,6 +11,32 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
 
+const TEAM_SUBSCRIPTION_INACTIVE_MESSAGE =
+  "Fitur anggota tim tersedia setelah paket aktif kembali. Kamu tetap bisa mengelola 1 toko aktif, tapi fitur tim akan aktif lagi setelah upgrade atau aktivasi paket.";
+
+function getTeamFriendlyErrorMessage(error, fallback = "Gagal memuat anggota tim") {
+  const rawDetail = error?.response?.data?.detail;
+  const detailText =
+    typeof rawDetail === "string"
+      ? rawDetail
+      : rawDetail?.message || rawDetail?.detail || "";
+
+  const normalized = String(detailText || "").toLowerCase();
+
+  if (
+    error?.response?.status === 402 ||
+    normalized.includes("paket kamu sudah berakhir") ||
+    normalized.includes("subscription") ||
+    normalized.includes("payment required")
+  ) {
+    return TEAM_SUBSCRIPTION_INACTIVE_MESSAGE;
+  }
+
+  return formatApiError(rawDetail) || fallback;
+}
+
+
+
 // LAPAKIN_WHATSAPP_TEMPLATE_G1A
 const DEFAULT_WHATSAPP_CHECKOUT_TEMPLATE = `Halo {shop_name}, saya mau pesan:
 
@@ -137,6 +163,12 @@ return (
 }
 
 
+
+function isTeamLockedBySubscription(shopLimitState) {
+  const status = String(shopLimitState?.status || "").toLowerCase();
+  return ["suspended", "expired", "inactive"].includes(status);
+}
+
 const BUSINESS_TYPES = [
   { id: "kuliner", label: "Kuliner / Makanan" },
   { id: "kopi", label: "Kopi / Minuman" },
@@ -233,6 +265,66 @@ function applyStorefrontLayoutVariantToShop(shop, item, allowedStyles = []) {
 }
 
 export default function ShopSettings({ settingsView = "shop" } = {}) {
+
+  // phase-e-disable-create-shop-buttons
+  useEffect(() => {
+    let cancelled = false;
+
+    const disableCreateShopButtonsWhenLimitFull = async () => {
+      try {
+        const response = await api.get("/shops/mine");
+        if (cancelled) return;
+
+        const limitState = response?.data || {};
+        if (limitState.can_create !== false) return;
+
+        const message = `Batas toko paket ${limitState.tier || "kamu"} sudah penuh (${limitState.used ?? 0}/${limitState.limit ?? 1}). Upgrade untuk tambah toko.`;
+
+        const labelMatchers = [
+          "tambah toko",
+          "tambah cabang",
+          "buat toko",
+          "buat cabang",
+          "toko baru",
+          "cabang baru",
+        ];
+
+        const candidates = Array.from(document.querySelectorAll("button, a"));
+        candidates.forEach((element) => {
+          const label = (element.textContent || "").trim().toLowerCase();
+          const isCreateShopAction = labelMatchers.some((matcher) => label.includes(matcher));
+
+          if (!isCreateShopAction) return;
+
+          element.setAttribute("aria-disabled", "true");
+          element.setAttribute("data-shop-limit-disabled", "true");
+          element.setAttribute("title", message);
+          element.classList.add("opacity-50", "cursor-not-allowed", "pointer-events-none");
+
+          if (element.tagName === "BUTTON") {
+            element.disabled = true;
+          }
+        });
+      } catch {
+        // Jangan ganggu halaman settings kalau limit state gagal dimuat.
+      }
+    };
+
+    disableCreateShopButtonsWhenLimitFull();
+
+    const onFocus = () => disableCreateShopButtonsWhenLimitFull();
+    window.addEventListener("focus", onFocus);
+
+    const observer = new MutationObserver(() => disableCreateShopButtonsWhenLimitFull());
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      observer.disconnect();
+    };
+  }, []);
+
   
   const orderContactLocation = useLocation();
 
@@ -352,12 +444,21 @@ return () => {
   const loadTeam = async () => {
     setTeamLoading(true);
     setTeamError("");
+
     try {
+      const { data: shopLimitState } = await api.get("/shops/mine");
+
+      if (isTeamLockedBySubscription(shopLimitState)) {
+        setTeam(null);
+        setTeamError(TEAM_SUBSCRIPTION_INACTIVE_MESSAGE);
+        return;
+      }
+
       const { data } = await api.get("/team/members");
       setTeam(data);
     } catch (e) {
       setTeam(null);
-      setTeamError(formatApiError(e.response?.data?.detail) || "Gagal memuat anggota tim");
+      setTeamError(getTeamFriendlyErrorMessage(e, "Gagal memuat anggota tim"));
     } finally {
       setTeamLoading(false);
     }
@@ -398,6 +499,43 @@ return () => {
         "instagram_last_publish_at", "instagram_last_media_id",
       ].forEach((k) => delete payload[k]);
 
+      // phase-e-create-branch-limit-guard
+
+
+      const phaseELimitResponse = await api.get("/shops/mine");
+
+
+      const phaseELimitState = phaseELimitResponse?.data || {};
+
+
+      if (phaseELimitState.can_create === false) {
+
+
+        const message = `Batas toko paket ${phaseELimitState.tier || "kamu"} sudah penuh (${phaseELimitState.used ?? 0}/${phaseELimitState.limit ?? 1}). Upgrade untuk tambah toko.`;
+
+
+        if (typeof toast !== "undefined" && toast?.error) {
+
+
+          toast.error(message);
+
+
+        } else {
+
+
+          window.alert(message);
+
+
+        }
+
+
+        return;
+
+
+      }
+
+
+
       await api.post("/shops/branches", payload);
       toast.success("Cabang baru dibuat");
       window.location.href = "/dashboard/settings";
@@ -423,7 +561,7 @@ return () => {
       );
       await loadTeam();
     } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || "Gagal tambah anggota");
+      toast.error(getTeamFriendlyErrorMessage(e, "Gagal tambah anggota"));
     } finally {
       setAddingMember(false);
     }
@@ -437,7 +575,7 @@ return () => {
       toast.success("Anggota dihapus dari tim");
       await loadTeam();
     } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || "Gagal hapus anggota");
+      toast.error(getTeamFriendlyErrorMessage(e, "Gagal hapus anggota"));
     }
   };
 
@@ -449,7 +587,7 @@ return () => {
       toast.success("Undangan dibatalkan");
       await loadTeam();
     } catch (e) {
-      toast.error(formatApiError(e.response?.data?.detail) || "Gagal batalkan undangan");
+      toast.error(getTeamFriendlyErrorMessage(e, "Gagal batalkan undangan"));
     }
   };
 
