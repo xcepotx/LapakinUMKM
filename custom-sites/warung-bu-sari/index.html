@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Warung Bu Sari - Masakan Rumahan Jawa</title>
+  <meta name="description" content="Warung Bu Sari menyajikan masakan rumahan Jawa, gudeg, nasi rames, sambel pecel, dan minuman segar." />
+  <meta name="theme-color" content="#C04A3B" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="#home" aria-label="Warung Bu Sari">
+      <span class="brand-mark">BS</span>
+      <span>
+        <strong>Warung Bu Sari</strong>
+        <small>Masakan rumahan Jawa</small>
+      </span>
+    </a>
+    <nav aria-label="Navigasi utama">
+      <a href="#menu">Menu</a>
+      <a href="#cerita">Cerita</a>
+      <a href="#pesan">Pesan</a>
+    </nav>
+    <a id="topOrder" class="nav-cta" href="#menu">Pesan</a>
+  </div>
+
+  <main id="home">
+    <section class="hero">
+      <div class="hero-media" id="heroMedia"></div>
+      <div class="hero-shade"></div>
+      <div class="hero-content">
+        <p class="eyebrow">Sejak pasar buka, lauk hangat sudah siap.</p>
+        <h1>Masakan Jawa yang rasanya pulang ke rumah.</h1>
+        <p id="heroCopy" class="hero-copy">Gudeg, nasi rames, sambel pecel, dan es teh jumbo dari dapur Bu Sari.</p>
+        <div class="hero-actions">
+          <a class="primary" href="#menu">Lihat menu</a>
+          <a id="heroWhatsapp" class="secondary" href="#pesan">Chat Bu Sari</a>
+        </div>
+        <div class="hero-facts" aria-label="Info warung">
+          <div><strong id="factHours">07:00-15:00</strong><span>Jam buka</span></div>
+          <div><strong id="factProducts">4</strong><span>Menu aktif</span></div>
+          <div><strong id="factArea">Beringharjo</strong><span>Lokasi</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="intro-band" id="cerita">
+      <div>
+        <p class="section-kicker">Dapur kecil, rasa panjang.</p>
+        <h2>Diracik harian untuk sarapan, makan siang, dan bekal keluarga.</h2>
+      </div>
+      <p id="storyText">Warung Bu Sari sudah 12 tahun menjaga rasa masakan rumah di Pasar Beringharjo. Menu berubah mengikuti stok segar, tapi hangatnya tetap sama.</p>
+    </section>
+
+    <section class="menu-section" id="menu">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Menu hari ini</p>
+          <h2>Pilih lauk favorit, kami siapkan lewat WhatsApp.</h2>
+        </div>
+        <div class="menu-tools">
+          <div id="categoryFilters" class="filters" aria-label="Filter kategori"></div>
+          <button id="cartToggle" class="cart-button" type="button">Keranjang <span id="cartCount">0</span></button>
+        </div>
+      </div>
+      <div id="loadingState" class="loading-grid">
+        <div></div><div></div><div></div><div></div>
+      </div>
+      <div id="menuGrid" class="menu-grid" hidden></div>
+    </section>
+
+    <section class="order-band" id="pesan">
+      <div class="order-copy">
+        <p class="section-kicker">Pesan cepat</p>
+        <h2>Sudah tahu mau makan apa?</h2>
+        <p>Tambah menu ke keranjang, lalu kirim pesanan lewat WhatsApp. Bu Sari akan konfirmasi ketersediaan dan totalnya.</p>
+      </div>
+      <div class="order-card">
+        <div class="order-total"><span>Total sementara</span><strong id="orderTotal">Rp 0</strong></div>
+        <button id="checkoutButton" class="checkout" type="button">Kirim pesanan</button>
+        <p id="syncInfo">Menu dimuat dari dapur Bu Sari.</p>
+      </div>
+    </section>
+  </main>
+
+  <aside id="cartPanel" class="cart-panel" aria-label="Keranjang pesanan" hidden>
+    <div class="cart-head">
+      <strong>Keranjang</strong>
+      <button id="cartClose" type="button" aria-label="Tutup keranjang">x</button>
+    </div>
+    <div id="cartItems" class="cart-items"></div>
+    <div class="cart-foot">
+      <div><span>Total</span><strong id="panelTotal">Rp 0</strong></div>
+      <button id="panelCheckout" type="button">Kirim WhatsApp</button>
+    </div>
+  </aside>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
