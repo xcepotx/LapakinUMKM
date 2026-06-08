@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Save, Wand2, Upload, X, ImagePlus, Trash2, QrCode, RefreshCw, Users, UserPlus, ShieldCheck, MessageCircle, Truck, Store, WalletCards, MapPin, CheckCircle2 } from "lucide-react";
+import { Save, Wand2, Upload, X, ImagePlus, Trash2, QrCode, RefreshCw, Users, UserPlus, ShieldCheck, MessageCircle, Truck, Store, WalletCards, MapPin, CheckCircle2, Globe2, Code2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -1004,6 +1004,39 @@ return () => {
     ? `/toko/${activeShopSlug}${storefrontCampaignQuery}#promo`
     : "";
 
+  const publicShopDataEndpoint =
+    typeof window !== "undefined" && activeShopSlug
+      ? `${window.location.origin}/api/shops/by-slug/${activeShopSlug}`
+      : activeShopSlug
+        ? `/api/shops/by-slug/${activeShopSlug}`
+        : "";
+
+  const normalizedWebsiteMode = shop.website_mode || "lapakin_template";
+  const externalWebsiteUrl = shop.external_website_url || "";
+  const externalWebsiteBehavior = shop.external_website_behavior || "handoff";
+  const headlessFetchSnippet = publicShopDataEndpoint
+    ? `const response = await fetch("${publicShopDataEndpoint}");
+const storefront = await response.json();
+console.log(storefront.shop, storefront.products);`
+    : "";
+  const whatsappCheckoutSnippet = `function waNumber(raw) {
+  return String(raw || "").replace(/[^0-9]/g, "").replace(/^0/, "62");
+}
+
+function whatsappLink(shop, text) {
+  return ` + "`https://wa.me/${waNumber(shop.whatsapp)}?text=${encodeURIComponent(text)}`" + `;
+}`;
+
+  const copyText = async (value, message = "Disalin") => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(message);
+    } catch {
+      window.prompt("Salin manual:", value);
+    }
+  };
+
   const storefrontCampaignUrl =
     typeof window !== "undefined" && activeShopSlug
       ? isProductionMainDomain && !isDevOrLocalDomain
@@ -1231,6 +1264,11 @@ return () => {
       payload.storefront_mode = shop.storefront_mode || "catalog";
       payload.storefront_style = shop.storefront_style || "classic";
 
+      payload.website_mode = shop.website_mode || "lapakin_template";
+      payload.external_website_url = shop.external_website_url || "";
+      payload.external_website_label = shop.external_website_label || "";
+      payload.external_website_behavior = shop.external_website_behavior || "handoff";
+
       delete payload.shop_id; delete payload.slug; delete payload.owner_user_id;
       delete payload.created_at; delete payload.updated_at; delete payload.status; delete payload.featured;
       payload.payment_instruction = shop.payment_instruction || shop.storefront_payment_instruction || shop.payment_notes || "";
@@ -1280,7 +1318,151 @@ return () => {
 
 
         <div className="space-y-6">
-<Section title="Tampilan Website" desc="Pilih mode dan gaya visual website publik toko.">
+<Section title="Mode Website" desc="Pilih apakah website publik memakai template Lapakin atau website custom di luar Lapakin.">
+            <div className="grid gap-3 md:grid-cols-2" data-testid="website-mode-selector">
+              <button
+                type="button"
+                onClick={() => update("website_mode", "lapakin_template")}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  normalizedWebsiteMode === "lapakin_template"
+                    ? "border-brand bg-brand text-white shadow-sm"
+                    : "border-brand-line bg-white hover:bg-brand-off"
+                }`}
+                data-testid="website-mode-lapakin-template"
+              >
+                <div className="flex items-center gap-2">
+                  <Globe2 className="h-4 w-4" />
+                  <span className="text-sm font-extrabold">Template Lapakin</span>
+                </div>
+                <p className={`mt-2 text-xs leading-relaxed ${normalizedWebsiteMode === "lapakin_template" ? "text-white/85" : "text-brand-mute"}`}>
+                  Website toko tampil dari template Lapakin dan bisa diedit lewat pengaturan template di bawah.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => update("website_mode", "external_custom")}
+                className={`rounded-2xl border p-4 text-left transition ${
+                  normalizedWebsiteMode === "external_custom"
+                    ? "border-brand bg-brand text-white shadow-sm"
+                    : "border-brand-line bg-white hover:bg-brand-off"
+                }`}
+                data-testid="website-mode-external-custom"
+              >
+                <div className="flex items-center gap-2">
+                  <Code2 className="h-4 w-4" />
+                  <span className="text-sm font-extrabold">Website Custom</span>
+                </div>
+                <p className={`mt-2 text-xs leading-relaxed ${normalizedWebsiteMode === "external_custom" ? "text-white/85" : "text-brand-mute"}`}>
+                  Tampilan dibuat bebas di luar Lapakin, sementara produk, toko, dan checkout tetap dikelola dari dashboard ini.
+                </p>
+              </button>
+            </div>
+
+            {normalizedWebsiteMode === "external_custom" && (
+              <div className="mt-4 rounded-2xl border border-brand-line bg-brand-off p-4" data-testid="external-website-settings">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="text-sm font-bold text-brand-ink">URL Website Custom</span>
+                    <input
+                      value={externalWebsiteUrl}
+                      onChange={(e) => update("external_website_url", e.target.value)}
+                      placeholder="https://tokokamu.com"
+                      className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                      data-testid="external-website-url-input"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-sm font-bold text-brand-ink">Label Tombol</span>
+                    <input
+                      value={shop.external_website_label || ""}
+                      onChange={(e) => update("external_website_label", e.target.value)}
+                      placeholder="Buka Website Custom"
+                      maxLength={80}
+                      className="mt-2 w-full rounded-xl border border-brand-line bg-white px-3 py-2 text-sm font-semibold text-brand-ink"
+                      data-testid="external-website-label-input"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-4 rounded-xl bg-white p-3 text-xs leading-relaxed text-brand-mute">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-extrabold text-brand-ink">Behavior link Lapakin lama</span>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2" data-testid="external-website-behavior-selector">
+                    <button
+                      type="button"
+                      onClick={() => update("external_website_behavior", "handoff")}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs font-bold ${externalWebsiteBehavior === "handoff" ? "border-brand bg-brand text-white" : "border-brand-line bg-brand-off text-brand-ink"}`}
+                      data-testid="external-website-behavior-handoff"
+                    >
+                      Tampilkan halaman pengantar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => update("external_website_behavior", "redirect")}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs font-bold ${externalWebsiteBehavior === "redirect" ? "border-brand bg-brand text-white" : "border-brand-line bg-brand-off text-brand-ink"}`}
+                      data-testid="external-website-behavior-redirect"
+                    >
+                      Redirect otomatis ke website custom
+                    </button>
+                  </div>
+                  <p className="mt-2">
+                    Handoff lebih aman untuk masa transisi. Redirect cocok kalau website custom sudah live dan siap menerima traffic.
+                  </p>
+                </div>
+
+                <div className="mt-4 rounded-xl bg-white p-3 text-xs leading-relaxed text-brand-mute" data-testid="headless-developer-kit">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-extrabold text-brand-ink">Developer Kit Website Custom</span>
+                    <a href="/docs/HEADLESS_STOREFRONT.md" className="font-bold text-brand hover:underline" target="_blank" rel="noreferrer">
+                      Buka docs
+                    </a>
+                  </div>
+                  <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-950 p-2 text-[11px] text-slate-50" data-testid="public-shop-api-endpoint">
+                    {publicShopDataEndpoint || "Endpoint muncul setelah toko punya slug."}
+                  </code>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => copyText(publicShopDataEndpoint, "Endpoint API disalin")}
+                      disabled={!publicShopDataEndpoint}
+                      className="inline-flex items-center gap-1 rounded-lg border border-brand-line px-2.5 py-1 font-bold text-brand-ink hover:bg-brand-off disabled:opacity-50"
+                      data-testid="copy-public-shop-api-btn"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Salin endpoint
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copyText(headlessFetchSnippet, "Contoh fetch disalin")}
+                      disabled={!headlessFetchSnippet}
+                      className="inline-flex items-center gap-1 rounded-lg border border-brand-line px-2.5 py-1 font-bold text-brand-ink hover:bg-brand-off disabled:opacity-50"
+                      data-testid="copy-headless-fetch-snippet-btn"
+                    >
+                      <Code2 className="h-3.5 w-3.5" />
+                      Salin fetch JS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copyText(whatsappCheckoutSnippet, "Contoh WhatsApp checkout disalin")}
+                      className="inline-flex items-center gap-1 rounded-lg border border-brand-line px-2.5 py-1 font-bold text-brand-ink hover:bg-brand-off"
+                      data-testid="copy-whatsapp-checkout-snippet-btn"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      Salin WhatsApp helper
+                    </button>
+                  </div>
+                  <p className="mt-2">
+                    Website custom bisa mengambil profil toko dan produk dari endpoint ini. Dashboard Lapakin tetap menjadi pusat update data.
+                  </p>
+                </div>
+              </div>
+            )}
+          </Section>
+
+          <Section title="Tampilan Website" desc="Pilih mode dan gaya visual website publik toko.">
             <div className="grid md:grid-cols-2 gap-4">
               <label className="block">
                 <span className="text-sm font-bold text-brand-ink">Mode Website</span>

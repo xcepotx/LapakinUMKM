@@ -15,6 +15,7 @@ from tiers import (
     TIER_LIMITS, VALID_TIERS, get_tier, get_limits,
     current_month_bucket, get_usage, is_unlimited, require_feature,
 )
+from schedule_utils import compute_schedule_status
 
 APP_VERSION = "1.0.0"
 
@@ -92,6 +93,127 @@ async def health():
 
 
 # ---------- Featured shops (for landing) ----------
+def _public_storefront_shop_payload(shop: dict, owner_tier: str = "free") -> dict:
+    if not isinstance(shop, dict):
+        return {}
+
+    schedule_status = compute_schedule_status(shop)
+    out = {
+        "shop_id": shop.get("shop_id"),
+        "slug": shop.get("slug"),
+        "name": shop.get("name"),
+        "tagline": shop.get("tagline") or "",
+        "description": shop.get("description") or "",
+        "business_type": shop.get("business_type") or "",
+        "category": shop.get("category") or shop.get("category_name") or "",
+        "brand_color": shop.get("brand_color") or "#C04A3B",
+        "logo_url": shop.get("logo_url") or "",
+        "cover_image": shop.get("cover_image") or "",
+        "about": shop.get("about") or "",
+        "hours": shop.get("hours") or "",
+        "whatsapp": shop.get("whatsapp") or shop.get("whatsapp_number") or "",
+        "order_whatsapp_enabled": shop.get("order_whatsapp_enabled") is not False,
+        "pickup_available": bool(shop.get("pickup_available")),
+        "delivery_available": bool(shop.get("delivery_available")),
+        "store_address": shop.get("store_address") or shop.get("address") or shop.get("location_address") or "",
+        "google_maps_url": shop.get("google_maps_url") or shop.get("google_maps_link") or "",
+        "service_area": shop.get("service_area") or "",
+        "instagram": shop.get("instagram") or "",
+        "tiktok": shop.get("tiktok") or "",
+        "shopee": shop.get("shopee") or "",
+        "website_mode": shop.get("website_mode") or "lapakin_template",
+        "external_website_url": shop.get("external_website_url") or "",
+        "external_website_label": shop.get("external_website_label") or "Buka Website Custom",
+        "external_website_behavior": shop.get("external_website_behavior") or "handoff",
+        "storefront_mode": shop.get("storefront_mode") or "catalog",
+        "storefront_style": shop.get("storefront_style") or "classic",
+        "storefront_renderer": shop.get("storefront_renderer") or "legacy",
+        "storefront_hero_title": shop.get("storefront_hero_title") or "",
+        "storefront_hero_subtitle": shop.get("storefront_hero_subtitle") or "",
+        "storefront_cta_label": shop.get("storefront_cta_label") or "",
+        "storefront_featured_title": shop.get("storefront_featured_title") or "",
+        "storefront_featured_product_ids": shop.get("storefront_featured_product_ids") or [],
+        "storefront_payment_method_label": shop.get("storefront_payment_method_label") or "",
+        "storefront_payment_instruction": shop.get("storefront_payment_instruction") or shop.get("payment_instruction") or "",
+        "storefront_show_payment_instruction": bool(shop.get("storefront_show_payment_instruction")),
+        "storefront_whatsapp_checkout_template": shop.get("storefront_whatsapp_checkout_template") or "",
+        "storefront_whatsapp_product_template": shop.get("storefront_whatsapp_product_template") or "",
+        "seo": {
+            "title": shop.get("storefront_seo_title") or shop.get("seo_title") or "",
+            "description": shop.get("storefront_seo_description") or shop.get("seo_description") or "",
+            "image": shop.get("storefront_seo_image") or shop.get("seo_image") or shop.get("cover_image") or "",
+        },
+        "schedule_status": schedule_status,
+        "is_open": bool(schedule_status.get("is_open_now")) if schedule_status.get("auto") and not shop.get("manual_open_override") else shop.get("is_open") is not False,
+        "owner_tier": owner_tier,
+        "remove_branding": bool(get_limits(owner_tier).get("remove_branding")),
+    }
+    return out
+
+
+def _public_storefront_product_payload(product: dict) -> dict:
+    product = _lapakin_expose_product_status_fields(product or {})
+    return {
+        "product_id": product.get("product_id"),
+        "shop_id": product.get("shop_id"),
+        "name": product.get("name"),
+        "description": product.get("description") or "",
+        "price": product.get("price") or 0,
+        "stock": product.get("stock") or 0,
+        "category_id": product.get("category_id") or "",
+        "category": product.get("category") or product.get("category_name") or "",
+        "category_name": product.get("category_name") or product.get("category") or "",
+        "image_data": product.get("image_data") or "",
+        "images": product.get("images") or [],
+        "sort_order": product.get("sort_order") or 0,
+        "is_active": product.get("is_active") is not False,
+        "availability_status": product.get("availability_status") or "active",
+        "available_days": product.get("available_days") or [],
+        "created_at": product.get("created_at"),
+    }
+
+
+@router.get("/public/storefront/{slug}")
+async def public_headless_storefront(slug: str):
+    """Curated public data contract for external/custom tenant websites."""
+    shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
+    if not shop or shop.get("status") == "suspended":
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    owner = await db.users.find_one({"user_id": shop.get("owner_user_id")}, {"_id": 0, "tier": 1})
+    owner_tier = (owner or {}).get("tier") or "free"
+    products = await db.products.find({"shop_id": shop["shop_id"]}, {"_id": 0}).sort([("sort_order", 1), ("created_at", -1)]).to_list(500)
+    public_products = [
+        _public_storefront_product_payload(product)
+        for product in products
+        if _lapakin_expose_product_status_fields(product).get("availability_status") != "hidden"
+    ]
+    categories = sorted({p.get("category_name") or p.get("category") for p in public_products if p.get("category_name") or p.get("category")})
+
+    try:
+        await db.storefront_visits.insert_one({
+            "shop_id": shop.get("shop_id"),
+            "slug": slug,
+            "source": "headless_api",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "version": "2026-06-08",
+        "mode": "headless_storefront",
+        "shop": _public_storefront_shop_payload(shop, owner_tier),
+        "products": public_products,
+        "categories": categories,
+        "links": {
+            "lapakin_storefront": f"/toko/{slug}",
+            "headless_endpoint": f"/api/public/storefront/{slug}",
+        },
+    }
+
+
 @router.get("/featured-shops")
 async def get_featured_shops():
     shops = await db.shops.find(

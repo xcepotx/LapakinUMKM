@@ -42,6 +42,10 @@ class ShopIn(BaseModel):
     storefront_mode: Optional[str] = None
     storefront_style: Optional[str] = None
     storefront_renderer: Optional[str] = None
+    website_mode: Optional[str] = "lapakin_template"  # lapakin_template | external_custom
+    external_website_url: Optional[str] = ""
+    external_website_label: Optional[str] = ""
+    external_website_behavior: Optional[str] = "handoff"  # handoff | redirect
     # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
     storefront_layout_variant: Optional[str] = ""
     storefront_hero_title: Optional[str] = ""

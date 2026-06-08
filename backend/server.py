@@ -41,9 +41,21 @@ app.include_router(api)
 
 
 
+def _cors_origins():
+    raw = os.environ.get(
+        "CORS_ORIGINS",
+        "https://lapakin.my.id,https://www.lapakin.my.id,http://localhost:3000,http://127.0.0.1:3000",
+    )
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
+    allow_origins=_cors_origins(),
+    allow_origin_regex=os.environ.get(
+        "CORS_ORIGIN_REGEX",
+        r"https://([a-z0-9-]+\.)?lapakin\.my\.id",
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -141,23 +153,29 @@ async def on_startup():
     await db.bot_events.create_index([("shop_id", 1), ("created_at", -1)])
     await db.bot_events.create_index("event_type")
 
-    # Seed admin
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@lapakin.id").lower()
-    admin_password = os.environ.get("ADMIN_PASSWORD", "lapakin123")
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({
-            "user_id": f"user_{uuid.uuid4().hex[:12]}",
-            "email": admin_email, "password_hash": hash_password(admin_password),
-            "name": "Admin Lapakin", "picture": "", "auth_provider": "email",
-            "shop_id": None, "role": "admin",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        logger.info("Admin user seeded: %s", admin_email)
-    elif not verify_password(admin_password, existing.get("password_hash") or ""):
-        await db.users.update_one(
-            {"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}}
-        )
+    # Seed admin only when explicitly configured. Never fall back to a public default password.
+    admin_email = (os.environ.get("ADMIN_EMAIL") or "").strip().lower()
+    admin_password = os.environ.get("ADMIN_PASSWORD") or ""
+    if admin_email or admin_password:
+        if not admin_email or not admin_password:
+            raise RuntimeError("ADMIN_EMAIL and ADMIN_PASSWORD must be configured together")
+        if admin_password == "lapakin123":
+            raise RuntimeError("Refusing to start with the legacy default ADMIN_PASSWORD")
+        existing = await db.users.find_one({"email": admin_email})
+        if not existing:
+            await db.users.insert_one({
+                "user_id": f"user_{uuid.uuid4().hex[:12]}",
+                "email": admin_email, "password_hash": hash_password(admin_password),
+                "name": "Admin Lapakin", "picture": "", "auth_provider": "email",
+                "shop_id": None, "role": "admin",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.info("Admin user seeded: %s", admin_email)
+        elif not verify_password(admin_password, existing.get("password_hash") or ""):
+            await db.users.update_one(
+                {"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}}
+            )
+            logger.info("Admin password rotated from ADMIN_PASSWORD for: %s", admin_email)
 
 
 @app.on_event("shutdown")

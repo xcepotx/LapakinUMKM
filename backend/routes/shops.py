@@ -70,6 +70,8 @@ def normalize_storefront_testimonials(value):
 ALLOWED_STOREFRONT_MODES = {"catalog", "food_menu", "services"}
 ALLOWED_STOREFRONT_STYLES = {"classic", "modern", "compact", "premium", "playful"}
 ALLOWED_STOREFRONT_RENDERERS = {"legacy", "template"}
+ALLOWED_WEBSITE_MODES = {"lapakin_template", "external_custom"}
+ALLOWED_EXTERNAL_WEBSITE_BEHAVIORS = {"handoff", "redirect"}
 # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
 ALLOWED_STOREFRONT_LAYOUT_VARIANTS = {
     "",
@@ -79,6 +81,19 @@ ALLOWED_STOREFRONT_LAYOUT_VARIANTS = {
     "service_trust_cta",
     "craft_story_catalog",
 }
+
+def _clean_external_website_url(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if len(raw) > 300:
+        raw = raw[:300]
+    if not raw.startswith(("http://", "https://")):
+        raw = f"https://{raw}"
+    if raw.startswith("http://") and not raw.startswith("http://localhost") and not raw.startswith("http://127.0.0.1"):
+        raw = "https://" + raw[len("http://"):]
+    return raw
+
 
 def _with_storefront_defaults(shop):
     if not shop:
@@ -107,6 +122,10 @@ def _with_storefront_defaults(shop):
     shop.setdefault("storefront_google_maps_url", "")
     shop.setdefault("storefront_location_embed_url", "")
     shop.setdefault("storefront_renderer", "legacy")
+    shop.setdefault("website_mode", "lapakin_template")
+    shop.setdefault("external_website_url", "")
+    shop.setdefault("external_website_label", "")
+    shop.setdefault("external_website_behavior", "handoff")
     # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
     shop.setdefault("storefront_layout_variant", "")
 
@@ -166,6 +185,24 @@ def _normalize_shop_settings_payload(payload):
     """
     if not isinstance(payload, dict):
         return payload
+
+    if "website_mode" in payload:
+        mode = str(payload.get("website_mode") or "lapakin_template").strip().lower()
+        if mode not in ALLOWED_WEBSITE_MODES:
+            raise HTTPException(status_code=400, detail="Mode website tidak valid")
+        payload["website_mode"] = mode
+
+    if "external_website_url" in payload:
+        payload["external_website_url"] = _clean_external_website_url(payload.get("external_website_url"))
+
+    if "external_website_label" in payload:
+        payload["external_website_label"] = str(payload.get("external_website_label") or "Website Custom").strip()[:80]
+
+    if "external_website_behavior" in payload:
+        behavior = str(payload.get("external_website_behavior") or "handoff").strip().lower()
+        if behavior not in ALLOWED_EXTERNAL_WEBSITE_BEHAVIORS:
+            raise HTTPException(status_code=400, detail="Behavior website custom tidak valid")
+        payload["external_website_behavior"] = behavior
 
     if "whatsapp" in payload or "whatsapp_number" in payload:
         whatsapp = str(payload.get("whatsapp") or payload.get("whatsapp_number") or "").strip()[:40]
@@ -1924,6 +1961,22 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     raw_storefront_renderer = payload.get("storefront_renderer")
     # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
     raw_storefront_layout_variant = payload.get("storefront_layout_variant")
+    raw_website_mode = payload.get("website_mode")
+    raw_external_website_behavior = payload.get("external_website_behavior")
+
+    if raw_website_mode in (None, ""):
+        payload.pop("website_mode", None)
+    elif raw_website_mode not in ALLOWED_WEBSITE_MODES:
+        raise HTTPException(status_code=400, detail="Mode website tidak valid")
+    else:
+        payload["website_mode"] = raw_website_mode
+
+    if raw_external_website_behavior in (None, ""):
+        payload.pop("external_website_behavior", None)
+    elif raw_external_website_behavior not in ALLOWED_EXTERNAL_WEBSITE_BEHAVIORS:
+        raise HTTPException(status_code=400, detail="Behavior website custom tidak valid")
+    else:
+        payload["external_website_behavior"] = raw_external_website_behavior
 
     if raw_storefront_mode in (None, ""):
         payload.pop("storefront_mode", None)
@@ -2021,6 +2074,10 @@ async def create_or_update_shop(data: ShopIn, request: Request):
     doc.setdefault("storefront_google_maps_url", "")
     doc.setdefault("storefront_location_embed_url", "")
     doc.setdefault("storefront_renderer", "legacy")
+    doc.setdefault("website_mode", "lapakin_template")
+    doc.setdefault("external_website_url", "")
+    doc.setdefault("external_website_label", "")
+    doc.setdefault("external_website_behavior", "handoff")
     await _enforce_owner_shop_create_limit(user)
     await db.shops.insert_one(doc)
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"shop_id": shop_id}})
@@ -2272,6 +2329,8 @@ async def get_shop_public(slug: str):
     owner_tier = (owner or {}).get("tier") or "free"
     shop["owner_tier"] = owner_tier
     shop["remove_branding"] = bool(get_limits(owner_tier).get("remove_branding"))
+    shop["headless_enabled"] = shop.get("website_mode") == "external_custom"
+    shop["public_data_endpoint"] = f"/api/shops/by-slug/{shop.get('slug', slug)}"
     # Track a pageview (best-effort, fire-and-forget)
     try:
         await db.storefront_visits.insert_one({

@@ -291,7 +291,6 @@ async def google_id_token_login(data: GoogleIdTokenIn, response: Response):
         "subscription_status": user.get("subscription_status", "active"),
         "subscription_suspended_at": user.get("subscription_suspended_at"),
         "subscription_suspend_reason": user.get("subscription_suspend_reason"),
-        "access_token": token,
     }
 
 @router.post("/auth/register")
@@ -345,7 +344,6 @@ async def register(data: RegisterIn, response: Response):
         "subscription_status": user_doc.get("subscription_status", "active"),
         "subscription_suspended_at": user_doc.get("subscription_suspended_at"),
         "subscription_suspend_reason": user_doc.get("subscription_suspend_reason"),
-        "access_token": token,
     }
 
 @router.post("/auth/login")
@@ -381,7 +379,6 @@ async def login(data: LoginIn, response: Response):
         "subscription_status": user.get("subscription_status", "active"),
         "subscription_suspended_at": user.get("subscription_suspended_at"),
         "subscription_suspend_reason": user.get("subscription_suspend_reason"),
-        "access_token": token,
     }
 
 @router.post("/auth/logout")

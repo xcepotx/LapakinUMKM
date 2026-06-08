@@ -117,7 +117,7 @@ function AppRouter() {
       <Route path="/dashboard/leads" element={<ProtectedRoute><StorefrontLeads /></ProtectedRoute>} />
       <Route path="/dashboard/content-studio" element={<ProtectedRoute><ContentStudio /></ProtectedRoute>} />
       <Route path="/dashboard/daily-menu" element={<ProtectedRoute><DailyMenu /></ProtectedRoute>} />
-      <Route path="/dashboard/sales" element={<SalesBook />} />
+      <Route path="/dashboard/sales" element={<ProtectedRoute><SalesBook /></ProtectedRoute>} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/cerita" element={<Cerita />} />
       <Route path="/cerita/:slug" element={<CeritaDetail />} />

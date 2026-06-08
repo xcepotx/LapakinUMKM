@@ -4,7 +4,7 @@ import api, { rupiah } from "@/lib/api";
 import {
   Sparkles, MessageCircle, Package, X, ChevronLeft, ChevronRight,
   Instagram, Music2, ShoppingBag, MapPin, Clock, Tag, Plus, Minus,
-  ShoppingCart, Trash2, Check, Truck, CreditCard,
+  ShoppingCart, Trash2, Check, Truck, CreditCard, ExternalLink, Code2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -492,6 +492,72 @@ export default function Storefront({ tenantSlug = null }) {
   );
 
   const { shop } = data;
+  const customWebsiteUrl = String(shop?.external_website_url || "").trim();
+  const customWebsiteMode = shop?.website_mode === "external_custom";
+  const headlessEndpoint = slug ? `/api/public/storefront/${slug}` : "";
+  const absoluteHeadlessEndpoint =
+    typeof window !== "undefined" && headlessEndpoint
+      ? `${window.location.origin}${headlessEndpoint}`
+      : headlessEndpoint;
+
+  if (customWebsiteMode && shop?.external_website_behavior === "redirect" && customWebsiteUrl) {
+    window.location.replace(customWebsiteUrl);
+    return (
+      <div className="min-h-screen bg-brand-sand px-4 py-10">
+        <div className="mx-auto max-w-xl rounded-3xl border border-brand-line bg-white p-6 text-center shadow-card">
+          <h1 className="font-heading text-2xl font-extrabold text-brand-ink">Mengarahkan ke website custom...</h1>
+          <p className="mt-2 text-sm text-brand-mute">Sebentar ya, kamu akan dibawa ke website resmi toko.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (customWebsiteMode) {
+    return (
+      <div className="min-h-screen bg-brand-sand px-4 py-10">
+        <div className="mx-auto max-w-2xl rounded-3xl border border-brand-line bg-white p-6 shadow-card sm:p-8" data-testid="external-website-handoff">
+          <div className="inline-flex items-center gap-2 rounded-full bg-brand-off px-3 py-1 text-xs font-extrabold text-brand-ink">
+            <Code2 className="h-3.5 w-3.5" />
+            Website Custom
+          </div>
+          <h1 className="mt-4 font-heading text-3xl font-extrabold text-brand-ink">
+            {shop?.name || "Toko ini"} memakai website custom
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-brand-mute">
+            Data produk dan toko tetap dikelola dari dashboard Lapakin, tapi tampilan publiknya dibuat bebas di website terpisah.
+          </p>
+
+          {customWebsiteUrl ? (
+            <a
+              href={customWebsiteUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-extrabold text-white shadow-sm transition hover:opacity-90"
+              data-testid="external-website-open-link"
+            >
+              {shop?.external_website_label || "Buka Website Custom"}
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          ) : (
+            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-800">
+              URL website custom belum diisi oleh pemilik toko.
+            </div>
+          )}
+
+          <div className="mt-6 rounded-2xl bg-brand-off p-4">
+            <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-brand-mute">API data publik</p>
+            <code className="mt-2 block overflow-x-auto rounded-xl bg-slate-950 p-3 text-xs text-slate-50">
+              {absoluteHeadlessEndpoint || "Endpoint belum tersedia"}
+            </code>
+          </div>
+
+          <Link to="/" className="mt-6 inline-block text-sm font-semibold text-brand hover:underline">
+            Kembali ke Lapakin
+          </Link>
+        </div>
+      </div>
+    );
+  }
   const brand = shop?.brand_color || "#C04A3B";
   const orderWhatsappEnabled = shop?.order_whatsapp_enabled !== false;
   const waNumber = getLegacyWhatsappNumber(shop);
