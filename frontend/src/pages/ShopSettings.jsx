@@ -409,6 +409,8 @@ return () => {
   const [storefrontAnalytics, setStorefrontAnalytics] = useState(null);
   const [storefrontLeads, setStorefrontLeads] = useState([]);
   const [storefrontGrowthError, setStorefrontGrowthError] = useState("");
+  const [customWebsiteStatus, setCustomWebsiteStatus] = useState(null);
+  const [checkingCustomWebsite, setCheckingCustomWebsite] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -1066,6 +1068,25 @@ function whatsappLink(shop, text) {
     update("public_read_key_enabled", enabled);
   };
 
+  const checkCustomWebsiteConnection = async () => {
+    if (!shop?.shop_id) return;
+    setCheckingCustomWebsite(true);
+    try {
+      const { data } = await api.get("/shops/me/custom-website/status");
+      setCustomWebsiteStatus(data || null);
+      if (data?.ok) {
+        toast.success("Website custom siap");
+      } else {
+        toast.warning("Ada setting website custom yang perlu dicek");
+      }
+    } catch (err) {
+      setCustomWebsiteStatus(null);
+      toast.error("Gagal mengecek website custom");
+    } finally {
+      setCheckingCustomWebsite(false);
+    }
+  };
+
   const storefrontCampaignUrl =
     typeof window !== "undefined" && activeShopSlug
       ? isProductionMainDomain && !isDevOrLocalDomain
@@ -1453,6 +1474,81 @@ function whatsappLink(shop, text) {
                   <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-950 p-2 text-[11px] text-slate-50" data-testid="public-shop-api-endpoint">
                     {publicShopDataEndpointWithKey || "Endpoint muncul setelah toko punya slug."}
                   </code>
+                  <div className="mt-3 rounded-lg border border-brand-line bg-white p-3" data-testid="custom-website-status-card">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-extrabold text-brand-ink">Status Website Custom</div>
+                        <p className="mt-1 text-[11px] text-brand-mute">
+                          Cek URL custom, endpoint data, key, dan produk publik sebelum redirect traffic.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={checkCustomWebsiteConnection}
+                        disabled={checkingCustomWebsite || !shop?.shop_id}
+                        className="inline-flex items-center gap-1 rounded-lg border border-brand-line px-2.5 py-1 font-bold text-brand-ink hover:bg-brand-off disabled:opacity-50"
+                        data-testid="check-custom-website-status-btn"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${checkingCustomWebsite ? "animate-spin" : ""}`} />
+                        {checkingCustomWebsite ? "Mengecek" : "Test connection"}
+                      </button>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-3">
+                      <div className="rounded-lg bg-brand-off p-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-brand-mute">Mode</div>
+                        <div className="mt-1 font-extrabold text-brand-ink">
+                          {normalizedWebsiteMode === "external_custom" ? "Website custom" : "Template Lapakin"}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-brand-off p-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-brand-mute">Behavior</div>
+                        <div className="mt-1 font-extrabold text-brand-ink">
+                          {externalWebsiteBehavior === "redirect" ? "Redirect otomatis" : "Handoff"}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-brand-off p-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-brand-mute">API</div>
+                        <div className="mt-1 font-extrabold text-brand-ink">
+                          {publicReadKeyEnabled ? "Key required" : "Open read"}
+                        </div>
+                      </div>
+                    </div>
+                    {customWebsiteStatus && (
+                      <div className="mt-3 rounded-lg border border-brand-line bg-brand-cream/50 p-3" data-testid="custom-website-status-result">
+                        <div className="flex flex-wrap items-center gap-2 font-extrabold text-brand-ink">
+                          <CheckCircle2 className={`h-4 w-4 ${customWebsiteStatus.ok ? "text-emerald-600" : "text-amber-600"}`} />
+                          {customWebsiteStatus.ok ? "Siap dipakai" : "Perlu dicek"}
+                        </div>
+                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                          <div className="rounded-lg bg-white p-2">
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-brand-mute">Website custom</div>
+                            <div className="mt-1 font-bold text-brand-ink">
+                              {customWebsiteStatus.website?.probe?.message || "Belum dites"}
+                            </div>
+                            {customWebsiteStatus.website?.probe?.status_code && (
+                              <div className="mt-1 text-[11px] text-brand-mute">HTTP {customWebsiteStatus.website.probe.status_code}</div>
+                            )}
+                          </div>
+                          <div className="rounded-lg bg-white p-2">
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-brand-mute">Headless API</div>
+                            <div className="mt-1 font-bold text-brand-ink">
+                              {customWebsiteStatus.headless_api?.ready ? "Endpoint siap" : "Endpoint belum siap"}
+                            </div>
+                            <div className="mt-1 text-[11px] text-brand-mute">
+                              Produk publik: {customWebsiteStatus.headless_api?.product_count ?? 0}
+                            </div>
+                          </div>
+                        </div>
+                        {Array.isArray(customWebsiteStatus.issues) && customWebsiteStatus.issues.length > 0 && (
+                          <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] font-semibold text-amber-700">
+                            {customWebsiteStatus.issues.map((issue) => (
+                              <li key={issue}>{issue}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="mt-3 rounded-lg border border-brand-line bg-white p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>

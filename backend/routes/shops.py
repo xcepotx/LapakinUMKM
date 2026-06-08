@@ -1,13 +1,18 @@
 from typing import Optional
+import asyncio
+import ipaddress
 import re
 import json
+import socket
+import urllib.error
+import urllib.request
 """Shops routes: CRUD, public fetch, toggle-open, custom domain."""
 import os
 import re as _re
 import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -94,6 +99,83 @@ def _clean_external_website_url(value):
     if raw.startswith("http://") and not raw.startswith("http://localhost") and not raw.startswith("http://127.0.0.1"):
         raw = "https://" + raw[len("http://"):]
     return raw
+
+
+def _is_public_probe_hostname(hostname: str) -> tuple[bool, str]:
+    host = str(hostname or "").strip().lower().rstrip(".")
+    if not host:
+        return False, "Host website custom kosong"
+    if host in {"localhost", "0.0.0.0"} or host.endswith(".localhost"):
+        return False, "Host internal tidak bisa dites dari server"
+
+    try:
+        addr_infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return False, "DNS host belum bisa di-resolve"
+
+    for info in addr_infos:
+        address = info[4][0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            return False, "Alamat IP host tidak valid"
+        if not ip.is_global:
+            return False, "Host mengarah ke IP internal/non-public"
+
+    return True, ""
+
+
+def _probe_external_website_url_sync(url: str) -> dict:
+    cleaned = _clean_external_website_url(url)
+    if not cleaned:
+        return {"ok": False, "status": "missing_url", "message": "URL website custom belum diisi"}
+
+    parsed = urlparse(cleaned)
+    if parsed.scheme not in {"http", "https"}:
+        return {"ok": False, "status": "invalid_scheme", "message": "URL harus memakai http atau https"}
+
+    is_public, reason = _is_public_probe_hostname(parsed.hostname or "")
+    if not is_public:
+        return {"ok": False, "status": "blocked_host", "url": cleaned, "message": reason}
+
+    headers = {"User-Agent": "LapakinUMKM-WebsiteCheck/1.0"}
+    for method in ["HEAD", "GET"]:
+        try:
+            req = urllib.request.Request(cleaned, headers=headers, method=method)
+            with urllib.request.urlopen(req, timeout=6) as response:
+                status_code = int(response.getcode() or 0)
+                return {
+                    "ok": 200 <= status_code < 400,
+                    "status": "reachable" if 200 <= status_code < 400 else "http_warning",
+                    "status_code": status_code,
+                    "url": response.geturl() or cleaned,
+                    "message": "Website custom bisa diakses" if 200 <= status_code < 400 else "Website merespons, tapi status bukan 2xx/3xx",
+                }
+        except urllib.error.HTTPError as exc:
+            if method == "HEAD" and exc.code in {403, 405}:
+                continue
+            return {
+                "ok": False,
+                "status": "http_error",
+                "status_code": int(exc.code or 0),
+                "url": cleaned,
+                "message": f"Website merespons dengan HTTP {exc.code}",
+            }
+        except Exception as exc:
+            if method == "HEAD":
+                continue
+            return {
+                "ok": False,
+                "status": "connection_error",
+                "url": cleaned,
+                "message": str(exc)[:180] or "Website belum bisa diakses dari server",
+            }
+
+    return {"ok": False, "status": "connection_error", "url": cleaned, "message": "Website belum bisa diakses dari server"}
+
+
+async def _probe_external_website_url(url: str) -> dict:
+    return await asyncio.to_thread(_probe_external_website_url_sync, url)
 
 
 def _with_storefront_defaults(shop):
@@ -2351,6 +2433,77 @@ async def get_shop_public(slug: str):
 
 
 # ----------- Custom Domain (BISNIS tier) -----------
+@router.get("/shops/me/custom-website/status")
+async def get_custom_website_status(request: Request):
+    user = await require_user(request)
+    shop_id = user.get("shop_id")
+    if not shop_id:
+        raise HTTPException(status_code=400, detail="User belum memiliki toko")
+
+    shop = await db.shops.find_one({"shop_id": shop_id}, {"_id": 0})
+    shop = _with_storefront_defaults(shop)
+    if not shop:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    mode = shop.get("website_mode") or "lapakin_template"
+    behavior = shop.get("external_website_behavior") or "handoff"
+    external_url = shop.get("external_website_url") or ""
+    is_custom = mode == "external_custom"
+    external_probe = {"ok": True, "status": "not_required", "message": "Mode template Lapakin tidak membutuhkan website custom"}
+    if is_custom:
+        external_probe = await _probe_external_website_url(external_url)
+
+    slug = shop.get("slug") or ""
+    public_read_key_required = bool(shop.get("public_read_key_enabled"))
+    public_read_key_ready = (not public_read_key_required) or bool(shop.get("public_read_key"))
+    product_count = await db.products.count_documents({
+        "shop_id": shop_id,
+        "availability_status": {"$ne": "hidden"},
+        "is_active": {"$ne": False},
+    })
+
+    headless_ready = bool(slug) and public_read_key_ready
+    issues = []
+    if is_custom and not external_url:
+        issues.append("URL website custom belum diisi")
+    if is_custom and external_url and not external_probe.get("ok"):
+        issues.append(external_probe.get("message") or "Website custom belum bisa diakses")
+    if public_read_key_required and not public_read_key_ready:
+        issues.append("Public Read Key wajib aktif tapi key belum dibuat")
+    if not slug:
+        issues.append("Slug toko belum tersedia")
+
+    if not issues:
+        overall_status = "ready"
+    elif is_custom:
+        overall_status = "warning"
+    else:
+        overall_status = "template_ready"
+
+    endpoint = f"/api/public/storefront/{slug}" if slug else ""
+    return {
+        "ok": not issues,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "overall_status": overall_status,
+        "issues": issues,
+        "website": {
+            "mode": mode,
+            "behavior": behavior,
+            "custom_enabled": is_custom,
+            "url": external_url,
+            "label": shop.get("external_website_label") or "Buka Website Custom",
+            "probe": external_probe,
+        },
+        "headless_api": {
+            "ready": headless_ready,
+            "endpoint": endpoint,
+            "key_required": public_read_key_required,
+            "key_ready": public_read_key_ready,
+            "product_count": product_count,
+        },
+    }
+
+
 @router.post("/shops/me/public-read-key/regenerate")
 async def regenerate_public_read_key(request: Request):
     user = await require_user(request)

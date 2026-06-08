@@ -127,3 +127,10 @@ await fetch("https://domain-lapakin/api/public/storefront/slug-toko", {
 ```
 
 Regenerate key akan langsung mengganti key lama. Website custom perlu memperbarui key yang dipakai setelah regenerate.
+
+
+## Test Connection Dari Dashboard
+
+Panel `Developer Kit Website Custom` memiliki tombol `Test connection` untuk mengecek kesiapan sebelum traffic diarahkan ke website custom. Pemeriksaan meliputi mode website, behavior handoff/redirect, endpoint headless, status Public Read Key, jumlah produk publik, dan aksesibilitas URL website custom.
+
+Demi keamanan server, pemeriksaan URL custom hanya dilakukan untuk host publik. Host internal seperti `localhost`, IP private, atau alamat non-public akan diblokir dari probe server.
