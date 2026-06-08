@@ -1,6 +1,7 @@
 from fastapi.responses import RedirectResponse
 """Public utility routes: health, featured shops, broadcasts (user side), billing, analytics."""
 from datetime import datetime, timezone, timedelta
+import hmac
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -125,6 +126,7 @@ def _public_storefront_shop_payload(shop: dict, owner_tier: str = "free") -> dic
         "external_website_url": shop.get("external_website_url") or "",
         "external_website_label": shop.get("external_website_label") or "Buka Website Custom",
         "external_website_behavior": shop.get("external_website_behavior") or "handoff",
+        "public_read_key_required": bool(shop.get("public_read_key_enabled")),
         "storefront_mode": shop.get("storefront_mode") or "catalog",
         "storefront_style": shop.get("storefront_style") or "classic",
         "storefront_renderer": shop.get("storefront_renderer") or "legacy",
@@ -174,11 +176,21 @@ def _public_storefront_product_payload(product: dict) -> dict:
 
 
 @router.get("/public/storefront/{slug}")
-async def public_headless_storefront(slug: str):
+async def public_headless_storefront(slug: str, request: Request):
     """Curated public data contract for external/custom tenant websites."""
     shop = await db.shops.find_one({"slug": slug}, {"_id": 0})
     if not shop or shop.get("status") == "suspended":
         raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    if shop.get("public_read_key_enabled"):
+        expected_key = str(shop.get("public_read_key") or "")
+        provided_key = str(
+            request.headers.get("X-Lapakin-Public-Key")
+            or request.query_params.get("key")
+            or ""
+        )
+        if not expected_key or not hmac.compare_digest(provided_key, expected_key):
+            raise HTTPException(status_code=401, detail="Public read key diperlukan")
 
     owner = await db.users.find_one({"user_id": shop.get("owner_user_id")}, {"_id": 0, "tier": 1})
     owner_tier = (owner or {}).get("tier") or "free"

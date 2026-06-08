@@ -105,3 +105,25 @@ function whatsappLink(shop, text) {
 - The endpoint is public by design. Do not put private tenant/admin data in it.
 - Lapakin remains the source of truth for product and shop data.
 - Custom domains can still point to either a Lapakin template or an external website, depending on DNS and deployment strategy.
+
+
+## Public Read Key Opsional
+
+Tenant bisa mengunci endpoint headless dari panel `Pengaturan Toko` -> `Developer Kit Website Custom`. Setelah key dibuat dan opsi wajib key diaktifkan, request tanpa key akan mendapat `401`.
+
+Pakai query string untuk integrasi frontend sederhana:
+
+```js
+const response = await fetch("https://domain-lapakin/api/public/storefront/slug-toko?key=lpk_pub_xxx");
+const storefront = await response.json();
+```
+
+Atau pakai header jika fetch dilakukan dari server/proxy:
+
+```js
+await fetch("https://domain-lapakin/api/public/storefront/slug-toko", {
+  headers: { "X-Lapakin-Public-Key": "lpk_pub_xxx" },
+});
+```
+
+Regenerate key akan langsung mengganti key lama. Website custom perlu memperbarui key yang dipakai setelah regenerate.

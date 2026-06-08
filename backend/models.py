@@ -46,6 +46,7 @@ class ShopIn(BaseModel):
     external_website_url: Optional[str] = ""
     external_website_label: Optional[str] = ""
     external_website_behavior: Optional[str] = "handoff"  # handoff | redirect
+    public_read_key_enabled: Optional[bool] = False
     # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
     storefront_layout_variant: Optional[str] = ""
     storefront_hero_title: Optional[str] = ""

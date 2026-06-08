@@ -4,6 +4,7 @@ import json
 """Shops routes: CRUD, public fetch, toggle-open, custom domain."""
 import os
 import re as _re
+import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
 from urllib.parse import quote_plus
@@ -126,6 +127,9 @@ def _with_storefront_defaults(shop):
     shop.setdefault("external_website_url", "")
     shop.setdefault("external_website_label", "")
     shop.setdefault("external_website_behavior", "handoff")
+    shop.setdefault("public_read_key_enabled", False)
+    shop.setdefault("public_read_key", "")
+    shop.setdefault("public_read_key_rotated_at", "")
     # LAPAKIN_STOREFRONT_LAYOUT_VARIANT_V1
     shop.setdefault("storefront_layout_variant", "")
 
@@ -203,6 +207,9 @@ def _normalize_shop_settings_payload(payload):
         if behavior not in ALLOWED_EXTERNAL_WEBSITE_BEHAVIORS:
             raise HTTPException(status_code=400, detail="Behavior website custom tidak valid")
         payload["external_website_behavior"] = behavior
+
+    if "public_read_key_enabled" in payload:
+        payload["public_read_key_enabled"] = bool(payload.get("public_read_key_enabled"))
 
     if "whatsapp" in payload or "whatsapp_number" in payload:
         whatsapp = str(payload.get("whatsapp") or payload.get("whatsapp_number") or "").strip()[:40]
@@ -2344,6 +2351,56 @@ async def get_shop_public(slug: str):
 
 
 # ----------- Custom Domain (BISNIS tier) -----------
+@router.post("/shops/me/public-read-key/regenerate")
+async def regenerate_public_read_key(request: Request):
+    user = await require_user(request)
+    shop_id = user.get("shop_id")
+    if not shop_id:
+        raise HTTPException(status_code=400, detail="User belum memiliki toko")
+
+    now = datetime.now(timezone.utc).isoformat()
+    token = "lpk_pub_" + secrets.token_urlsafe(24)
+    result = await db.shops.update_one(
+        {"shop_id": shop_id},
+        {"$set": {
+            "public_read_key": token,
+            "public_read_key_enabled": True,
+            "public_read_key_rotated_at": now,
+            "updated_at": now,
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    return {
+        "ok": True,
+        "public_read_key": token,
+        "public_read_key_enabled": True,
+        "public_read_key_rotated_at": now,
+    }
+
+
+@router.post("/shops/me/public-read-key/disable")
+async def disable_public_read_key(request: Request):
+    user = await require_user(request)
+    shop_id = user.get("shop_id")
+    if not shop_id:
+        raise HTTPException(status_code=400, detail="User belum memiliki toko")
+
+    now = datetime.now(timezone.utc).isoformat()
+    result = await db.shops.update_one(
+        {"shop_id": shop_id},
+        {"$set": {
+            "public_read_key_enabled": False,
+            "updated_at": now,
+        }},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Toko tidak ditemukan")
+
+    return {"ok": True, "public_read_key_enabled": False}
+
+
 @router.post("/shops/me/custom-domain")
 async def set_custom_domain(data: CustomDomainIn, request: Request):
     user = await require_user(request)

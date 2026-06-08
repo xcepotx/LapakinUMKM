@@ -1006,16 +1006,22 @@ return () => {
 
   const publicShopDataEndpoint =
     typeof window !== "undefined" && activeShopSlug
-      ? `${window.location.origin}/api/shops/by-slug/${activeShopSlug}`
+      ? `${window.location.origin}/api/public/storefront/${activeShopSlug}`
       : activeShopSlug
-        ? `/api/shops/by-slug/${activeShopSlug}`
+        ? `/api/public/storefront/${activeShopSlug}`
         : "";
 
   const normalizedWebsiteMode = shop.website_mode || "lapakin_template";
   const externalWebsiteUrl = shop.external_website_url || "";
   const externalWebsiteBehavior = shop.external_website_behavior || "handoff";
+  const publicReadKey = shop.public_read_key || "";
+  const publicReadKeyEnabled = Boolean(shop.public_read_key_enabled);
+  const publicShopDataEndpointWithKey =
+    publicReadKeyEnabled && publicReadKey && publicShopDataEndpoint
+      ? `${publicShopDataEndpoint}?key=${encodeURIComponent(publicReadKey)}`
+      : publicShopDataEndpoint;
   const headlessFetchSnippet = publicShopDataEndpoint
-    ? `const response = await fetch("${publicShopDataEndpoint}");
+    ? `const response = await fetch("${publicShopDataEndpointWithKey}");
 const storefront = await response.json();
 console.log(storefront.shop, storefront.products);`
     : "";
@@ -1035,6 +1041,29 @@ function whatsappLink(shop, text) {
     } catch {
       window.prompt("Salin manual:", value);
     }
+  };
+
+  const regeneratePublicReadKey = async () => {
+    try {
+      const { data } = await api.post("/shops/me/public-read-key/regenerate");
+      setShop((prev) => ({
+        ...prev,
+        public_read_key: data.public_read_key || "",
+        public_read_key_enabled: Boolean(data.public_read_key_enabled),
+        public_read_key_rotated_at: data.public_read_key_rotated_at || prev.public_read_key_rotated_at || "",
+      }));
+      toast.success("API key dibuat ulang");
+    } catch (err) {
+      toast.error("Gagal membuat API key");
+    }
+  };
+
+  const setPublicReadKeyEnabled = (enabled) => {
+    if (enabled && !publicReadKey) {
+      toast.info("Generate API key dulu sebelum mengunci endpoint");
+      return;
+    }
+    update("public_read_key_enabled", enabled);
   };
 
   const storefrontCampaignUrl =
@@ -1268,6 +1297,7 @@ function whatsappLink(shop, text) {
       payload.external_website_url = shop.external_website_url || "";
       payload.external_website_label = shop.external_website_label || "";
       payload.external_website_behavior = shop.external_website_behavior || "handoff";
+      payload.public_read_key_enabled = Boolean(shop.public_read_key_enabled);
 
       delete payload.shop_id; delete payload.slug; delete payload.owner_user_id;
       delete payload.created_at; delete payload.updated_at; delete payload.status; delete payload.featured;
@@ -1421,12 +1451,52 @@ function whatsappLink(shop, text) {
                     </a>
                   </div>
                   <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-950 p-2 text-[11px] text-slate-50" data-testid="public-shop-api-endpoint">
-                    {publicShopDataEndpoint || "Endpoint muncul setelah toko punya slug."}
+                    {publicShopDataEndpointWithKey || "Endpoint muncul setelah toko punya slug."}
                   </code>
+                  <div className="mt-3 rounded-lg border border-brand-line bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="font-extrabold text-brand-ink">Public Read Key</div>
+                        <p className="mt-1 text-[11px] text-brand-mute">Opsional untuk mengunci endpoint data website custom.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={regeneratePublicReadKey}
+                        className="inline-flex items-center gap-1 rounded-lg border border-brand-line px-2.5 py-1 font-bold text-brand-ink hover:bg-brand-off"
+                        data-testid="regenerate-public-read-key-btn"
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        {publicReadKey ? "Regenerate" : "Generate"}
+                      </button>
+                    </div>
+                    <label className="mt-3 flex items-center gap-2 font-bold text-brand-ink">
+                      <input
+                        type="checkbox"
+                        checked={publicReadKeyEnabled}
+                        onChange={(e) => setPublicReadKeyEnabled(e.target.checked)}
+                        className="h-4 w-4 accent-brand"
+                      />
+                      Wajibkan key untuk endpoint publik
+                    </label>
+                    <code className="mt-2 block overflow-x-auto rounded-lg bg-brand-off p-2 text-[11px] text-brand-mute">
+                      {publicReadKey || "Belum ada key. Klik Generate untuk membuat."}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => copyText(publicReadKey, "API key disalin")}
+                      disabled={!publicReadKey}
+                      className="mt-2 inline-flex items-center gap-1 rounded-lg border border-brand-line px-2.5 py-1 font-bold text-brand-ink hover:bg-brand-off disabled:opacity-50"
+                      data-testid="copy-public-read-key-btn"
+                    >
+                      <Code2 className="h-3.5 w-3.5" />
+                      Salin key
+                    </button>
+                  </div>
+
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => copyText(publicShopDataEndpoint, "Endpoint API disalin")}
+                      onClick={() => copyText(publicShopDataEndpointWithKey, "Endpoint API disalin")}
                       disabled={!publicShopDataEndpoint}
                       className="inline-flex items-center gap-1 rounded-lg border border-brand-line px-2.5 py-1 font-bold text-brand-ink hover:bg-brand-off disabled:opacity-50"
                       data-testid="copy-public-shop-api-btn"
