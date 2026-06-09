@@ -147,3 +147,21 @@
   body .nav-cta-dot{width:6px;height:6px;box-shadow:0 0 0 2px rgba(121,224,180,.2)}
   body .nav-cta-text{font-size:10.5px!important;}
 }
+
+/* final subtle wa nav button */
+.nav-cta{
+  background:rgba(255,248,239,.72)!important;
+  color:#1f6b55!important;
+  border:1.5px solid rgba(31,107,85,.55)!important;
+  box-shadow:0 6px 14px rgba(47,27,18,.08)!important;
+  gap:0!important;
+}
+.nav-cta-dot{display:none!important;}
+.nav-cta-text{font-weight:900!important;letter-spacing:.02em!important;}
+.nav-cta:hover{background:#fff!important;border-color:#1f6b55!important;}
+@media (max-width:1200px){
+  body .nav-cta{min-width:44px!important;min-height:34px!important;padding:0 11px!important;border-radius:999px!important;font-size:12px!important;}
+}
+@media (max-width:420px){
+  body .nav-cta{min-width:42px!important;min-height:32px!important;padding:0 10px!important;font-size:11.5px!important;}
+}
