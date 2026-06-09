@@ -28,3 +28,24 @@
   body .hero-actions a{width:auto!important;min-height:38px!important;padding:0 13px!important;font-size:12px!important;border-radius:14px!important;}
   body .hero-facts{display:none!important;}
 }
+
+/* mobile hero polish final */
+@media (max-width:1200px){
+  body .topbar{top:10px!important;left:10px!important;right:10px!important;padding:8px 9px!important;border-radius:18px!important;}
+  body .brand-mark{width:32px!important;height:32px!important;border-radius:11px!important;font-size:11px!important;}
+  body .brand strong{font-size:11px!important;line-height:1.05!important;}
+  body .brand small{font-size:9px!important;line-height:1.05!important;}
+  body .nav-cta{min-height:34px!important;padding:0 13px!important;border-radius:13px!important;font-size:11px!important;}
+  body .hero{min-height:56svh!important;}
+  body .hero-content{padding-top:86px!important;padding-bottom:18px!important;}
+  body .eyebrow{max-width:92%!important;margin-bottom:7px!important;font-size:9px!important;line-height:1.2!important;}
+  body .hero h1{max-width:94%!important;font-size:clamp(29px,5.7vw,43px)!important;line-height:1.02!important;text-wrap:balance!important;}
+  body .hero-copy{max-width:92%!important;margin-top:9px!important;font-size:12px!important;line-height:1.45!important;}
+  body .hero-actions{margin-top:13px!important;}
+  body .hero-shade{height:30%!important;}
+}
+@media (max-width:560px){
+  body .intro-band{padding-top:42px!important;}
+  body .intro-band h2{font-size:31px!important;line-height:1.02!important;}
+  body .feature-strip{margin-top:10px!important;}
+}
