@@ -49,3 +49,20 @@
   body .intro-band h2{font-size:31px!important;line-height:1.02!important;}
   body .feature-strip{margin-top:10px!important;}
 }
+
+/* mobile hero circled area placement */
+@media (max-width:1200px){
+  body .hero{min-height:66svh!important;display:flex!important;align-items:flex-end!important;}
+  body .hero-media{background-position:center 20%!important;}
+  body .hero-shade{height:46%!important;background:linear-gradient(0deg,#fff8ef 0%,rgba(255,248,239,.82) 26%,rgba(255,248,239,.38) 58%,transparent 100%)!important;}
+  body .hero-content{width:calc(100% - 24px)!important;margin:0 auto!important;padding-top:0!important;padding-bottom:92px!important;}
+  body .eyebrow{margin-bottom:7px!important;font-size:9px!important;line-height:1.2!important;}
+  body .hero h1{max-width:96%!important;font-size:clamp(30px,5.9vw,44px)!important;line-height:1.02!important;text-wrap:balance!important;}
+  body .hero-copy{max-width:94%!important;margin-top:8px!important;font-size:12px!important;line-height:1.45!important;}
+  body .hero-actions{margin-top:13px!important;}
+  body .hero-facts{display:none!important;}
+}
+@media (max-width:560px){
+  body .hero{min-height:64svh!important;}
+  body .hero-content{padding-bottom:76px!important;}
+}
