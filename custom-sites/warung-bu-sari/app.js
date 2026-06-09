@@ -9,7 +9,7 @@ let cart = new Map();
 
 const el = (id) => document.getElementById(id);
 const safeText = (value, fallback = "") => String(value || fallback || "").trim();
-const imageOf = (item) => item?.image_data || (Array.isArray(item?.images) ? item.images[0] : "") || "";
+const imageOf = (item) => item?.image_url || item?.cover_image_url || item?.image_data || (Array.isArray(item?.images) ? item.images[0] : "") || "";
 const escapeHtml = (value) => safeText(value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 
 function waNumber(raw) {
