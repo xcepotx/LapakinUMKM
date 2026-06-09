@@ -175,6 +175,57 @@ def _public_storefront_product_payload(product: dict) -> dict:
     }
 
 
+
+def _public_has_image(value) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list):
+        return any(_public_has_image(item) for item in value)
+    if isinstance(value, dict):
+        return any(_public_has_image(value.get(key)) for key in ["url", "image_url", "thumbnail_url", "src", "data", "image_data"])
+    return False
+
+
+def _public_compact_shop_payload(shop_payload: dict, slug: str) -> dict:
+    out = dict(shop_payload or {})
+    if _public_has_image(out.get("cover_image")):
+        out["cover_image_url"] = f"/api/public/storefront/{slug}/cover-image"
+    out.pop("cover_image", None)
+    if isinstance(out.get("seo"), dict):
+        seo = dict(out["seo"])
+        if _public_has_image(seo.get("image")):
+            seo["image_url"] = f"/api/public/storefront/{slug}/cover-image"
+        seo.pop("image", None)
+        out["seo"] = seo
+    return out
+
+
+def _public_compact_product_payload(product_payload: dict, slug: str) -> dict:
+    out = dict(product_payload or {})
+    if _public_has_image(out.get("image_data")) or _public_has_image(out.get("images")):
+        out["image_url"] = f"/api/mall/raw-product-image/{out.get('product_id')}"
+    out.pop("image_data", None)
+    out.pop("images", None)
+    return out
+
+
+
+@router.get("/public/storefront/{slug}/cover-image")
+async def public_storefront_cover_image(slug: str):
+    shop = await db.shops.find_one({"slug": slug}, {"_id": 0, "cover_image": 1, "storefront_seo_image": 1, "seo_image": 1})
+    if not shop:
+        raise HTTPException(status_code=404, detail="Gambar toko tidak ditemukan")
+
+    for key in ["cover_image", "storefront_seo_image", "seo_image"]:
+        media_type, payload = _mall_parse_raw_product_image(shop.get(key))
+        if media_type == "redirect" and payload:
+            return RedirectResponse(url=payload)
+        if media_type and payload:
+            return Response(content=payload, media_type=media_type, headers={"Cache-Control": "public, max-age=86400"})
+
+    raise HTTPException(status_code=404, detail="Gambar toko tidak tersedia")
+
+
 @router.get("/public/storefront/{slug}")
 async def public_headless_storefront(slug: str, request: Request):
     """Curated public data contract for external/custom tenant websites."""
@@ -212,12 +263,20 @@ async def public_headless_storefront(slug: str, request: Request):
     except Exception:
         pass
 
+    compact = str(request.query_params.get("compact") or "").strip().lower() in {"1", "true", "yes"}
+    shop_payload = _public_storefront_shop_payload(shop, owner_tier)
+    product_payloads = public_products
+    if compact:
+        shop_payload = _public_compact_shop_payload(shop_payload, slug)
+        product_payloads = [_public_compact_product_payload(product, slug) for product in public_products]
+
     return {
         "ok": True,
         "version": "2026-06-08",
         "mode": "headless_storefront",
-        "shop": _public_storefront_shop_payload(shop, owner_tier),
-        "products": public_products,
+        "compact": compact,
+        "shop": shop_payload,
+        "products": product_payloads,
         "categories": categories,
         "links": {
             "lapakin_storefront": f"/toko/{slug}",

@@ -1,4 +1,4 @@
-const API_URL = "/api/public/storefront/warung-bu-sari";
+const API_URL = "/api/public/storefront/warung-bu-sari?compact=1";
 const WA_FALLBACK = "08118701518";
 const money = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
 
@@ -97,7 +97,7 @@ function renderHero() {
   el("factHours").textContent = schedule.is_open_now === false ? "Tutup" : (shop.hours || "Buka harian");
   el("factProducts").textContent = String(products.length || 0);
   el("factArea").textContent = (shop.service_area || shop.store_address || "Beringharjo").split(",")[0].replace(/^Jl\.\s*/i, "");
-  const heroImage = shop.cover_image || imageOf(products[0]);
+  const heroImage = shop.cover_image_url || shop.cover_image || imageOf(products[0]);
   if (heroImage) el("heroMedia").style.backgroundImage = `url(${heroImage})`;
   const wa = `https://wa.me/${waNumber(shop.whatsapp)}?text=${encodeURIComponent(`Halo ${shop.name || "Warung Bu Sari"}, saya mau tanya menu hari ini.`)}`;
   el("heroWhatsapp").href = wa;

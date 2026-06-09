@@ -117,3 +117,14 @@
     font-size:11px!important;
   }
 }
+
+/* unmistakable chat wa button */
+.nav-cta{
+  background:#fff8ef!important;
+  color:#1f6b55!important;
+  border:2px solid #1f6b55!important;
+  box-shadow:0 10px 22px rgba(31,107,85,.16)!important;
+}
+@media (max-width:1200px){
+  body .nav-cta{min-width:82px!important;font-size:12px!important;font-weight:900!important;}
+}
