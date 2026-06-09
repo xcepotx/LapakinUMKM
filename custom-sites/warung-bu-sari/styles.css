@@ -66,3 +66,26 @@
   body .hero{min-height:64svh!important;}
   body .hero-content{padding-bottom:76px!important;}
 }
+
+/* navbar polish final */
+.topbar{min-height:62px!important;}
+.brand strong{letter-spacing:0!important;}
+.nav-cta{white-space:nowrap!important;}
+@media (max-width:1200px){
+  body .topbar{top:12px!important;left:12px!important;right:12px!important;min-height:54px!important;padding:7px 8px!important;border-radius:20px!important;background:rgba(255,248,239,.92)!important;border-color:rgba(237,215,189,.72)!important;box-shadow:0 12px 32px rgba(47,27,18,.16)!important;}
+  body .topbar nav{display:none!important;}
+  body .brand{gap:8px!important;max-width:calc(100% - 92px)!important;}
+  body .brand-mark{width:38px!important;height:38px!important;border-radius:14px!important;font-size:12px!important;box-shadow:0 8px 18px rgba(192,74,59,.22)!important;}
+  body .brand strong{font-size:13px!important;line-height:1.05!important;max-width:150px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+  body .brand small{display:block!important;margin-top:3px!important;font-size:10px!important;line-height:1!important;color:#6f5a4d!important;max-width:150px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+  body .nav-cta{min-height:38px!important;padding:0 15px!important;border-radius:15px!important;font-size:12px!important;font-weight:900!important;box-shadow:0 8px 18px rgba(31,107,85,.2)!important;}
+  body .hero-content{padding-top:0!important;}
+}
+@media (max-width:420px){
+  body .topbar{left:8px!important;right:8px!important;min-height:52px!important;}
+  body .brand{max-width:calc(100% - 82px)!important;}
+  body .brand-mark{width:34px!important;height:34px!important;border-radius:13px!important;}
+  body .brand strong{font-size:12px!important;max-width:124px!important;}
+  body .brand small{font-size:9px!important;max-width:124px!important;}
+  body .nav-cta{min-height:36px!important;padding:0 13px!important;font-size:11px!important;}
+}
