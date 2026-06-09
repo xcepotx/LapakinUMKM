@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kopi Senja - Slow Coffee Bar</title>
+  <meta name="description" content="Kopi Senja menyajikan espresso, latte aren, cold brew, manual brew, dan pastry untuk teman kerja santai." />
+  <meta name="theme-color" content="#C04A3B" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css?v=20260609a" />
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="#home" aria-label="Kopi Senja">
+      <span class="brand-mark">KS</span>
+      <span>
+        <strong>Kopi Senja</strong>
+        <small>Slow coffee bar</small>
+      </span>
+    </a>
+    <nav aria-label="Navigasi utama">
+      <a href="#menu">Menu</a>
+      <a href="#cerita">Cerita</a>
+      <a href="#info">Info</a>
+      <a href="#pesan">Chat WA</a>
+    </nav>
+    <a id="topOrder" class="nav-cta" href="#menu" aria-label="Chat WhatsApp Kopi Senja"><span class="nav-cta-text">WA</span></a>
+  </div>
+
+  <main id="home">
+    <section class="hero">
+      <div class="hero-media" id="heroMedia"></div>
+      <div class="hero-shade"></div>
+      <div class="hero-content">
+        <p class="eyebrow">Sejak pagi, mesin kopi sudah menyala.</p>
+        <h1 id="heroTitle">Kopi pelan untuk sore yang lebih hangat.</h1>
+        <p id="heroCopy" class="hero-copy">Espresso, latte aren, cold brew, dan pastry dari bar kecil kami.</p>
+        <div class="hero-actions">
+          <a id="heroCta" class="primary" href="#menu">Lihat menu</a>
+          <a id="heroWhatsapp" class="secondary" href="#pesan">Chat Bu Sari</a>
+        </div>
+        <div class="hero-facts" aria-label="Info warung">
+          <div><strong id="factHours">07:00-15:00</strong><span>Jam buka</span></div>
+          <div><strong id="factProducts">4</strong><span>Menu aktif</span></div>
+          <div><strong id="factArea">Beringharjo</strong><span>Lokasi</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="intro-band" id="cerita">
+      <div>
+        <p class="section-kicker">Bar kecil, aroma panjang.</p>
+        <h2>Diracik untuk kerja santai, obrolan sore, dan jeda yang layak.</h2>
+      </div>
+      <p id="storyText">Kopi Senja sudah 12 tahun menjaga rasa masakan rumah di Pasar Beringharjo. Menu berubah mengikuti stok segar, tapi hangatnya tetap sama.</p>
+    </section>
+
+    <section id="featureStrip" class="feature-strip" aria-label="Fitur toko" hidden></section>
+
+    <section id="featuredSection" class="featured-section" hidden>
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Pilihan dapur</p>
+          <h2 id="featuredTitle">Racikan Favorit Hari Ini</h2>
+        </div>
+      </div>
+      <div id="featuredGrid" class="featured-grid"></div>
+    </section>
+
+    <section class="menu-section" id="menu">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Menu hari ini</p>
+          <h2>Pilih racikan favorit, kami siapkan lewat WhatsApp.</h2>
+        </div>
+        <div class="menu-tools">
+          <div id="categoryFilters" class="filters" aria-label="Filter kategori"></div>
+          <button id="cartToggle" class="cart-button" type="button">Keranjang <span id="cartCount">0</span></button>
+        </div>
+      </div>
+      <div id="loadingState" class="loading-grid">
+        <div></div><div></div><div></div><div></div>
+      </div>
+      <div id="menuGrid" class="menu-grid" hidden></div>
+    </section>
+
+    <section class="details-section" id="info">
+      <article id="aboutCard" class="detail-card" hidden>
+        <p class="section-kicker">Tentang warung</p>
+        <h2>Dari bar Kopi Senja</h2>
+        <p id="aboutText"></p>
+      </article>
+      <article id="locationCard" class="detail-card" hidden>
+        <p class="section-kicker">Lokasi & layanan</p>
+        <h2>Ngopi di tempat atau pesan dari rumah</h2>
+        <p id="locationText"></p>
+        <div id="fulfillmentBadges" class="mini-badges"></div>
+        <a id="mapsLink" class="detail-link" href="#" target="_blank" rel="noreferrer" hidden>Buka Google Maps</a>
+      </article>
+      <article id="paymentCard" class="detail-card" hidden>
+        <p class="section-kicker">Pembayaran</p>
+        <h2 id="paymentTitle">Instruksi pembayaran</h2>
+        <p id="paymentText"></p>
+      </article>
+      <article id="socialCard" class="detail-card" hidden>
+        <p class="section-kicker">Sosial</p>
+        <h2>Ikuti update menu</h2>
+        <div id="socialLinks" class="social-links"></div>
+      </article>
+    </section>
+
+    <section class="order-band" id="pesan">
+      <div class="order-copy">
+        <p class="section-kicker">Pesan cepat</p>
+        <h2>Sudah tahu mau makan apa?</h2>
+        <p>Tambah menu ke keranjang, lalu kirim pesanan lewat WhatsApp. Bu Sari akan konfirmasi ketersediaan dan totalnya.</p>
+      </div>
+      <div class="order-card">
+        <div class="order-total"><span>Total sementara</span><strong id="orderTotal">Rp 0</strong></div>
+        <button id="checkoutButton" class="checkout" type="button">Kirim pesanan</button>
+        <p id="syncInfo">Menu dimuat dari bar Kopi Senja.</p>
+      </div>
+    </section>
+  </main>
+
+  <aside id="cartPanel" class="cart-panel" aria-label="Keranjang pesanan" hidden>
+    <div class="cart-head">
+      <strong>Keranjang</strong>
+      <button id="cartClose" type="button" aria-label="Tutup keranjang">x</button>
+    </div>
+    <div id="cartItems" class="cart-items"></div>
+    <div class="cart-foot">
+      <div><span>Total</span><strong id="panelTotal">Rp 0</strong></div>
+      <button id="panelCheckout" type="button">Kirim WhatsApp</button>
+    </div>
+  </aside>
+
+  <script src="./app.js?v=20260609a" defer></script>
+</body>
+</html>
