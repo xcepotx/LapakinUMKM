@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="./styles.css?v=20260609a" />
+  <link rel="stylesheet" href="./styles.css?v=20260609b" />
 </head>
 <body>
   <div class="topbar">
@@ -23,6 +23,7 @@
     <nav aria-label="Navigasi utama">
       <a href="#menu">Menu</a>
       <a href="#cerita">Cerita</a>
+      <a href="#info">Info</a>
       <a href="#pesan">Pesan</a>
     </nav>
     <a id="topOrder" class="nav-cta" href="#menu">Pesan</a>
@@ -34,10 +35,10 @@
       <div class="hero-shade"></div>
       <div class="hero-content">
         <p class="eyebrow">Sejak pasar buka, lauk hangat sudah siap.</p>
-        <h1>Masakan Jawa yang rasanya pulang ke rumah.</h1>
+        <h1 id="heroTitle">Masakan Jawa yang rasanya pulang ke rumah.</h1>
         <p id="heroCopy" class="hero-copy">Gudeg, nasi rames, sambel pecel, dan es teh jumbo dari dapur Bu Sari.</p>
         <div class="hero-actions">
-          <a class="primary" href="#menu">Lihat menu</a>
+          <a id="heroCta" class="primary" href="#menu">Lihat menu</a>
           <a id="heroWhatsapp" class="secondary" href="#pesan">Chat Bu Sari</a>
         </div>
         <div class="hero-facts" aria-label="Info warung">
@@ -56,6 +57,18 @@
       <p id="storyText">Warung Bu Sari sudah 12 tahun menjaga rasa masakan rumah di Pasar Beringharjo. Menu berubah mengikuti stok segar, tapi hangatnya tetap sama.</p>
     </section>
 
+    <section id="featureStrip" class="feature-strip" aria-label="Fitur toko" hidden></section>
+
+    <section id="featuredSection" class="featured-section" hidden>
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Pilihan dapur</p>
+          <h2 id="featuredTitle">Menu Favorit Hari Ini</h2>
+        </div>
+      </div>
+      <div id="featuredGrid" class="featured-grid"></div>
+    </section>
+
     <section class="menu-section" id="menu">
       <div class="section-head">
         <div>
@@ -71,6 +84,31 @@
         <div></div><div></div><div></div><div></div>
       </div>
       <div id="menuGrid" class="menu-grid" hidden></div>
+    </section>
+
+    <section class="details-section" id="info">
+      <article id="aboutCard" class="detail-card" hidden>
+        <p class="section-kicker">Tentang warung</p>
+        <h2>Dari dapur Bu Sari</h2>
+        <p id="aboutText"></p>
+      </article>
+      <article id="locationCard" class="detail-card" hidden>
+        <p class="section-kicker">Lokasi & layanan</p>
+        <h2>Mampir atau pesan dari rumah</h2>
+        <p id="locationText"></p>
+        <div id="fulfillmentBadges" class="mini-badges"></div>
+        <a id="mapsLink" class="detail-link" href="#" target="_blank" rel="noreferrer" hidden>Buka Google Maps</a>
+      </article>
+      <article id="paymentCard" class="detail-card" hidden>
+        <p class="section-kicker">Pembayaran</p>
+        <h2 id="paymentTitle">Instruksi pembayaran</h2>
+        <p id="paymentText"></p>
+      </article>
+      <article id="socialCard" class="detail-card" hidden>
+        <p class="section-kicker">Sosial</p>
+        <h2>Ikuti update menu</h2>
+        <div id="socialLinks" class="social-links"></div>
+      </article>
     </section>
 
     <section class="order-band" id="pesan">
@@ -99,6 +137,6 @@
     </div>
   </aside>
 
-  <script src="./app.js?v=20260609a" defer></script>
+  <script src="./app.js?v=20260609b" defer></script>
 </body>
 </html>
